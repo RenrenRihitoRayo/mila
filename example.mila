@@ -1,0 +1,11 @@
+let i = 0;
+let start = get_time();
+
+while (i < 300000) {
+    println(pow(i, 3));
+    let i = i + 1;
+}
+
+let delta = get_time() - start;
+
+println(delta + " seconds");

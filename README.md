@@ -402,7 +402,7 @@ Used with const char* also duplicating strings.
 
 #### MiLa Type Map
 
-MiLa int    = C long
-MiLa float  = C double
-MiLa string = C char*
-MiLa opaque = C void*
+* MiLa int    = C long
+* MiLa float  = C double
+* MiLa string = C char*
+* MiLa opaque = C void*

@@ -381,3 +381,28 @@ int main(void) {
     return 0;
 }
 ```
+
+### Type conversion
+
+#### char*
+
+* vstring_take(char*)
+
+If the pointer is already owned
+
+* vstrinf_dup(char*)
+
+Used with const char* also duplicating strings.
+
+#### Numbers
+
+* vint(long)
+
+* vfloat(double)
+
+#### MiLa Type Map
+
+MiLa int    = C long
+MiLa float  = C double
+MiLa string = C char*
+MiLa opaque = C void*

@@ -1,13 +1,26 @@
-
 /*
- * break and continue doesnt
- * exist
- * return doesnt work in while loops
+ * break and continue doesnt exist here
  */
 
 let i = 0;
 
-while (i < 5) {
-    println(i * 2);
+let start = get_time();
+while (i < 600000) {
+    println(pow(i, 3));
     let i = i + 1;
 }
+let delta = get_time() - start;
+println(delta + " seconds");
+
+let i = 0;
+let five :
+{
+    while (i < 5)
+    {
+        println(i * 3);
+        let i = i + 1;
+    }
+    return i;
+}
+
+println(five);

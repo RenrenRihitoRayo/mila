@@ -1,15 +1,8 @@
-// mini.c
-// Minimal, direct-parse interpreter with first-class functions + native functions + opaques.
-// Compile: gcc -O2 mini.c -o mini
-// Run: ./mini [file.with.lang]
-// Author: ChatGPT (example)
-
-// FEATURES:
-// - Types: INT, FLOAT, STRING, FUNCTION, NATIVE, OPAQUE, NULL, BOOL
-// - Syntax: C-like
-// - Statements: let, expression statements ending in ';', return, if, while, blocks { ... }
-// - Function literal: function(arg1,arg2){ ... }
-// - Native functions can be registered into the global env (example: native_print, opaque_new)
+/*
+ * MiLa
+ * A modern programming language
+ * the smallest it can get.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,17 +15,22 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <direct.h>
 #else
 #include <sys/time.h>
 #include <dlfcn.h>
+#include <unistd.h>
+#include <limits.h>
 #endif
 
+#include "ml_paths.c"
 #include "ml_builtins.c"
 #include "ml.h"
 
+path_list *search_path = NULL;
+
 // ---------- Value representation ----------
 
-// create/retain/release
 Value *val_new(ValueType t)
 {
     Value *p = malloc(sizeof(Value));
@@ -71,6 +69,37 @@ int is_truthy(Value *value)
 
 Value *vnull() { return val_new(T_NULL); }
 Value *vnone() { return val_new(T_NONE); }
+Value *vbreak() { return val_new(T_BREAK); }
+Value *vcontinue() { return val_new(T_CONTINUE); }
+Value *verror(char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+
+    // First pass: find length
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int len = vsnprintf(NULL, 0, fmt, ap_copy);
+    va_end(ap_copy);
+
+    if (len < 0) {
+        va_end(ap);
+        return NULL;
+    }
+
+    char *buf = malloc(len + 1);
+    if (!buf) {
+        va_end(ap);
+        Value *v = val_new(T_ERROR);
+        v->v.message = strdup("verror could not allocate memory!");
+        return v;
+    }
+    
+    vsnprintf(buf, len + 1, fmt, ap);
+    va_end(ap);
+    Value *v = val_new(T_ERROR);
+    v->v.message = buf;
+    return v;
+}
 Value *vint(long x)
 {
     Value *v = val_new(T_INT);
@@ -176,6 +205,15 @@ char *as_c_string(Value *v)
     case T_NONE:
         our_asprintf(&buffer, "none");
         break;
+    case T_BREAK:
+        our_asprintf(&buffer, "<break>");
+        break;
+    case T_CONTINUE:
+        our_asprintf(&buffer, "<continue>");
+        break;
+    case T_ERROR:
+        our_asprintf(&buffer, "<error:%s>", v->v.message);
+        break;
     case T_INT:
         our_asprintf(&buffer, "%ld", v->v.i);
         break;
@@ -242,6 +280,15 @@ char *as_c_string_repr(Value *v)
     case T_NONE:
         our_asprintf(&buffer, "none");
         break;
+    case T_BREAK:
+        our_asprintf(&buffer, "<break>");
+        break;
+    case T_CONTINUE:
+        our_asprintf(&buffer, "<continue>");
+        break;
+    case T_ERROR:
+        our_asprintf(&buffer, "<error:%s>", v->v.message);
+        break;
     case T_INT:
         our_asprintf(&buffer, "%ld", v->v.i);
         break;
@@ -298,6 +345,8 @@ void val_release(Value *v)
     // free internals
     if (v->type == T_STRING && v->v.s)
         free(v->v.s);
+    if (v->type == T_ERROR && v->v.message)
+        free(v->v.message);
     if (v->type == T_FUNCTION)
     {
         if (v->v.fn.params)
@@ -410,24 +459,6 @@ int env_set(Env *e, const char *name, Value *val)
 
 // ---------- Parser/Evaluator that directly reads source and evaluates (no separate lexer) ----------
 
-uint64_t get_line_pos(Src *src)
-{
-    uint64_t line = 1;
-    for (uint64_t i = 0; i < src->pos && i < src->len; i++)
-        if (src->src[i] == '\n')
-            line++;
-    return line;
-}
-
-int report(Src *src, FILE *fp, const char *fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    int ret = vfprintf(fp, fmt, args);
-    fprintf(fp, "In line %ld\n", get_line_pos(src));
-    va_end(args);
-    return ret;
-}
 
 Src *src_new(const char *s)
 {
@@ -435,6 +466,7 @@ Src *src_new(const char *s)
     S->len = strlen(s);
     S->src = strdup(s);
     S->pos = 0;
+    S->line = 0;
     return S;
 }
 void src_free(Src *s)
@@ -463,6 +495,8 @@ void skip_block(Src *s)
     for (; i < s->len; ++i)
     {
         char ch = s->src[i];
+        if (ch == '\n')
+            s->line++;
         if (ch == '{')
             depth++;
         else if (ch == '}')
@@ -480,6 +514,8 @@ void skip_block(Src *s)
             i++;
             while (i < s->len && s->src[i] != '"')
             {
+                if (s->src[i] == '\n')
+                    s->line++;
                 if (s->src[i] == '\\' && i + 1 < s->len)
                     i += 2;
                 else
@@ -498,6 +534,7 @@ void skip_block(Src *s)
         i = s->len;
     s->pos = i;
 }
+
 void skip_expr(Src *s)
 {
     skip_ws(s);
@@ -535,6 +572,7 @@ void skip_expr(Src *s)
         i = s->len;
     s->pos = i;
 }
+
 void skip_stmt(Src *s)
 {
     skip_ws(s);
@@ -564,6 +602,7 @@ void skip_stmt(Src *s)
         i = s->len;
     s->pos = i;
 }
+
 void skip_ws(Src *s)
 {
     for (;;)
@@ -655,7 +694,7 @@ Value *parse_number(Src *s)
         src_get(s);
     }
     int en = s->pos;
-    char tmp[128];
+    char tmp[MAX_NUMBER_DIGITS];
     int len = en - st;
     if (len <= 0)
         return NULL;
@@ -735,7 +774,7 @@ Value *parse_string(Src *s)
         // Grow buffer if needed
         if (len + 1 >= cap)
         {
-            cap *= 2; // double the capacity
+            cap = cap + (int)(cap * 0.3); // grow by 30%
             char *tmp = realloc(buf, cap);
             if (!tmp)
             {
@@ -861,14 +900,15 @@ Value *eval_block(Src *s, Env *env)
 // evaluate primary
 
 // call helpers
-Value *call_function(Value *fnval, uint64_t line_pos, Env *env, int argc, Value **argv)
+
+Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
 {
     if (!fnval)
         return vnull();
     if (fnval->type == T_NATIVE)
     {
         // native functions receive env, argc, argv
-        return fnval->v.native.fn(env, line_pos, argc, argv);
+        return fnval->v.native.fn(env, argc, argv);
     }
     else if (fnval->type == T_FUNCTION)
     {
@@ -902,8 +942,7 @@ Value *call_function(Value *fnval, uint64_t line_pos, Env *env, int argc, Value 
     else
     {
         // not callable
-        fprintf(stderr, "Attempt to call non-callable value\n");
-        return vnull();
+        return verror("Attempt to call non-callable value.");
     }
 }
 
@@ -941,6 +980,13 @@ Value *eval_primary(Src *s, Env *env)
             src_get(s);
         return v ? v : vnull();
     }
+    if (c == '.' && s->src[s->pos+1] == '{')
+    {
+        src_get(s); // consume '.'
+        Value *v = eval_block(s, env);
+        skip_ws(s);
+        return v ? v : vnull();
+    }
     // function literal
     if (is_keyword_at(s, "fn"))
     {
@@ -953,7 +999,7 @@ Value *eval_primary(Src *s, Env *env)
         if (src_peek(s) != '{')
         {
             // error: expected body
-            return vnull();
+            return verror("Body wasnt found.");
         }
         // find matching brace (we will copy out body)
         int depth = 0;
@@ -993,7 +1039,7 @@ Value *eval_primary(Src *s, Env *env)
         memcpy(body, s->src + start, blen);
         body[blen] = 0;
         s->pos = i;
-        // create function value with closure being current env
+        // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params, body, env);
         return fn;
     }
@@ -1058,21 +1104,21 @@ Value *eval_primary(Src *s, Env *env)
             Value *callee = env_get(env, id);
             if (!callee)
             {
-                fprintf(stderr, "Undefined function or variable '%s'\n", id);
+                Value* res = verror("Undefined function '%s'", id);
                 free(id);
                 // release args
                 for (int i = 0; i < argc; i++)
                     val_release(args[i]);
                 free(args);
-                return vnull();
+                return res;
             }
-            // call
-            Value *res = call_function(callee, get_line_pos(s), env, argc, args);
+            // callp
+            Value *res = call_function(callee, env, argc, args);
             free(id);
             for (int i = 0; i < argc; i++)
                 val_release(args[i]);
             free(args);
-            
+
             return res;
         }
         else
@@ -1085,7 +1131,7 @@ Value *eval_primary(Src *s, Env *env)
                 // undefined variable -> null
                 return vnull();
             }
-            return val_retain(vv);
+            return vv;
         }
     }
     // fallback
@@ -1398,41 +1444,47 @@ Value *eval_statement(Src *s, Env *env)
         s->pos += strlen("let");
         char *id = parse_ident(s);
         if (!id)
-            return vnull();
+            return verror("Invalid let statement.");
         skip_ws(s);
         if (match_char(s, '='))
         {
             Value *v = eval_expr(s, env);
-            
+            val_retain(v);
+
             // unwrap return
-            if (v->type == T_RETURN) {
+            if (v->type == T_RETURN)
+            {
                 skip_ws(s);
                 match_char(s, ';');
-                Value* tmp = v->v.opaque;
+                Value *tmp = v->v.opaque;
                 env_set(env, id, tmp);
-                free(id); val_release(v);
+                free(id);
+                val_release(v);
                 return tmp;
             }
-            
+
             skip_ws(s);
             match_char(s, ';');
             env_set(env, id, v);
             free(id);
             return v;
-        } else if (match_char(s, ':'))
+        }
+        else if (match_char(s, ':'))
         {
             Value *v = eval_statement(s, env);
-            
+
             // unwrap return
-            if (v->type == T_RETURN) {
+            if (v->type == T_RETURN)
+            {
                 skip_ws(s);
                 match_char(s, ';');
-                Value* tmp = v->v.opaque;
+                Value *tmp = v->v.opaque;
                 env_set(env, id, tmp);
-                free(id); val_release(v);
+                free(id);
+                val_release(v);
                 return tmp;
             }
-            
+
             skip_ws(s);
             match_char(s, ';');
             env_set(env, id, v);
@@ -1447,6 +1499,16 @@ Value *eval_statement(Src *s, Env *env)
             match_char(s, ';');
             return vnull();
         }
+    }
+    if (is_keyword_at(s, "break"))
+    {
+        s->pos += strlen("break");
+        return vbreak();
+    }
+    if (is_keyword_at(s, "continue"))
+    {
+        s->pos += strlen("continue");
+        return vcontinue();
     }
     if (is_keyword_at(s, "return"))
     {
@@ -1585,7 +1647,21 @@ Value *eval_statement(Src *s, Env *env)
                 bod = eval_block(s, env);
 
                 // --- Handle body result ---
-                if (bod && bod->type == T_RETURN)
+                
+                
+                if (bod && bod->type == T_CONTINUE)
+                {
+                    val_retain(bod);
+                    s->pos = body_end_pos;
+                    return bod;
+                }
+                if (bod && bod->type == T_BREAK)
+                {
+                    val_release(bod);
+                    s->pos = body_end_pos;
+                    return vnull();
+                }
+                else if (bod && bod->type == T_RETURN)
                 {
                     val_retain(bod);
                     s->pos = body_end_pos;
@@ -1597,6 +1673,32 @@ Value *eval_statement(Src *s, Env *env)
             }
             return vnull();
         }
+    }
+    if (is_keyword_at(s, "block")) {
+        s->pos += strlen("block");
+        skip_ws(s);
+        char *name = parse_ident(s);
+        if (!name) return verror("Block needs a name!");
+        skip_ws(s);
+        Value* res = NULL;
+        res = eval_block(s, env);
+        if (res->type == T_ERROR) {
+            Value* new_res = verror("Block %s reported an error: %s", name, res->v.message);
+            val_release(res);
+            return new_res;
+        }
+        return res;
+    }
+    if (is_keyword_at(s, "catch")) {
+        s->pos += strlen("catch");
+        skip_ws(s);
+        Value* res = NULL;
+        res = eval_block(s, env);
+        if (res->type == T_ERROR) {
+            val_release(res);
+            return vnull();
+        }
+        return res;
     }
     skip_ws(s);
     // block
@@ -1655,10 +1757,11 @@ Value *eval_source(Src *s, Env *env)
             }
             else
                 last = st;
-        }
-        else
-        {
-            // continue
+            if (last->type == T_ERROR) {
+                printf("\n= Error: %s\n", last->v.message);
+                val_release(last);
+                return vnull();
+            }
         }
     }
     return last;
@@ -1697,6 +1800,34 @@ int run_file(char *name, Env *env)
     return 0;
 }
 
+int needs_more(const char *src)
+{
+    int parens = 0, braces = 0;
+    int in_string = 0;
+
+    for (const char *p = src; *p; p++)
+    {
+        if (*p == '"' && (p == src || *(p - 1) != '\\'))
+        {
+            in_string = !in_string; // toggle string state
+        }
+        else if (!in_string)
+        {
+            if (*p == '(')
+                parens++;
+            else if (*p == ')')
+                parens--;
+            else if (*p == '{')
+                braces++;
+            else if (*p == '}')
+                braces--;
+        }
+    }
+
+    // if inside a string or any unbalanced delimiter, we need more input
+    return in_string || parens > 0 || braces > 0;
+}
+
 #ifndef ML_LIB
 // ---------- Main and demo ----------
 int main(int argc, char **argv)
@@ -1706,22 +1837,60 @@ int main(int argc, char **argv)
     // register native functions
     env_register_builtins(g);
 
+    search_path = path_list_new();
+
+    char cwd[1024] = {0};
+    path_get_cwd(cwd, 1024);
+
+    path_list_add(search_path, cwd);
+    path_list_add(search_path, "~/mila_lib");
+
     // read file if provided or use built-in demo
     char *src_text = NULL;
+    if (argc == 2)
+    {
+        if (strcmp(argv[1], "--info") == 0)
+        {
+            printf(
+                "MiLa - Info\n"
+                "Version: 1.0\n\n"
+                "Variable size: %lu Bytes\n"
+                "Max num digits: %i\n",
+                sizeof(Value), MAX_NUMBER_DIGITS);
+            return 0;
+        }
+        else if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0)
+        {
+            printf(
+                "MiLa Specification v1.0\n"
+                "CLI v1.0\n"
+                "API v1.0\n");
+            return 0;
+        }
+        else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
+        {
+            printf(
+                "MiLa v1.0\n"
+                "  --info         = For internal info as well as version info\n"
+                "  --version | -v = Prints version\n"
+                "  --help    | -h = Prints this list\n");
+            return 0;
+        }
+    }
     if (argc >= 2)
     {
         // Build the argv array
         // we dont free it
         // the memory leak is insignificant enough
-        
-        
-        Value** args = malloc(sizeof(Value*) * 3);
-        args[0] = vint(argc-1);
-        Value* array = native_new_array(NULL, 0, 1, args);
+
+        Value **args = malloc(sizeof(Value *) * 3);
+        args[0] = vint(argc - 1);
+        Value *array = native_new_array(NULL, 1, args);
         val_release(args[0]);
 
-        for (int i = 0; i < argc-1; i++) {
-            ((Array*)array->v.opaque)->array[i] = vstring_dup(argv[i+1]);
+        for (int i = 0; i < argc - 1; i++)
+        {
+            ((Array *)array->v.opaque)->array[i] = vstring_dup(argv[i + 1]);
         }
         free(args);
 
@@ -1741,6 +1910,7 @@ int main(int argc, char **argv)
         fread(src_text, 1, size, f);
         src_text[size] = 0;
         fclose(f);
+
         Src *S = src_new(src_text);
         Value *res = eval_source(S, g);
         // cleanup
@@ -1752,28 +1922,53 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf("MiLa 1.0\n");
-        char src_text[2048] = {0};
+        printf("MiLa 1.0 - REPL\n");
+
+        char line[2048];
+        char buffer[8192]; // accumulated snippet
+        buffer[0] = 0;
+
         printf(">>> ");
-        while (fgets(src_text, sizeof(src_text), stdin))
+
+        while (fgets(line, sizeof(line), stdin))
         {
-            Src *S = src_new(src_text);
-            Value *res = eval_source(S, g);
-            if (res)
+            // append line to buffer
+            strcat(buffer, line);
+            fflush(stdout);
+
+            // check if expression is syntactically complete
+            if (!needs_more(buffer))
             {
-                if (res->type != T_NULL)
+                // evaluate accumulated buffer
+                Src *S = src_new(buffer);
+                Value *res = eval_source(S, g);
+
+                if (res && res->type != T_NULL)
                 {
-                    printf("  = ");
+                    printf("  : ");
                     print_value(res);
-                    putchar(10);
+                    putchar('\n');
                 }
-                val_release(res);
+
+                if (res)
+                    val_release(res);
+                src_free(S);
+
+                // clear buffer
+                buffer[0] = 0;
+
+                printf(">>> ");
             }
-            src_free(S);
-            printf(">>> ");
+            else
+            {
+                // prompt for continuation
+                printf("... ");
+            }
         }
+
         env_free(g);
     }
+
     return 0;
 }
 #endif

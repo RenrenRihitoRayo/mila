@@ -1,6 +1,6 @@
 
-// ooen the file
-let f = open("example.ml", "r+");
+// open the file
+let f = open("file_io.mila", "r+");
 
 // go to the end
 fseek(f, 0, SEEK_END);

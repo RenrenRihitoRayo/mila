@@ -1,8 +1,21 @@
 #pragma once
 
+#include "ml_paths.c"
+#include <stdarg.h>
+
+#define ml_library_init   \
+    char **__ml_registry; \
+    unsigned int __ml_current_func = 0;
+#define ml_func(name)                           \
+    __ml_registry[__ml_current_func++] = #name; \
+    Value *name(Env *env, int argc, Value **argv)
+#define MAX_NUMBER_DIGITS 50
+
+path_list *search_path;
+
 typedef struct Value Value;
 typedef struct Env Env;
-typedef Value *(*NativeFn)(Env *env, uint64_t line_pos, int argc, Value **argv);
+typedef Value *(*NativeFn)(Env *env, int argc, Value **argv);
 typedef char *(*Printer)(Value *self);
 
 typedef enum
@@ -17,7 +30,10 @@ typedef enum
     T_OPAQUE,
     T_RETURN,
     T_ARG_END,
-    T_NONE
+    T_NONE,
+    T_ERROR,
+    T_CONTINUE,
+    T_BREAK
 } ValueType;
 
 struct Value
@@ -46,6 +62,7 @@ struct Value
             char *name;
         } native;
         void *opaque;
+        char* message;
     } v;
     Printer display;
 };
@@ -83,6 +100,7 @@ typedef struct Src
 {
     char *src;    // full source string (null-terminated)
     uint64_t pos; // current position
+    int line;
     int len;
 } Src;
 
@@ -109,6 +127,7 @@ int precedence_of(const char *op);
 char *parse_op(Src *s);
 Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
+Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);
 
 // == Value Related
@@ -122,11 +141,12 @@ Value *vbool(int b);
 Value *vstring_dup(const char *s);
 Value *vstring_take(char *s);
 Value *vopaque(void *p);
-Value* vopaque_extra(void* p, Printer dis, const char* type);
+Value *vopaque_extra(void *p, Printer dis, const char *type);
 Value *vnative(NativeFn fn, const char *name);
 Value *vtruthy(Value *value);
 Value *vnull();
 Value *vnone();
+Value *verror(char* message, ...);
 Value *vfunction(char **params, char *body_src, Env *closure);
 
 // == Helpers
@@ -135,7 +155,7 @@ char *as_c_string(Value *v);
 Value *to_c_string(Value *v);
 char *as_c_string_repr(Value *v);
 void print_value(Value *v);
-Value *call_function(Value *fnval, uint64_t line_pos, Env *env, int argc, Value **argv);
+Value *call_function(Value *fnval, Env *env, int argc, Value **argv);
 int is_number(Value *v);
 double to_double(Value *v);
 int match_types(Value **args, ...);
@@ -144,7 +164,7 @@ Value *eval_str(char *src, Env *env);
 int run_file(char *name, Env *env);
 double get_unix_timestamp();
 char *read_input(void);
-int load_library(Env* env, const char *libpath);
+int load_library(Env *env, const char *libpath);
 
 // Gaurd to avoid duplication of main
 #ifndef ML_LIB

@@ -1,3 +1,16 @@
+/*
+ * Builtins for MiLa
+ * These are the folliwing
+ *   Text IO
+ *   File IO
+ *   Array methods
+ *   Dict methods
+ *   String methods
+ *   Byte methods (ascii)
+ *   Math
+ *   Bitwise
+ */
+
 #pragma once
 
 #include "ml_dict.c"
@@ -231,7 +244,7 @@ char *read_input(void)
     return buffer;
 }
 
-Value *native_pop_start(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_pop_start(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
@@ -246,7 +259,7 @@ Value *native_pop_start(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vstring_dup((char[]){ch, 0});
 }
 
-Value *native_pop_end(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_pop_end(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
@@ -263,49 +276,49 @@ Value *native_pop_end(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vstring_dup((char[]){ch, 0});
 }
 
-Value *native_to_ascii(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_to_ascii(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_INT, T_ARG_END))
         return vnull();
     return vstring_dup((char[]){argv[0]->v.i, '\0'});
 }
 
-Value *native_from_ascii(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_from_ascii(Env *env, int argc, Value **argv)
 {
     if ((!match_types(argv, T_STRING, T_ARG_END)) || strlen(argv[0]->v.s) != 1)
         return vnull();
     return vint(argv[0]->v.s[0]);
 }
 
-Value *native_str_slice(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_str_slice(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_STRING, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vstring_slice(argv[0]->v.s, argv[1]->v.i, argv[2]->v.i);
 }
 
-Value *native_str_index(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_str_index(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_STRING, T_INT, T_ARG_END))
         return vnull();
     return vstring_index(argv[0]->v.s, argv[1]->v.i);
 }
 
-Value *native_str_patch(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_str_patch(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_STRING, T_STRING, T_STRING, T_ARG_END))
         return vnull();
     return vstring_replace(argv[0]->v.s, argv[1]->v.s, argv[2]->v.s);
 }
 
-Value *native_str_length(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_str_length(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
     return vint(strlen(argv[0]->v.s));
 }
 
-Value *native_print(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_print(Env *env, int argc, Value **argv)
 {
     for (int i = 0; i < argc; i++)
     {
@@ -316,35 +329,35 @@ Value *native_print(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_logical_and(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_bitwise_and(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vint(argv[0]->v.i & argv[1]->v.i);
 }
 
-Value *native_logical_or(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_bitwise_or(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vint(argv[0]->v.i | argv[1]->v.i);
 }
 
-Value *native_logical_xor(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_bitwise_xor(Env *env, int argc, Value **argv)
 {
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vint(argv[0]->v.i ^ argv[1]->v.i);
 }
 
-Value *native_not(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_not(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
         return vnull();
     return is_truthy(argv[0]) ? vbool(0) : vbool(1);
 }
 
-Value *native_printr(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_printr(Env *env, int argc, Value **argv)
 {
     for (int i = 0; i < argc; i++)
     {
@@ -353,7 +366,7 @@ Value *native_printr(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_println(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_println(Env *env, int argc, Value **argv)
 {
     for (int i = 0; i < argc; i++)
     {
@@ -365,23 +378,23 @@ Value *native_println(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_input(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_input(Env *env, int argc, Value **argv)
 {
     if (argc == 1)
         print_value(argv[0]);
     else if (argc == 0)
-        ;
+        return vnull();
     else
     {
-        fprintf(stderr, "input(prompt): Expected 1 argument (prompt) string.\n");
-        return vnull();
+        return verror("input(prompt): Expected 1 argument (prompt) string.\n");
+        
     }
 
     char *res = read_input();
     return res ? vstring_take(res) : vnull();
 }
 
-Value *native_cast_int(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_cast_int(Env *env, int argc, Value **argv)
 {
     long i = 0;
     if (argc == 1 && argv[0]->type == T_STRING)
@@ -393,20 +406,20 @@ Value *native_cast_int(Env *env, uint64_t line_pos, int argc, Value **argv)
         {
             char *buffer = NULL;
             our_asprintf(&buffer, "cast.int(str): Got bad part \"%s\"...", end);
-            fprintf(stderr, "%s\n", buffer);
+            return verror("%s\n", buffer);
             free(buffer);
             i = 0;
         }
     }
     else
     {
-        fprintf(stderr, "cast.int(str): Expected 1 argument (str) string.\n");
+        return verror("cast.int(str): Expected 1 argument (str) string.\n");
         i = 0;
     }
     return vint(i);
 }
 
-Value *native_cast_float(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_cast_float(Env *env, int argc, Value **argv)
 {
     double f = 0;
     if (argc == 1 && argv[0]->type == T_STRING)
@@ -418,20 +431,20 @@ Value *native_cast_float(Env *env, uint64_t line_pos, int argc, Value **argv)
         {
             char *buffer = NULL;
             our_asprintf(&buffer, "cast.float(str): Got bad part \"%s\"...", end);
-            fprintf(stderr, "%s\n", buffer);
+            return verror("%s\n", buffer);
             free(buffer);
             f = 0;
         }
     }
     else
     {
-        fprintf(stderr, "cast.float(str): Expected 1 argument (str) string.\n");
+        return verror("cast.float(str): Expected 1 argument (str) string.\n");
         f = 0;
     }
     return vfloat(f);
 }
 
-Value *native_cast_string(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_cast_string(Env *env, int argc, Value **argv)
 {
     if (argc == 1)
     {
@@ -439,17 +452,17 @@ Value *native_cast_string(Env *env, uint64_t line_pos, int argc, Value **argv)
     }
     else
     {
-        fprintf(stderr, "cast.string(any): Expected 1 argument (any) any.\n");
+        return verror("cast.string(any): Expected 1 argument (any) any.\n");
     }
     return vnull();
 }
 
-Value *native_type_of(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_type_of(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
     {
-        fprintf(stderr, "typeof(any): Expected 1 argument (any) any.\n");
-        return vnull();
+        return verror("typeof(any): Expected 1 argument (any) any.\n");
+        
     }
     if (*argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
@@ -477,12 +490,12 @@ Value *native_type_of(Env *env, uint64_t line_pos, int argc, Value **argv)
     }
 }
 
-Value *native_xtype_of(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_xtype_of(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
     {
-        fprintf(stderr, "_typeof(any): Expected 1 argument (any) any.\n");
-        return vnull();
+        return verror("_typeof(any): Expected 1 argument (any) any.\n");
+        
     }
     if (*argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
@@ -531,14 +544,24 @@ char *file_printer(Value *self)
     return buffer;
 }
 
-Value *native_open(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_open(Env *env, int argc, Value **argv)
 {
     if (argc != 2 || argv[0]->type != T_STRING || argv[1]->type != T_STRING)
     {
-        fprintf(stderr, "Report in line %ld - open(filename, mode) expects 2 string args.\n", line_pos);
-        return vnull();
+        return verror("= open(filename, mode) expects 2 string args.\n");
+        
     }
-    FILE *f = fopen(argv[0]->v.s, argv[1]->v.s);
+    char *path = argv[0]->v.s;
+    if (!search_path)
+    {
+        char *path = path_list_find(search_path, argv[0]->v.s);
+        if (!path)
+        {
+            return verror("= open(filename, mode) did not find the file.\n");
+            
+        }
+    }
+    FILE *f = fopen(path, argv[1]->v.s);
     if (!f)
     {
         return vnull();
@@ -548,12 +571,12 @@ Value *native_open(Env *env, uint64_t line_pos, int argc, Value **argv)
     return v;
 }
 
-Value *native_fclose(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_fclose(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
-        fprintf(stderr, "Report in line %ld - fclose(file) expects 1 file handle arg.\n", line_pos);
-        return vnull();
+        return verror("= fclose(file) expects 1 file handle arg.\n");
+        
     }
     FILE *f = (FILE *)argv[0]->v.opaque;
     if (f)
@@ -564,36 +587,36 @@ Value *native_fclose(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_fprint(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_fprint(Env *env, int argc, Value **argv)
 {
     if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_STRING)
     {
-        fprintf(stderr, "Report in line %ld - fprint(file, string) expects (handle, string).\n", line_pos);
-        return vnull();
+        return verror("= fprint(file, string) expects (handle, string).\n");
+        
     }
     FILE *f = (FILE *)argv[0]->v.opaque;
     if (!f)
     {
-        fprintf(stderr, "Report in line %ld - fprint: file handle is closed or invalid.\n", line_pos);
-        return vnull();
+        return verror("= fprint: file handle is closed or invalid.\n");
+        
     }
     const char *s = argv[1]->v.s;
     size_t written = fwrite(s, 1, strlen(s), f);
     return vint(written);
 }
 
-Value *native_fread(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_fread(Env *env, int argc, Value **argv)
 {
     if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT)
     {
-        fprintf(stderr, "Report in line %ld - fread(file, num_bytes) expects (handle, int).\n", line_pos);
-        return vnull();
+        return verror("= fread(file, num_bytes) expects (handle, int).\n");
+        
     }
     FILE *f = (FILE *)argv[0]->v.opaque;
     if (!f)
     {
-        fprintf(stderr, "Report in line %ld - fread: file handle is closed or invalid.\n", line_pos);
-        return vnull();
+        return verror("= fread: file handle is closed or invalid.\n");
+        
     }
     long n = argv[1]->v.i;
     if (n <= 0)
@@ -609,18 +632,18 @@ Value *native_fread(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vstring_take(buf);
 }
 
-Value *native_fseek(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_fseek(Env *env, int argc, Value **argv)
 {
     if (argc != 3 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT || argv[2]->type != T_INT)
     {
-        fprintf(stderr, "Report in line %ld - fseek(file, offset, whence) expects (handle, int, int).\n", line_pos);
-        return vnull();
+        return verror("= fseek(file, offset, whence) expects (handle, int, int).\n");
+        
     }
     FILE *f = (FILE *)argv[0]->v.opaque;
     if (!f)
     {
-        fprintf(stderr, "Report in line %ld - fseek: file handle is closed or invalid.\n", line_pos);
-        return vnull();
+        return verror("= fseek: file handle is closed or invalid.\n");
+        
     }
     long offset = argv[1]->v.i;
     int whence = (int)argv[2]->v.i;
@@ -634,26 +657,26 @@ Value *native_fseek(Env *env, uint64_t line_pos, int argc, Value **argv)
         c_whence = whence;
         break;
     default:
-        fprintf(stderr, "Report in line %ld - fseek: invalid whence %d (must be 0-SEEK_SET, 1-SEEK_CUR, or 2-SEEK_END).\n", line_pos, whence);
-        return vnull();
+        return verror("= fseek: invalid whence %d (must be 0-SEEK_SET, 1-SEEK_CUR, or 2-SEEK_END).\n", whence);
+        
     }
 
     int res = fseek(f, offset, c_whence);
     return vint(res);
 }
 
-Value *native_ftell(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_ftell(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
-        fprintf(stderr, "Report in line %ld - ftell(file) expects 1 file handle arg.\n", line_pos);
-        return vnull();
+        return verror("= ftell(file) expects 1 file handle arg.\n");
+        
     }
     FILE *f = (FILE *)argv[0]->v.opaque;
     if (!f)
     {
-        fprintf(stderr, "Report in line %ld - ftell: file handle is closed or invalid.\n", line_pos);
-        return vnull();
+        return verror("ftell: file handle is closed or invalid.\n");
+        
     }
     long pos = ftell(f);
     return vint(pos);
@@ -703,24 +726,24 @@ char *array_printer(Value *self)
     return buffer;
 }
 
-Value *native_new_array(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_new_array(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
     {
-        fprintf(stderr, "array(size): Requires one argument, array size (int)\n");
-        return vnull();
+        return verror("array(size): Requires one argument, array size (int)\n");
+        
     }
     if (!match_types(argv, T_INT, T_ARG_END))
     {
-        fprintf(stderr, "array(size): Expected the argument type int\n");
-        return vnull();
+        return verror("array(size): Expected the argument type int\n");
+        
     }
 
     int size = (int)argv[0]->v.i;
     if (size < 0)
     {
-        fprintf(stderr, "array(size): negative size\n");
-        return vnull();
+        return verror("array(size): negative size\n");
+        
     }
 
     Value *res = val_new(T_OPAQUE);
@@ -740,39 +763,39 @@ Value *native_new_array(Env *env, uint64_t line_pos, int argc, Value **argv)
     return res;
 }
 
-Value *native_set_array(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_set_array(Env *env, int argc, Value **argv)
 {
     if (argc != 3)
     {
-        fprintf(stderr, "array.set(array, index, value): requires 3 args\n");
-        return vnull();
+        return verror("array.set(array, index, value): requires 3 args\n");
+        
     }
 
     Value *arrv = argv[0];
     if (arrv->type != T_OPAQUE)
     {
-        fprintf(stderr, "array.set(array, index, value): first arg must be an array (opaque)\n");
-        return vnull();
+        return verror("array.set(array, index, value): first arg must be an array (opaque)\n");
+        
     }
 
     Array *arr = (Array *)arrv->v.opaque;
     if (!arr)
     {
-        fprintf(stderr, "array.set(array, index, value): null array data\n");
-        return vnull();
+        return verror("array.set(array, index, value): null array data\n");
+        
     }
 
     if (argv[1]->type != T_INT)
     {
-        fprintf(stderr, "array.set(array, index, value): index must be int\n");
-        return vnull();
+        return verror("array.set(array, index, value): index must be int\n");
+        
     }
 
     int idx = (int)argv[1]->v.i;
     if (idx < 0 || idx >= arr->size)
     {
-        fprintf(stderr, "array.set(array, index, value): index %d out of bounds (size %d)\n", idx, arr->size);
-        return vnull();
+        return verror("array.set(array, index, value): index %d out of bounds (size %d)\n", idx, arr->size);
+        
     }
 
     Value *old = arr->array[idx];
@@ -785,39 +808,39 @@ Value *native_set_array(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_get_array(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_get_array(Env *env, int argc, Value **argv)
 {
     if (argc != 2)
     {
-        fprintf(stderr, "array.get(array, index): requires 2 args\n");
-        return vnull();
+        return verror("array.get(array, index): requires 2 args\n");
+        
     }
 
     Value *arrv = argv[0];
     if (arrv->type != T_OPAQUE)
     {
-        fprintf(stderr, "array.get(array, index): first arg must be an array (opaque)\n");
-        return vnull();
+        return verror("array.get(array, index): first arg must be an array (opaque)\n");
+        
     }
 
     Array *arr = (Array *)arrv->v.opaque;
     if (!arr)
     {
-        fprintf(stderr, "array.get(array, index): null array data\n");
-        return vnull();
+        return verror("array.get(array, index): null array data\n");
+        
     }
 
     if (argv[1]->type != T_INT)
     {
-        fprintf(stderr, "array.get(array, index): index must be int\n");
-        return vnull();
+        return verror("array.get(array, index): index must be int\n");
+        
     }
 
     int idx = (int)argv[1]->v.i;
     if (idx < 0 || idx >= arr->size)
     {
-        fprintf(stderr, "array.get(array, index): index %d out of bounds (size %d)\n", idx, arr->size);
-        return vnull();
+        return verror("array.get(array, index): index %d out of bounds (size %d)\n", idx, arr->size);
+        
     }
 
     Value *val = arr->array[idx];
@@ -829,51 +852,49 @@ Value *native_get_array(Env *env, uint64_t line_pos, int argc, Value **argv)
     return val;
 }
 
-Value *native_len_array(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_len_array(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
     {
-        fprintf(stderr, "array.len(array): requires 1 arg\n");
-        return vnull();
+        return verror("array.len(array): requires 1 arg\n");
+        
     }
 
     Value *arrv = argv[0];
     if (arrv->type != T_OPAQUE)
     {
-        fprintf(stderr, "array.len(array): first arg must be an array (opaque)\n");
-        return vnull();
+        return verror("array.len(array): first arg must be an array (opaque)\n");
+        
     }
 
     Array *arr = (Array *)arrv->v.opaque;
     if (!arr)
     {
-        fprintf(stderr, "array.len(array): null array data\n");
-        return vnull();
+        return verror("array.len(array): null array data\n");
+        
     }
 
     return vint(arr->size);
 }
 
-Value *native_free_array(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_free_array(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
     {
-        fprintf(stderr, "array.free(array): requires 1 arg\n");
-        return vnull();
+        return verror("array.free(array): requires 1 arg\n");
+        
     }
 
     Value *arrv = argv[0];
     if (arrv->type != T_OPAQUE)
     {
-        fprintf(stderr, "array.free(array): first arg must be an array (opaque)\n");
-        return vnull();
+        return verror("array.free(array): first arg must be an array (opaque)");
     }
 
     Array *arr = (Array *)arrv->v.opaque;
     if (!arr)
     {
-        fprintf(stderr, "array.free(array): null array data\n");
-        return vnull();
+        return verror("array.free(array): null array data");
     }
 
     for (int i = 0; i < arr->size; i++)
@@ -885,18 +906,18 @@ Value *native_free_array(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_report(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_report(Env *env, int argc, Value **argv)
 {
     if (argc == 1 && argv[0]->type == T_STRING)
-        fprintf(stderr, "Report in line %ld: %s\n", line_pos, argv[0]->v.s);
+        return verror("report(message): %s\n", argv[0]->v.s);
     else if (argc == 0)
-        fprintf(stderr, "Report in line %ld - No details given.\n", line_pos);
+        return verror("report(message) - No details given.");
     else
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given.\n", line_pos);
+        return verror("report(message): Invalid number of arguments given.");
     return vnull();
 }
 
-Value *native_exit(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_exit(Env *env, int argc, Value **argv)
 {
     if (argc == 1 && argv[0]->type == T_INT)
         exit((int)argv[0]->v.i);
@@ -904,66 +925,78 @@ Value *native_exit(Env *env, uint64_t line_pos, int argc, Value **argv)
         exit(0);
     else
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given.\n", line_pos);
+        return verror("invalid number of arguments given.");
     }
     return vnull();
 }
 
-Value *native_get_time(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_get_time(Env *env, int argc, Value **argv)
 {
     if (argc != 0)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given.\n");
+        
     }
     return vfloat(get_unix_timestamp());
 }
 
-Value *native_run(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_run(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
+        
     }
 
-    if (run_file(argv[0]->v.s, env))
-        fprintf(stderr, "Report in line %ld - problem running file %s\n", line_pos, argv[0]->v.s);
+    char *path = argv[0]->v.s;
+
+    if (!search_path)
+    {
+        char *path = path_list_find(search_path, argv[0]->v.s);
+        if (!path)
+        {
+            return verror("run(filename) did not find the file.\n");
+            
+        }
+    }
+
+    if (run_file(path, env))
+        return verror("problem running file %s\n", argv[0]->v.s);
 
     return vnull();
 }
 
-Value *native_load(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_load(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
+        
     }
 
     if (load_library(env, argv[0]->v.s))
-        fprintf(stderr, "Report in line %ld - problem loading file %s\n", line_pos, argv[0]->v.s);
+        return verror("problem loading file %s\n", argv[0]->v.s);
 
     return vnull();
 }
 
-Value *native_eval(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_eval(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
+        
     }
 
     return eval_str(argv[0]->v.s, env);
 }
 
-Value *native_new_dict(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_new_dict(Env *env, int argc, Value **argv)
 {
     if (argc != 0)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
+        
     }
 
     Dict *d = dict_create();
@@ -972,69 +1005,67 @@ Value *native_new_dict(Env *env, uint64_t line_pos, int argc, Value **argv)
         Value *v = vopaque_extra(d, dict_display, "dict");
         return v;
     }
-    fprintf(stderr, "Report in line %ld - couldnt make a dict.\n", line_pos);
-    return vnull();
+    return verror("couldnt make a dict.\n");
+    
 }
 
-Value *native_set_dict(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_set_dict(Env *env, int argc, Value **argv)
 {
     if (argc != 3)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
+        
     }
 
     dict_set(argv[0]->v.opaque, argv[1]->v.s, argv[2]);
     return vnull();
 }
 
-Value *native_get_dict(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_get_dict(Env *env, int argc, Value **argv)
 {
     if (argc != 2)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
+        
     }
 
     Value *v = dict_get(argv[0]->v.opaque, argv[1]->v.s);
     return v ? v : vnull();
 }
 
-Value *native_rem_dict(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_rem_dict(Env *env, int argc, Value **argv)
 {
     if (argc != 2)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
+        
     }
 
     dict_remove(argv[0]->v.opaque, argv[1]->v.s);
     return vnull();
 }
 
-Value *native_free_dict(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_free_dict(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
     }
 
     dict_free(argv[0]->v.opaque);
     return vnull();
 }
 
-Value *native_system(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_system(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
     {
-        fprintf(stderr, "Report in line %ld - invalid number of arguments given or incorrect types.\n", line_pos);
-        return vnull();
+        return verror("invalid number of arguments given or incorrect types.\n");
     }
     return vint(system(argv[0]->v.opaque));
 }
 
-Value *native_floor(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_floor(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
         return vnull();
@@ -1042,7 +1073,7 @@ Value *native_floor(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vfloat(floor(x));
 }
 
-Value *native_ceil(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_ceil(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
         return vnull();
@@ -1050,7 +1081,7 @@ Value *native_ceil(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vfloat(ceil(x));
 }
 
-Value *native_sqrt(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_sqrt(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
         return vnull();
@@ -1058,7 +1089,7 @@ Value *native_sqrt(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vfloat(sqrt(x));
 }
 
-Value *native_sin(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_sin(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
         return vnull();
@@ -1066,7 +1097,7 @@ Value *native_sin(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vfloat(sin(x));
 }
 
-Value *native_cos(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_cos(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
         return vnull();
@@ -1074,7 +1105,7 @@ Value *native_cos(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vfloat(cos(x));
 }
 
-Value *native_tan(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_tan(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
         return vnull();
@@ -1082,7 +1113,7 @@ Value *native_tan(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vfloat(tan(x));
 }
 
-Value *native_atan2(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_atan2(Env *env, int argc, Value **argv)
 {
     if (argc != 2)
         return vnull();
@@ -1091,7 +1122,7 @@ Value *native_atan2(Env *env, uint64_t line_pos, int argc, Value **argv)
     return vfloat(atan2(y, x));
 }
 
-Value *native_pow(Env *env, uint64_t line_pos, int argc, Value **argv)
+Value *native_pow(Env *env, int argc, Value **argv)
 {
     if (argc != 2)
         return vnull();
@@ -1125,9 +1156,9 @@ void env_register_builtins(Env *g)
     env_register_native(g, "println", native_println);
     env_register_native(g, "input", native_input);
     // Logic
-    env_register_native(g, "and", native_logical_and);
-    env_register_native(g, "or", native_logical_or);
-    env_register_native(g, "xor", native_logical_xor);
+    env_register_native(g, "and", native_bitwise_and);
+    env_register_native(g, "or", native_bitwise_or);
+    env_register_native(g, "xor", native_bitwise_xor);
     env_register_native(g, "not", native_not);
     // File IO
     env_register_native(g, "open", native_open);
@@ -1167,8 +1198,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.pop_f", native_pop_start);
     env_register_native(g, "str.pop_b", native_pop_end);
     // ASCII
-    env_register_native(g, "ascii.to", native_from_ascii);
-    env_register_native(g, "ascii.from", native_to_ascii);
+    env_register_native(g, "ascii.from", native_from_ascii);
+    env_register_native(g, "ascii.to", native_to_ascii);
     // Math
     env_register_native(g, "floor", native_floor);
     env_register_native(g, "ceil", native_ceil);

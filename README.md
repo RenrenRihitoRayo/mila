@@ -24,7 +24,7 @@ MiLa.
 
 This is a side project.
 Do not treat MiLa as an actual production
-ready language, simoly because it isnt.
+ready language, simply because it isnt.
 
 * Community Driven
 

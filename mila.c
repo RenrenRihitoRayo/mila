@@ -25,7 +25,7 @@
 
 #include "ml_paths.c"
 #include "ml_builtins.c"
-#include "ml.h"
+#include "mila.h"
 
 path_list *search_path = NULL;
 

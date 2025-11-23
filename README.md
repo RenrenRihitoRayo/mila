@@ -189,7 +189,7 @@ Like fclose.
 
 Types are `int`, `float`, and `string`.
 
-* typeof(*)
+* typeof(@)
 
 ### Math
 

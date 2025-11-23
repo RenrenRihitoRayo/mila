@@ -4,6 +4,46 @@ A small embeddable scripting language.
 MiLa is if C and Lua made a child,
 small simple and fast.
 
+## What MiLa is
+
+* A scaffold
+
+MiLa is the build-a-bear of scripting.
+Directly add bash commands as builtin functions?
+Why not?
+
+* A kernel
+
+MiLa already has the bare minimum to work.
+You can even make a programming language using
+MiLa.
+
+## What MiLa is not
+
+* A serious language
+
+This is a side project.
+Do not treat MiLa as an actual production
+ready language, simoly because it isnt.
+
+* Community Driven
+
+This Repo of MiLa will never accept
+pull requests pertaining to adding features.
+MiLa is a kernel, not a language.
+
+## Rules to Forking MiLa
+
+Credit me as its owner,
+you cannot earn momey from selling copies of MiLa
+or you will be held acountable for it.
+<br><br>
+Make sure your fork of MiLa still
+follows this specs defined bellow.
+<br><br>
+You may add features but never remove core
+features. Such as changing syntax of while loops.
+
 ## Keywords (11)
 
 * while

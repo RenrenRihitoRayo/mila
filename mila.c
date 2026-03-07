@@ -4,6 +4,8 @@
  * the smallest it can get.
  */
 
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,7 +40,7 @@ Value *val_new(ValueType t)
     p->refcount = 1;
     p->v.s = NULL;
     p->display = NULL;
-    memset(p->type_name, 0, sizeof(p->type_name));
+    p->type_name = NULL;
     return p;
 }
 Value *val_retain(Value *v)
@@ -153,6 +155,8 @@ Value *vtruthy(Value *value)
 
 int our_asprintf(char **strp, const char *fmt, ...)
 {
+    if (!strp) return -1;
+
     va_list args;
     va_start(args, fmt);
 
@@ -161,24 +165,32 @@ int our_asprintf(char **strp, const char *fmt, ...)
     int add_size = vsnprintf(NULL, 0, fmt, args_copy);
     va_end(args_copy);
 
-    if (add_size < 0)
-    {
+    if (add_size < 0) {
         va_end(args);
         return -1;
     }
 
-    size_t old_len = *strp ? strlen(*strp) : 0;
-    char *newbuf = realloc(*strp, old_len + add_size + 1);
-    if (!newbuf)
-    {
+    // If *strp is NULL, treat it as empty string
+    size_t old_len = 0;
+    if (*strp) {
+        // We trust the caller has either a valid string or NULL.
+        old_len = strlen(*strp);
+    }
+
+    char *newbuf = realloc(*strp ? *strp : NULL, old_len + add_size + 1);
+    if (!newbuf) {
         va_end(args);
         return -1;
     }
 
     *strp = newbuf;
-    vsnprintf(*strp + old_len, add_size + 1, fmt, args);
-    va_end(args);
 
+    if (vsnprintf(*strp + old_len, add_size + 1, fmt, args) < 0) {
+        va_end(args);
+        return -1;
+    }
+
+    va_end(args);
     return (int)(old_len + add_size);
 }
 
@@ -340,7 +352,41 @@ void val_release(Value *v)
     if (!v)
         return;
     v->refcount--;
-    if (v->refcount > 0)
+    if (v->refcount <= 0) {
+        // free internals
+        if (v->type == T_STRING && v->v.s)
+            free(v->v.s);
+        if (v->type == T_ERROR && v->v.message)
+            free(v->v.message);
+        if (v->type == T_FUNCTION)
+        {
+            if (v->v.fn.params)
+            {
+                char **p = v->v.fn.params;
+                for (int i = 0; p[i]; ++i)
+                    free(p[i]);
+                free(p);
+            }
+            if (v->v.fn.body_src)
+                free(v->v.fn.body_src);
+            if (v->v.fn.name)
+                free(v->v.fn.name);
+            // closure env not freed here (env owns values)
+        }
+        if (v->type == T_NATIVE)
+        {
+            if (v->v.native.name)
+                free(v->v.native.name);
+        }
+        if (v->type_name)
+            free(v->type_name);
+        free(v);
+    }
+}
+
+void val_kill(Value *v)
+{
+    if (!v)
         return;
     // free internals
     if (v->type == T_STRING && v->v.s)
@@ -367,6 +413,7 @@ void val_release(Value *v)
         if (v->v.native.name)
             free(v->v.native.name);
     }
+    free(v->type_name);
     free(v);
 }
 
@@ -379,6 +426,7 @@ Env *env_new(Env *parent)
     e->parent = parent;
     return e;
 }
+
 void env_free(Env *e)
 {
     if (!e)
@@ -395,14 +443,53 @@ void env_free(Env *e)
     free(e);
 }
 
+void env_dump(Env *e)
+{
+    if (!e)
+        return;
+    Var *v = e->vars;
+    while (v)
+    {
+        Var *nx = v->next;
+        if (!v->value) {
+            printf("%s dangling\n", v->name);
+            v = nx;
+            continue;
+        }
+        if (v->value) {
+            char *res = as_c_string_repr(v->value);
+            printf("%s = %s (%i)\n", v->name, res, v->value->refcount);
+            free(res);
+        }
+        v = nx;
+    }
+}
+
+void env_kill(Env *e)
+{
+    if (!e)
+        return;
+    Var *v = e->vars;
+    while (v)
+    {
+        Var *nx = v->next;
+        free(v->name);
+        val_kill(v->value);
+        free(v);
+        v = nx;
+    }
+    free(e);
+}
+
 Value *env_get(Env *e, const char *name)
 {
     for (Env *cur = e; cur; cur = cur->parent)
     {
         for (Var *v = cur->vars; v; v = v->next)
         {
-            if (strcmp(v->name, name) == 0)
+            if (strcmp(v->name, name) == 0) {
                 return v->value;
+            }
         }
     }
     return NULL;
@@ -454,6 +541,55 @@ int env_set(Env *e, const char *name, Value *val)
     }
     // not found, set locally
     env_set_local(e, name, val);
+    return 1;
+}
+
+void env_set_local_raw(Env *e, const char *name, Value *val)
+{
+    // set or create in current frame
+    for (Var *v = e->vars; v; v = v->next)
+    {
+        if (strcmp(v->name, name) == 0)
+        {
+            val_release(v->value);
+            v->value = val;
+            return;
+        }
+    }
+    /* try to set the name variable, makes debugging easier */
+    if (val->type == T_FUNCTION && val->v.fn.name == NULL)
+    {
+        val->v.fn.name = strdup(name);
+    }
+    Var *nv = malloc(sizeof(Var));
+    nv->name = strdup(name);
+    nv->value = val;
+    nv->next = e->vars;
+    e->vars = nv;
+}
+
+int env_set_raw(Env *e, const char *name, Value *val)
+{
+    // assign to nearest visible frame that contains name, else set local
+    /* try to set the name variable, makes debugging easier */
+    if (val->type == T_FUNCTION && val->v.fn.name == NULL)
+    {
+        val->v.fn.name = strdup(name);
+    }
+    for (Env *cur = e; cur; cur = cur->parent)
+    {
+        for (Var *v = cur->vars; v; v = v->next)
+        {
+            if (strcmp(v->name, name) == 0)
+            {
+                val_release(v->value);
+                v->value = val;
+                return 1;
+            }
+        }
+    }
+    // not found, set locally
+    env_set_local_raw(e, name, val);
     return 1;
 }
 
@@ -904,11 +1040,11 @@ Value *eval_block(Src *s, Env *env)
 Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
 {
     if (!fnval)
-        return vnull();
+        return verror("Function is NULL!");
     if (fnval->type == T_NATIVE)
     {
-        // native functions receive env, argc, argv
-        return fnval->v.native.fn(env, argc, argv);
+        Value* result = fnval->v.native.fn(env, argc, argv);
+        return result;
     }
     else if (fnval->type == T_FUNCTION)
     {
@@ -928,13 +1064,14 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         // position should start at 0 for the body; body is a block (starts with '{')
         // Evaluate block using the new frame
         Value *res = eval_block(child, frame);
+        
         src_free(child);
         env_free(frame);
         // If res is return value (T_RETURN) it will have been unwrapped earlier in eval_block but to be safe:
         if (res && res->type == T_RETURN)
         {
             Value *rv = (Value *)res->v.opaque;
-            val_release(res);
+            val_kill(res);
             return rv;
         }
         return res ? res : vnull();
@@ -1131,8 +1268,10 @@ Value *eval_primary(Src *s, Env *env)
                 // undefined variable -> null
                 return vnull();
             }
+            val_retain(vv);
             return vv;
         }
+        free(id);
     }
     // fallback
     return vnull();
@@ -1282,6 +1421,16 @@ Value *binary_op(Value *a, const char *op, Value *b)
         Value *eq = binary_op(a, "==", b);
         int res = (eq->type == T_BOOL && eq->v.b == 0);
         val_release(eq);
+        return vbool(res);
+    }
+    if (strcmp(op, "&&") == 0)
+    {
+        int res = is_truthy(a) && is_truthy(b);
+        return vbool(res);
+    }
+    if (strcmp(op, "||") == 0)
+    {
+        int res = is_truthy(a) || is_truthy(b);
         return vbool(res);
     }
     // unsupported -> null
@@ -1449,7 +1598,6 @@ Value *eval_statement(Src *s, Env *env)
         if (match_char(s, '='))
         {
             Value *v = eval_expr(s, env);
-            val_retain(v);
 
             // unwrap return
             if (v->type == T_RETURN)
@@ -1457,15 +1605,18 @@ Value *eval_statement(Src *s, Env *env)
                 skip_ws(s);
                 match_char(s, ';');
                 Value *tmp = v->v.opaque;
-                env_set(env, id, tmp);
+                env_set_raw(env, id, tmp);
                 free(id);
                 val_release(v);
                 return tmp;
+            } else if (v->type == T_FUNCTION) {
+                v->v.fn.name = strdup(id);
             }
 
             skip_ws(s);
             match_char(s, ';');
-            env_set(env, id, v);
+            if (v->type != T_STRING) env_set(env, id, v);
+            else env_set_raw(env, id, val_retain(v));
             free(id);
             return v;
         }
@@ -1479,22 +1630,25 @@ Value *eval_statement(Src *s, Env *env)
                 skip_ws(s);
                 match_char(s, ';');
                 Value *tmp = v->v.opaque;
-                env_set(env, id, tmp);
+                env_set_raw(env, id, tmp);
                 free(id);
                 val_release(v);
                 return tmp;
+            } else if (v->type == T_FUNCTION) {
+                v->v.fn.name = strdup(id);
             }
 
             skip_ws(s);
             match_char(s, ';');
-            env_set(env, id, v);
+            if (v->type != T_STRING) env_set(env, id, v);
+            else env_set_raw(env, id, val_retain(v));
             free(id);
             return v;
         }
         else
         {
-            // declare null
-            env_set(env, id, vnone());
+            // declare none
+            env_set_raw(env, id, vnone());
             free(id);
             match_char(s, ';');
             return vnull();
@@ -1563,7 +1717,6 @@ Value *eval_statement(Src *s, Env *env)
                     {
                         Value *cond = eval_expr(s, env);
                         match_char(s, ')');
-                        val_release(cond);
                         if (is_truthy(cond))
                         {
                             Value *res = NULL;
@@ -1574,11 +1727,12 @@ Value *eval_statement(Src *s, Env *env)
                                 res = eval_statement(s, env);
 
                             clean_elif_chain(s);
-
+                            val_release(cond);
                             return res ? res : vnull();
                         }
                         else
                         {
+                            val_release(cond);
                             skip_ws(s);
                             if (src_peek(s) == '{')
                                 skip_block(s);
@@ -1640,15 +1794,11 @@ Value *eval_statement(Src *s, Env *env)
 
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
-
                 Value *bod = NULL;
                 skip_ws(s);
-
                 bod = eval_block(s, env);
 
                 // --- Handle body result ---
-                
-                
                 if (bod && bod->type == T_CONTINUE)
                 {
                     val_retain(bod);
@@ -1832,18 +1982,6 @@ int needs_more(const char *src)
 // ---------- Main and demo ----------
 int main(int argc, char **argv)
 {
-    // prepare global env
-    Env *g = env_new(NULL);
-    // register native functions
-    env_register_builtins(g);
-
-    search_path = path_list_new();
-
-    char cwd[1024] = {0};
-    path_get_cwd(cwd, 1024);
-
-    path_list_add(search_path, cwd);
-    path_list_add(search_path, "~/mila_lib");
 
     // read file if provided or use built-in demo
     char *src_text = NULL;
@@ -1854,8 +1992,8 @@ int main(int argc, char **argv)
             printf(
                 "MiLa - Info\n"
                 "Version: 1.0\n\n"
-                "Variable size: %lu Bytes\n"
-                "Max num digits: %i\n",
+                "Variable instance size: %lu Bytes\n"
+                "Max num digits:         %i\n",
                 sizeof(Value), MAX_NUMBER_DIGITS);
             return 0;
         }
@@ -1877,6 +2015,20 @@ int main(int argc, char **argv)
             return 0;
         }
     }
+
+    // prepare global env
+    Env *g = env_new(NULL);
+    // register native functions
+    env_register_builtins(g);
+
+    search_path = path_list_new();
+
+    char cwd[1024] = {0};
+    path_get_cwd(cwd, 1024);
+
+    path_list_add(search_path, cwd);
+    path_list_add(search_path, "~/.local/lib/mila");
+
     if (argc >= 2)
     {
         // Build the argv array
@@ -1890,6 +2042,9 @@ int main(int argc, char **argv)
 
         for (int i = 0; i < argc - 1; i++)
         {
+            // remove null
+            val_release(((Array *)array->v.opaque)->array[i]);
+            // set it to our string
             ((Array *)array->v.opaque)->array[i] = vstring_dup(argv[i + 1]);
         }
         free(args);
@@ -1913,12 +2068,20 @@ int main(int argc, char **argv)
 
         Src *S = src_new(src_text);
         Value *res = eval_source(S, g);
+
         // cleanup
         if (res)
             val_release(res);
         src_free(S);
         free(src_text);
         env_free(g);
+
+        Value **a = malloc(sizeof(Value *) * 1);
+        a[0] = array;
+        Value *r = native_free_array(NULL, 1, a);
+        val_release(array);
+        val_release(r);
+        free(a);
     }
     else
     {

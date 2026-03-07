@@ -2,6 +2,8 @@
 
 #include "ml_paths.c"
 #include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
 
 #define ml_library_init   \
     char **__ml_registry; \
@@ -9,7 +11,7 @@
 #define ml_func(name)                           \
     __ml_registry[__ml_current_func++] = #name; \
     Value *name(Env *env, int argc, Value **argv)
-#define MAX_NUMBER_DIGITS 50
+#define MAX_NUMBER_DIGITS 1000
 
 path_list *search_path;
 
@@ -17,6 +19,11 @@ typedef struct Value Value;
 typedef struct Env Env;
 typedef Value *(*NativeFn)(Env *env, int argc, Value **argv);
 typedef char *(*Printer)(Value *self);
+
+typedef struct {
+    char* name;
+    NativeFn func;
+} NativeEntry;
 
 typedef enum
 {
@@ -38,7 +45,7 @@ typedef enum
 
 struct Value
 {
-    char type_name[50];
+    char* type_name;
     ValueType type;
     int refcount; // simple refcount
     union {
@@ -83,9 +90,12 @@ struct Env
 
 Env *env_new(Env *parent);
 void env_free(Env *e);
+void env_kill(Env *e);
 Value *env_get(Env *e, const char *name);
 void env_set_local(Env *e, const char *name, Value *val);
 int env_set(Env *e, const char *name, Value *val);
+void env_set_local_raw(Env *e, const char *name, Value *val);
+int env_set_raw(Env *e, const char *name, Value *val);
 void env_register_native(Env *env, const char *name, NativeFn fn);
 void env_register_builtins(Env *g);
 
@@ -135,6 +145,7 @@ int is_truthy(Value *value);
 Value *val_new(ValueType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
+void val_kill(Value *v);
 Value *vint(long x);
 Value *vfloat(double f);
 Value *vbool(int b);

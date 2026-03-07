@@ -66,7 +66,7 @@ static void normalize_slashes(char *buf) {
 }
 
 static const char *get_env(const char *name, size_t len) {
-    char var[256];
+    char var[1024];
     if (len >= sizeof(var)) return NULL;
     memcpy(var, name, len);
     var[len] = '\0';
@@ -255,15 +255,12 @@ char *path_list_find(path_list *pl, const char *file) {
             full[rl] = sep, full[rl+1] = '\0';
 
         strcat(full, tfile);
-
         if (file_exists(full)) {
             free(tfile);
             return full;
         }
-
         free(full);
     }
-
     free(tfile);
     return NULL;
 }

@@ -196,7 +196,7 @@ int main(void) {
 
 ```
 
-### Writing a shared libraey for MiLa
+### Writing a shared library for MiLa
 
 ```C
 #include <stdio.h>

@@ -165,7 +165,8 @@ int main(void) {
     
     // delete a variable
     Value* tmp = env_get(e, "var");
-    val_release(tmp);
+    val_kill(tmp);
+    env_set(e, "var", NULL);
     
     // Clean up
     val_release(v); 
@@ -272,6 +273,29 @@ struct {
     Env *closure;
 }
 ```
+
+## How MiLa Manages Memory
+
+MiLa uses a refcount system for managinf memory.
+Particularly the functions `val_retain`, `val_release`, and
+`val_kill`.
+
+* val_retain
+
+Increament ref count.
+
+* val_release
+
+Decreament ref count and free if zero.
+
+* val_kill
+
+Free memory no matter if ref count isnt zero.
+
+Types that depends on these is
+
+* strings
+* functions
 
 # Everything beyong this point may be implementation specific.
 

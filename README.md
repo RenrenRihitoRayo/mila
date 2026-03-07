@@ -142,6 +142,8 @@ elif (cond)
 else ...;
 ```
 
+# Everything beyong this point may be implementation specific.
+
 ## Parameter Notation and Return Notation
 
 This is only for docs.
@@ -286,7 +288,7 @@ str == "ello"
 * pop_b(str!) -> str
 
 let str = "hello";
-str.pop_f(str) == "o"
+str.pop_b(str) == "o"
 str == "hell"
 
 * length(str) -> int
@@ -389,7 +391,7 @@ Free the opaque type (dict object itself).
 
 Returns the current unix timestamp.
 
-## Example of using MiLa
+## Example of using MiLa (in C)
 
 ```C
 // for impl otherwise use mila.h
@@ -402,10 +404,10 @@ int main(void) {
     env_register_builtins(e);
     
     // set variables
-    env_set(e, "var", vint(42));
+    env_set_raw(e, "var", vint(42));
     
     // set local
-    env_set_local(e, "var2", vfloat(84.0));
+    env_set_local_raw(e, "var2", vfloat(84.0));
     
     // run code
     Value* v = eval_str("println(\"Hello, world!\", var);", e);
@@ -413,16 +415,72 @@ int main(void) {
     // delete a variable
     Value* tmp = env_get(e, "var");
     val_release(tmp);
-    env_set(e, "var", NULL);
     
     // Clean up
     val_release(v); 
     env_free(e);
     return 0;
 }
+
 ```
 
-### Type conversion
+### Or with a file
+
+```C
+// for impl otherwise use mila.h
+#define ML_LIB
+#include "mila/mila.c"
+
+int main(void) {
+    // set up env
+    Env* e = env_new(NULL);
+    env_register_builtins(e);
+    
+    run_file(e, "some_file.mila");
+    
+    val_release(v); 
+    env_free(e);
+    return 0;
+}
+
+```
+
+### Writing a shared libraey for MiLa
+
+```C
+#include <stdio.h>
+#include "mila.c"
+
+Value* hello(Env* e, int argc, Value** argv) {
+    (void)e; // no unused warning
+    // keep in mind MiLa doesnt check argument counts
+    // you the author does.
+    printf("Hello from C!"):
+    return vnull();
+}
+
+// Ootional init function
+void _mila_lib_init(Env* e) {
+    (void)e;
+    printf("Lib init!");
+}
+
+// You can choose between the two bellow to export functions
+
+// Simple way (recomeded for C codebases, prioritized)
+const char* lib_functions[] = {
+    "hello",
+    NULL
+};
+
+// More stable way (for C++ code bases where name mangling may take place)
+const NativeEntry lib_function_entries[] = {
+    {.name = "hello", .func = hello},
+    {NULL, NULL}
+};
+```
+
+## Creating types
 
 #### char*
 
@@ -446,3 +504,20 @@ Used with const char* also duplicating strings.
 * MiLa float  = C double
 * MiLa string = C char*
 * MiLa opaque = C void*
+* MiLa native = C Value*(*NativeFn)(Env* e, int argc, Value** argv)
+
+##### Types that dont have direct C equivalents
+
+The types bellow requires structured data types
+to implement.
+
+* MiLa Function
+
+```C
+struct {
+    char *name;
+    char **params;
+    char *body_src;             
+    Env *closure;
+}
+```

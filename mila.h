@@ -99,10 +99,35 @@ int env_set_raw(Env *e, const char *name, Value *val);
 void env_register_native(Env *env, const char *name, NativeFn fn);
 void env_register_builtins(Env *g);
 
+// == Value Related
+
+// When writing your own mila kernel
+// these functions might be the only
+// part of mila youll ever touch.
+
+int is_truthy(Value *value);
+Value *val_new(ValueType t);
+Value *val_retain(Value *v);
+void val_release(Value *v);
+void val_kill(Value *v);
+Value *vint(long x);
+Value *vfloat(double f);
+Value *vbool(int b);
+Value *vstring_dup(const char *s);
+Value *vstring_take(char *s);
+Value *vopaque(void *p);
+Value *vopaque_extra(void *p, Printer dis, const char *type);
+Value *vnative(NativeFn fn, const char *name);
+Value *vtruthy(Value *value);
+Value *vnull();
+Value *vnone();
+Value *verror(char* message, ...);
+Value *vfunction(char **params, char *body_src, Env *closure);
+
 // == Parsing
 
 /*
- * I suggest you also look in ml.c
+ * I suggest you also look in mila.c
  * in how these functions are used
  */
 
@@ -140,26 +165,6 @@ Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);
 
-// == Value Related
-int is_truthy(Value *value);
-Value *val_new(ValueType t);
-Value *val_retain(Value *v);
-void val_release(Value *v);
-void val_kill(Value *v);
-Value *vint(long x);
-Value *vfloat(double f);
-Value *vbool(int b);
-Value *vstring_dup(const char *s);
-Value *vstring_take(char *s);
-Value *vopaque(void *p);
-Value *vopaque_extra(void *p, Printer dis, const char *type);
-Value *vnative(NativeFn fn, const char *name);
-Value *vtruthy(Value *value);
-Value *vnull();
-Value *vnone();
-Value *verror(char* message, ...);
-Value *vfunction(char **params, char *body_src, Env *closure);
-
 // == Helpers
 int our_asprintf(char **strp, const char *fmt, ...);
 char *as_c_string(Value *v);
@@ -176,8 +181,3 @@ int run_file(char *name, Env *env);
 double get_unix_timestamp();
 char *read_input(void);
 int load_library(Env *env, const char *libpath);
-
-// Gaurd to avoid duplication of main
-#ifndef ML_LIB
-int main(int argc, char **argv);
-#endif

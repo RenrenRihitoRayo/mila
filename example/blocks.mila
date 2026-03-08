@@ -22,4 +22,4 @@ println(i); // 80
 
 // other code blocks except functions are not scoped.
 // var always binds to local (faster)
-// set tried to bind from local to global and only sets in local if it couldnt find a variable of the same name.
+// set tried to bind from local to global and only sets in local if it couldnt find a variable of the same name. (slower)

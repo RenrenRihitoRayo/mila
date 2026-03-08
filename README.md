@@ -18,6 +18,27 @@ MiLa already has the bare minimum to work.
 You can even make a programming language using
 MiLa.
 
+* The "builtins" is not mandatory.
+
+Building MiLa with "make bare" creates a compiled version of MiLa
+that loads `mila_builtins.so` from anywhere in `LD_PATH`.
+This allows MiLa as a CLI to be dynamic and patchable.
+You can check MiLa can "function" with the bear minimum by doing the follwing in
+the REPL.
+
+```C
+...
+>>> __mila_canonical_builtins // returns the edition (example 202603) of the canonical built ins (the one packaged with MiLa by default, other implementations must skip setting this)
+  : 202603
+>>> __mila_canonical_builtins_version // returns the version of the current loaded builtins
+  : 1
+>>> __mila_builtins_dynamic // if MiLa is built using 'make bare' this should be true
+  : true
+>>> __mila_builtins_dynamic_fail // if loading failed this should be set otherwise its null
+>>> __mila_codename // code name for the loaded builtins
+  : canon
+```
+
 ## What MiLa is not
 
 * A serious language

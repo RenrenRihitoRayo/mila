@@ -28,7 +28,9 @@ the REPL.
 
 ```C
 ...
->>> __mila_canonical_builtins // returns the edition (example 202603) of the canonical built ins (the one packaged with MiLa by default, other implementations must skip setting this)
+>>> // returns the edition (example 202603) of the canonical built ins
+>>> // (the one packaged with MiLa by default, other implementations must skip setting this)
+>>> __mila_canonical_builtins
   : 202603
 >>> __mila_canonical_builtins_version // returns the version of the current loaded builtins
   : 1

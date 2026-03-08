@@ -76,7 +76,7 @@ def gen_wrap(code, module_name=None):
         if module_name:
             name = f"{module_name}.{name}"
         res += f"    {{\"{name}\", {alias}}},\n"
-    res = res[:-2] + "\n};"
+    res += "    {NULL, NULL}\n};"
     return res
 
 def get_type_name(type_node):
@@ -98,8 +98,15 @@ import sys, os
 
 if len(sys.argv) == 2:
     f = os.path.abspath(sys.argv[1])
-    d = os.path.join(os.path.dirname(f), os.path.basename(f) + ".mila-wrap.c")
+    d = os.path.join(os.path.dirname(f), os.path.basename(f)[:-2] + ".mila-wrap.c")
     code = open(f).read()
-    res = f'#include "{f}"\n#include "mila.c"\n\n'+gen_wrap(code, "test")+"\n"
+    res = f'#include "{f}"\n#include "mila.c"\n\n'+gen_wrap(code)+"\n"
+    with open(d, "w") as f:
+        f.write(res)
+elif len(sys.argv) == 3:
+    f = os.path.abspath(sys.argv[1])
+    d = os.path.join(os.path.dirname(f), os.path.basename(f)[:-2] + ".mila-wrap.c")
+    code = open(f).read()
+    res = f'#include "{f}"\n#include "mila.c"\n\n'+gen_wrap(code, sys.argv[2])+"\n"
     with open(d, "w") as f:
         f.write(res)

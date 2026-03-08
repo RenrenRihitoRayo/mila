@@ -2,6 +2,7 @@
  * MiLa
  * A modern programming language
  * the smallest it can get.
+ * Welcome to the MiLa Language Kernel.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -16,17 +17,24 @@
 #include <math.h>
 
 #ifdef _WIN32
-#include <windows.h>
-#include <direct.h>
+    #include <windows.h>
+    #include <direct.h>
 #else
-#include <sys/time.h>
-#include <dlfcn.h>
-#include <unistd.h>
-#include <limits.h>
+    #include <sys/time.h>
+    #include <dlfcn.h>
+    #include <unistd.h>
+    #include <limits.h>
 #endif
 
 #include "ml_paths.c"
-#include "ml_builtins.c"
+
+#ifndef MILA_USE_SHARED
+    #include "ml_builtins.c"
+    _Bool mila_is_builtins_dynamic = 0;
+#else
+    _Bool mila_is_builtins_dynamic = 1;
+#endif
+
 #include "mila.h"
 
 path_list *search_path = NULL;
@@ -593,6 +601,128 @@ int env_set_raw(Env *e, const char *name, Value *val)
     return 1;
 }
 
+int load_library(Env *env, const char *libpath)
+{
+    int fail = 1;
+#ifdef _WIN32
+    HMODULE lib = LoadLibraryA(libpath);
+    if (!lib)
+    {
+        fprintf(stderr, "LoadLibraryA('%s') failed (err=%lu)\n", libpath, GetLastError());
+        return -1;
+    }
+
+    void(*init_func)(Env*) = void(*)(Env*)(lib, "_mila_lib_init");
+
+    if (init_func) {
+        fail = 0;
+        init_func(env);
+    }
+
+    const char *const *names =
+        (const char *const *)GetProcAddress(lib, "lib_functions");
+
+    if (names)
+    {
+        for (size_t i = 0; names[i] != NULL; i++)
+        {
+            FARPROC f = GetProcAddress(lib, names[i]);
+            if (!f)
+            {
+                fprintf(stderr, "Warning: function '%s' not found in '%s'\n", names[i], libpath);
+                continue;
+            }
+            env_register_native(env, names[i], (void *)f);
+        }
+        return 0;
+    }
+
+    const NativeEntry* entries =
+        (const NativeEntry*)GetProcAddress(lib, "lib_function_entries");
+
+    if (entries) {
+        char* name; NativeFn func;
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
+    }
+
+    if (!fail) return 0;
+
+    fprintf(stderr, "Must have a simple 'const char* lib_functions' and list the function names (last item must be NULL)\nor also 'const NativeEntry lib_function_entries[]' which takes in (NativeEntry){.name, .func} with the last item being (NativeEntry){NULL, NULL}\n");
+    FreeLibrary(lib);
+    return -2;
+
+#else // POSIX
+    void *lib = dlopen(libpath, RTLD_LAZY);
+    if (!lib)
+    {
+        fprintf(stderr, "dlopen('%s') failed: %s\n", libpath, dlerror());
+        return -1;
+    }
+
+    dlerror();
+    void(*init_func)(Env*) = dlsym(lib, "_mila_lib_init");
+    const char *err = dlerror();
+    if (!err) {
+        fail = 0;
+        init_func(env);
+    }
+
+    const char *const *names =
+        (const char *const *)dlsym(lib, "lib_functions");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; names[i] != NULL; i++)
+        {
+            dlerror();
+            void *f = dlsym(lib, names[i]);
+            const char *err2 = dlerror();
+            if (err2)
+            {
+                fprintf(stderr, "Warning: '%s' not found in '%s'\n",
+                        names[i], libpath);
+                continue;
+            }
+            env_register_native(env, names[i], f);
+        }
+        return 0;
+    }
+
+    dlerror();
+    const NativeEntry* entries =
+        (const NativeEntry*)dlsym(lib, "lib_function_entries");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
+    }
+
+    if (!fail) return 0;
+
+    fprintf(stderr, "dlsym 'lib_functions' error: %s\nMust have a simple 'const char* lib_functions' and list the function names (last item must be NULL)\nor also 'const NativeEntry lib_function_entries[]' which takes in (NativeEntry){.name, .func} with the last item being (NativeEntry){NULL, NULL}\n", err);
+    dlclose(lib);
+    return -2;
+#endif
+}
+
+// helper to bind native into environment with a name
+void env_register_native(Env *env, const char *name, NativeFn fn)
+{
+    Value *nv = vnative(fn, name);
+    env_set_local(env, name, nv);
+    val_release(nv);
+}
+
 // ---------- Parser/Evaluator that directly reads source and evaluates (no separate lexer) ----------
 
 
@@ -1023,6 +1153,15 @@ Value *eval_block(Src *s, Env *env)
         Value *st = eval_statement(s, frame);
         if (!st)
             st = vnull();
+        
+        // print_value(st);
+
+        if (st->type == T_BREAK) {
+            if (last)
+                val_release(last);
+            env_free(frame);
+            return st;
+        }
 
         if (last)
             val_release(last);
@@ -1035,7 +1174,117 @@ Value *eval_block(Src *s, Env *env)
 // now we need eval_primary, function call, member? only call expressions and binary ops
 // evaluate primary
 
-// call helpers
+Value *call_function_with(Env* env, Value* fnval, Value *first, ...)
+{
+    va_list ap;
+    size_t count = 0;
+
+    /* First pass: count */
+    va_start(ap, first);
+    for (Value *v = first; v != NULL; v = va_arg(ap, Value *)) {
+        count++;
+    }
+    va_end(ap);
+
+    /* Allocate array (+1 if you want NULL terminator preserved) */
+    Value **args = malloc((count + 1) * sizeof(Value *));
+    if (!args) return NULL;
+
+    /* Second pass: fill */
+    va_start(ap, first);
+    size_t i = 0;
+    for (Value *v = first; v != NULL; v = va_arg(ap, Value *)) {
+        args[i++] = v;
+    }
+    va_end(ap);
+
+    if (!fnval) {
+        for (int i = 0; i < count; i++)
+            val_release(args[i]);
+        return verror("Function is NULL!");
+    }
+
+    if (fnval->type == T_NATIVE)
+    {
+        Value* result = fnval->v.native.fn(env, count, args);
+        for (int i = 0; i < count; i++)
+            val_release(args[i]);
+        free(args);
+        return result;
+    }
+    else if (fnval->type == T_FUNCTION)
+    {
+        // create new environment with closure as parent
+        Env *frame = env_new(fnval->v.fn.closure);
+        // bind params
+        char **p = fnval->v.fn.params;
+        int i = 0;
+        for (; p && p[i]; ++i)
+        {
+            // if fewer args provided, bind null
+            Value *a = (i < count) ? args[i] : vnull();
+            env_set_local(frame, p[i], a);
+        }
+        // Evaluate body: note body_src contains the body text e.g., "{ ... }"
+        Src *child = src_new(fnval->v.fn.body_src);
+        // position should start at 0 for the body; body is a block (starts with '{')
+        // Evaluate block using the new frame
+        Value *res = eval_block(child, frame);
+        
+        src_free(child);
+        env_free(frame);
+        // If res is return value (T_RETURN) it will have been unwrapped earlier in eval_block but to be safe:
+        if (res && res->type == T_RETURN)
+        {
+            Value *rv = (Value *)res->v.opaque;
+            val_kill(res);
+            for (int i = 0; i < count; i++)
+                val_release(args[i]);
+            free(args);
+            return rv;
+        }
+        for (int i = 0; i < count; i++)
+            val_release(args[i]);
+        free(args);
+        return res ? res : vnull();
+    }
+    else
+    {
+        for (int i = 0; i < count; i++)
+            val_release(args[i]);
+        free(args);
+        // not callable
+        return verror("Attempt to call non-callable value.");
+    }
+}
+
+Value **make_args(Value *first, ...)
+{
+    va_list ap;
+    size_t count = 0;
+
+    /* First pass: count */
+    va_start(ap, first);
+    for (Value *v = first; v != NULL; v = va_arg(ap, Value *)) {
+        count++;
+    }
+    va_end(ap);
+
+    /* Allocate array (+1 if you want NULL terminator preserved) */
+    Value **args = malloc((count + 1) * sizeof(Value *));
+    if (!args) return NULL;
+
+    /* Second pass: fill */
+    va_start(ap, first);
+    size_t i = 0;
+    for (Value *v = first; v != NULL; v = va_arg(ap, Value *)) {
+        args[i++] = v;
+    }
+    va_end(ap);
+
+    args[i] = NULL;  /* keep sentinel */
+    return args;
+}
 
 Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
 {
@@ -1909,8 +2158,7 @@ Value *eval_source(Src *s, Env *env)
                 last = st;
             if (last->type == T_ERROR) {
                 printf("\n= Error: %s\n", last->v.message);
-                val_release(last);
-                return vnull();
+                return last;
             }
         }
     }
@@ -1979,7 +2227,6 @@ int needs_more(const char *src)
 }
 
 #ifndef ML_LIB
-// ---------- Main and demo ----------
 int main(int argc, char **argv)
 {
 
@@ -2018,8 +2265,23 @@ int main(int argc, char **argv)
 
     // prepare global env
     Env *g = env_new(NULL);
-    // register native functions
-    env_register_builtins(g);
+    #ifndef MILA_USE_SHARED
+        // register native functions
+        env_register_builtins(g);
+        env_set_raw(g, "__mila_builtins_dynamic", vbool(0));
+    #else
+        // allows users to use so files instead.
+        // Must be on LD_PATH
+        if (load_library(g, "mila_builtins.so"))
+            env_set_raw(g, "__mila_builtins_dynamic_failed", vbool(1));
+        env_set_raw(g, "__mila_builtins_dynamic", vbool(1));
+    #endif
+
+    // Check if built ins is the canonical
+    Value* builtins_flag = env_get(g, "__mila_canonical_builtins");
+    int is_builtins = builtins_flag != NULL &&
+                      builtins_flag->type == T_INT &&
+                      builtins_flag->v.i == 202603L;
 
     search_path = path_list_new();
 
@@ -2031,33 +2293,33 @@ int main(int argc, char **argv)
 
     if (argc >= 2)
     {
-        // Build the argv array
-        // we dont free it
-        // the memory leak is insignificant enough
-
-        Value **args = malloc(sizeof(Value *) * 3);
-        args[0] = vint(argc - 1);
-        Value *array = native_new_array(NULL, 1, args);
-        val_release(args[0]);
-
-        for (int i = 0; i < argc - 1; i++)
-        {
-            // remove null
-            val_release(((Array *)array->v.opaque)->array[i]);
-            // set it to our string
-            ((Array *)array->v.opaque)->array[i] = vstring_dup(argv[i + 1]);
-        }
-        free(args);
-
-        env_set(g, "argv", array);
-
-        // read file
         FILE *f = fopen(argv[1], "rb");
         if (!f)
         {
-            fprintf(stderr, "Cannot open %s\n", argv[1]);
+            fprintf(stderr, "Cannot open %s: Missing or not a file.\n", argv[1]);
+            env_kill(g);
             return 1;
         }
+
+        // argv handling is the only part that touches the builtins.
+
+        // make sure we are using the bundled canonical builtins
+        // otherwise set argv as __argv with the type opaque
+        Value *array = NULL;
+        if (is_builtins) {
+            array = call_function_with(g, env_get(g, "array"), vint(argc-1), NULL);
+            for (int i=1; i<argc; i++)
+                val_release(call_function_with(g, env_get(g, "array.set"), val_retain(array), vstring_dup(argv[i]), NULL));
+            env_set(g, "argv", array);
+        } else {
+            env_set_raw(g, "__argc", vint(argc));
+            env_set_raw(g, "__argv", vopaque(argv));
+            env_set_raw(g, "argv", vnone());
+        }
+
+
+        // read file
+
         fseek(f, 0, SEEK_END);
         long size = ftell(f);
         fseek(f, 0, SEEK_SET);
@@ -2073,19 +2335,34 @@ int main(int argc, char **argv)
         if (res)
             val_release(res);
         src_free(S);
-        free(src_text);
-        env_free(g);
 
-        Value **a = malloc(sizeof(Value *) * 1);
-        a[0] = array;
-        Value *r = native_free_array(NULL, 1, a);
-        val_release(array);
-        val_release(r);
-        free(a);
+        free(src_text);
+
+        if (is_builtins) {
+            val_release(call_function_with(g, env_get(g, "array.free"), array, NULL));
+        }
+
+        env_free(g);
     }
     else
     {
-        printf("MiLa 1.0 - REPL\n");
+        printf("MiLa REPL\n");
+        printf("Running MiLa '%s'\n",  env_get(g, "__mila_codename") ? env_get(g, "__mila_codename")->v.s : "???");
+
+        // Notify users when MiLa is built using the canonical builtins
+        if (is_builtins) {
+            printf("Cannonical Builtins (%ld) version %ld\n", 
+                env_get(g, "__mila_canonical_builtins")->v.i,
+                env_get(g, "__mila_canonical_builtins_version")->v.i);
+        }
+
+        if (mila_is_builtins_dynamic) {
+            printf("Builtins loaded via shared object.\n");
+            if (env_get(g, "__mila_builtins_dynamic_failed"))
+                printf("INFO: Loading mightve failed!\n");
+        } else {
+            printf("Builtins embedded.\n");
+        }
 
         char line[2048];
         char buffer[8192]; // accumulated snippet
@@ -2131,7 +2408,6 @@ int main(int argc, char **argv)
 
         env_free(g);
     }
-
     return 0;
 }
 #endif

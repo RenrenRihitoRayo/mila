@@ -1,6 +1,5 @@
 /*
- * Welcome to the MiLa Language Library
- * Functions for MiLa
+ * Builtins for MiLa
  * These are the folliwing
  *   Text IO
  *   File IO
@@ -14,8 +13,6 @@
 
 #pragma once
 
-#include <math.h>
-
 #include "ml_dict.c"
 
 #ifdef ML_LIB
@@ -23,25 +20,117 @@
 #endif
 
 #define ML_LIB
-#ifndef MILA_USE_MILA_C
-    #include "mila.h"
-#else
-    #include "mila.c"
-#endif
+#include "mila.h"
 
 #ifndef ML_ALREADY
 #undef ML_LIB
 #endif
 
+// DLL/SO Support
+
+int load_library(Env *env, const char *libpath)
+{
 #ifdef _WIN32
-    #include <windows.h>
-    #include <direct.h>
-#else
-    #include <sys/time.h>
-    #include <dlfcn.h>
-    #include <unistd.h>
-    #include <limits.h>
+    HMODULE lib = LoadLibraryA(libpath);
+    if (!lib)
+    {
+        fprintf(stderr, "LoadLibraryA('%s') failed (err=%lu)\n", libpath, GetLastError());
+        return -1;
+    }
+
+    void(*init_func)(Env*) = void(*)(Env*)(lib, "_mila_lib_init");
+
+    if (init_func) {
+        init_func(env);
+    }
+
+    const char *const *names =
+        (const char *const *)GetProcAddress(lib, "lib_functions");
+
+    if (names)
+    {
+        for (size_t i = 0; names[i] != NULL; i++)
+        {
+            FARPROC f = GetProcAddress(lib, names[i]);
+            if (!f)
+            {
+                fprintf(stderr, "Warning: function '%s' not found in '%s'\n", names[i], libpath);
+                continue;
+            }
+            env_register_native(env, names[i], (void *)f);
+        }
+        return 0;
+    }
+
+    const NativeEntry* entries =
+        (const NativeEntry*)GetProcAddress(lib, "lib_function_entries");
+
+    if (entries) {
+        char* name; NativeFn func;
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
+    }
+
+    fprintf(stderr, "Must have a simple 'const char* lib_functions' and list the function names (last item must be NULL)\nor also 'const NativeEntry lib_function_entries[]' which takes in (NativeEntry){.name, .func} with the last item being (NativeEntry){NULL, NULL}\n");
+    FreeLibrary(lib);
+    return -2;
+
+#else // POSIX
+    void *lib = dlopen(libpath, RTLD_LAZY);
+    if (!lib)
+    {
+        fprintf(stderr, "dlopen('%s') failed: %s\n", libpath, dlerror());
+        return -1;
+    }
+
+    dlerror();
+    void(*init_func)(Env*) = dlsym(lib, "_mila_lib_init");
+    const char *err = dlerror();
+    if (!err) init_func(env);
+
+    const char *const *names =
+        (const char *const *)dlsym(lib, "lib_functions");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; names[i] != NULL; i++)
+        {
+            dlerror();
+            void *f = dlsym(lib, names[i]);
+            const char *err2 = dlerror();
+            if (err2)
+            {
+                fprintf(stderr, "Warning: '%s' not found in '%s'\n",
+                        names[i], libpath);
+                continue;
+            }
+            env_register_native(env, names[i], f);
+        }
+        return 0;
+    }
+
+    dlerror();
+    const NativeEntry* entries =
+        (const NativeEntry*)dlsym(lib, "lib_function_entries");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
+    }
+    fprintf(stderr, "dlsym 'lib_functions' error: %s\nMust have a simple 'const char* lib_functions' and list the function names (last item must be NULL)\nor also 'const NativeEntry lib_function_entries[]' which takes in (NativeEntry){.name, .func} with the last item being (NativeEntry){NULL, NULL}\n", err);
+    dlclose(lib);
+    return -2;
 #endif
+}
 
 // ---------- Native functions ----------
 
@@ -1102,6 +1191,14 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+// helper to bind native into environment with a name
+void env_register_native(Env *env, const char *name, NativeFn fn)
+{
+    Value *nv = vnative(fn, name);
+    env_set_local(env, name, nv);
+    val_release(nv);
+}
+
 Value *vopaque_extra(void *p, Printer dis, const char *type)
 {
     Value *v = vopaque(p);
@@ -1110,33 +1207,24 @@ Value *vopaque_extra(void *p, Printer dis, const char *type)
     return v;
 }
 
-// Minimal MiLa Builtins
+// Minimal MiLa Core
 // We do not support objects,
 // the dots are namespaces.
-// And yes if you remove this file it wont trash the interpreter.
 void env_register_builtins(Env *g)
 {
-    // === Setup
-    // canonical builtins reports edition (2026 march)
-    env_set_raw(g, "__mila_canonical_builtins", vint(202603L));
-    // canonical builtins version reports actual version (integer, any changes means ver++)
-    env_set_raw(g, "__mila_canonical_builtins_version", vint(1));
-    // tell users what implementation it is
-    // heres its canon since this is the base implementation.
-    env_set_raw(g, "__mila_codename", vstring_dup("canon"));
-    // === Misc
+    // Misc
     env_register_native(g, "vfree", native_vfree);
-    // === Text IO
+    // Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
     env_register_native(g, "println", native_println);
     env_register_native(g, "input", native_input);
-    // === Logic
+    // Logic
     env_register_native(g, "and", native_bitwise_and);
     env_register_native(g, "or", native_bitwise_or);
     env_register_native(g, "xor", native_bitwise_xor);
     env_register_native(g, "not", native_not);
-    // === File IO
+    // File IO
     env_register_native(g, "open", native_open);
     env_register_native(g, "fclose", native_fclose);
     env_register_native(g, "fprint", native_fprint);
@@ -1149,35 +1237,35 @@ void env_register_builtins(Env *g)
     env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
     env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
     env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
-    // === Array
+    // Array
     env_register_native(g, "array", native_new_array);
     env_register_native(g, "array.set", native_set_array);
     env_register_native(g, "array.get", native_get_array);
     env_register_native(g, "array.len", native_len_array);
     env_register_native(g, "array.free", native_free_array);
-    // === Dicts
+    // Dicts
     env_register_native(g, "dict", native_new_dict);
     env_register_native(g, "dict.set", native_set_dict);
     env_register_native(g, "dict.get", native_get_dict);
     env_register_native(g, "dict.rem", native_rem_dict);
     env_register_native(g, "dict.free", native_free_dict);
-    // === Casting
+    // Casting
     env_register_native(g, "cast.int", native_cast_int);
     env_register_native(g, "cast.float", native_cast_float);
     env_register_native(g, "cast.string", native_cast_string);
     env_register_native(g, "typeof", native_type_of);
     env_register_native(g, "_typeof", native_xtype_of);
-    // === String
+    // String
     env_register_native(g, "str.slice", native_str_slice);
     env_register_native(g, "str.index", native_str_index);
     env_register_native(g, "str.patch", native_str_patch);
     env_register_native(g, "str.length", native_str_length);
     env_register_native(g, "str.pop_f", native_pop_start);
     env_register_native(g, "str.pop_b", native_pop_end);
-    // === ASCII
+    // ASCII
     env_register_native(g, "ascii.from", native_from_ascii);
     env_register_native(g, "ascii.to", native_to_ascii);
-    // === Math
+    // Math
     env_register_native(g, "floor", native_floor);
     env_register_native(g, "ceil", native_ceil);
     env_register_native(g, "sqrt", native_sqrt);
@@ -1186,7 +1274,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "tan", native_tan);
     env_register_native(g, "atan2", native_atan2);
     env_register_native(g, "pow", native_pow);
-    // === Env
+    // Env
     env_register_native(g, "vars.set", native_vars_set);
     env_register_native(g, "vars.get", native_vars_get);
     env_register_native(g, "vars.local", native_vars_local);
@@ -1196,19 +1284,15 @@ void env_register_builtins(Env *g)
      * _typeof differentiates between native and non native functions
      * this is for very specific use cases
      */
-    // === Error handling
+    // Error handling
     env_register_native(g, "report", native_report);
     env_register_native(g, "exit", native_exit);
-    // === Time measurement
+    // Time measurement
     env_register_native(g, "get_time", native_get_time);
-    // === OS Stuff
+    // OS Stuff
     env_register_native(g, "system", native_system);
-    // === Modules
+    // Modules
     env_register_native(g, "run", native_run);   // runs file
     env_register_native(g, "load", native_load); // loads dlls or so file
     env_register_native(g, "eval", native_eval); // runs string
-}
-
-void _mila_lib_init(Env* e) {
-    env_register_builtins(e);
 }

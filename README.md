@@ -26,7 +26,7 @@ This allows MiLa as a CLI to be dynamic and patchable.
 You can check MiLa can "function" with the bear minimum by doing the follwing in
 the REPL.
 
-```C
+```Plaintext
 ...
 >>> // returns the edition (example 202603) of the canonical built ins
 >>> // (the one packaged with MiLa by default, other implementations must skip setting this)
@@ -85,7 +85,7 @@ features. Such as changing syntax of while loops.
 
 * Assignment
 
-```plaintext
+```Plaintext
 // Assignment not declaration
 let name = value;
 {
@@ -103,7 +103,7 @@ let name = value;
 
 * Functions (all lambdas)
 
-```plaintext
+```Plaintext
 let greet = fn(name) {
     println("Hello " + name "!");
 }
@@ -113,7 +113,7 @@ greet("Name");
 
 * Loops (only while loops)
 
-```plaintext
+```Plaintext
 let i = 0;
 let sum = 0;
 while (i < 10) {
@@ -124,7 +124,7 @@ while (i < 10) {
 
 * Implicit and Explicit return
 
-```plaintext
+```Plaintext
 let res = fn{
     90;
 };
@@ -139,7 +139,7 @@ let res = fn{
 
 * Block let statements
 
-```plaintext
+```Plaintext
 // notice we use a colon, not an equal sign
 let res : {
     return 90;
@@ -148,7 +148,7 @@ let res : {
 
 * If chains
 
-```plaintext
+```Plaintext
 if (cond) {
     ...
 } elif (cond) {

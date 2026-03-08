@@ -1,6 +1,4 @@
-run("test.milad");
 let i = 0;
-
 while (i < array.len(argv)) {
     println(array.get(argv, i));
     let i = i + 1;

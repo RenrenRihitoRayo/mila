@@ -1,1 +1,10 @@
 
+catch {
+	block test {
+		report("test caught");
+	}
+}
+
+block test {
+	report("test uncaught");
+}

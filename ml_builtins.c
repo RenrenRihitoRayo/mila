@@ -385,6 +385,30 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
     return vfloat(f);
 }
 
+Value *native_cast_int_to_float(Env *env, int argc, Value **argv)
+{
+    if (argc == 1 && argv[0]->type == T_INT)
+    {
+        return vfloat(to_double(argv[0]));
+    }
+    else
+    {
+        return verror("cast.i2f(int): Expected 1 argument (int) int.\n");
+    }
+}
+
+Value *native_cast_float_to_int(Env *env, int argc, Value **argv)
+{
+    if (argc == 1 && argv[0]->type == T_FLOAT)
+    {
+        return vint((long)argv[0]->v.f);
+    }
+    else
+    {
+        return verror("cast.f2i(int): Expected 1 argument (float) float.\n");
+    }
+}
+
 Value *native_cast_string(Env *env, int argc, Value **argv)
 {
     if (argc == 1)
@@ -404,7 +428,7 @@ Value *native_type_of(Env *env, int argc, Value **argv)
     {
         return verror("typeof(any): Expected 1 argument (any) any.\n");
     }
-    if (*argv[0]->type_name)
+    if (argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
     switch (argv[0]->type)
     {
@@ -498,11 +522,19 @@ Value *native_open(Env *env, int argc, Value **argv)
             return verror("= open(filename, mode) did not find the file.\n");
         }
     }
-    FILE *f = fopen(path, argv[1]->v.s);
+    char* res = path_list_find(search_path, path);
+    if (!res) return verror("File %s not found!", path);
+
+
+    FILE *f = fopen(res, argv[1]->v.s);
     if (!f)
     {
+        if (res) free(res);
+        perror(NULL);
         return vnull();
     }
+
+    if (res) free(res);
     Value *v = vopaque(f);
     v->display = file_printer;
     return v;
@@ -1102,6 +1134,24 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value* test_print(Value* self, Value* other) {
+    printf("%s tried to be added to %s\n", self->v.s, other->v.s);
+    return vnull();
+}
+
+// just test some stuff
+Value *native_test(Env *env, int argc, Value **argv)
+{
+    if (argc != 0)
+        return verror("vars.local(): Requires no arguments");
+    Value* v = vstring_dup("test");
+    val_allocate_table(v);
+    val_set_method(v, MethodAdd, test_print);
+
+    return v;
+}
+
+
 Value *vopaque_extra(void *p, Printer dis, const char *type)
 {
     Value *v = vopaque(p);
@@ -1165,6 +1215,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "cast.int", native_cast_int);
     env_register_native(g, "cast.float", native_cast_float);
     env_register_native(g, "cast.string", native_cast_string);
+    env_register_native(g, "cast.i2f", native_cast_int_to_float);
+    env_register_native(g, "cast.f2i", native_cast_float_to_int);
     env_register_native(g, "typeof", native_type_of);
     env_register_native(g, "_typeof", native_xtype_of);
     // === String
@@ -1207,6 +1259,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "run", native_run);   // runs file
     env_register_native(g, "load", native_load); // loads dlls or so file
     env_register_native(g, "eval", native_eval); // runs string
+    env_register_native(g, "test", native_test); // runs string
 }
 
 void _mila_lib_init(Env* e) {

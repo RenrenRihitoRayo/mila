@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -119,6 +120,47 @@ static void expand_env(char **bufptr) {
     *bufptr = out;
 }
 
+void path_join(char *out, size_t outsize, int count, ...) {
+    if (!out || outsize == 0) return;
+
+    out[0] = '\0'; // start empty
+
+    va_list args;
+    va_start(args, count);
+
+    for (int i = 0; i < count; i++) {
+        const char *part = va_arg(args, const char*);
+        if (!part || !*part) continue;
+
+        // Remove trailing slash from out
+        size_t len = strlen(out);
+        while (len > 0 && (out[len-1] == '/' || out[len-1] == '\\')) {
+            out[len-1] = '\0';
+            len--;
+        }
+
+        // Remove leading slash from part (except for first segment)
+        const char *start = part;
+        if (len > 0 && (*start == '/' || *start == '\\')) start++;
+
+        // Append slash if needed
+        if (len > 0 && (out[len-1] != '/' && out[len-1] != '\\')) {
+#ifdef _WIN32
+            strncat(out, "\\", outsize - strlen(out) - 1);
+#else
+            strncat(out, "/", outsize - strlen(out) - 1);
+#endif
+        }
+
+        // Append the segment
+        strncat(out, start, outsize - strlen(out) - 1);
+    }
+
+    va_end(args);
+
+    normalize_slashes(out);
+}
+
 // Expand `~` → HOME or USERPROFILE
 static void expand_home(char **bufptr) {
     char *in = *bufptr;
@@ -174,6 +216,82 @@ path_list *path_list_new(void) {
         return NULL;
     }
     return p;
+}
+
+// Get the directory part of a path
+void path_dirname(const char *path, char *out, size_t outsize) {
+    if (!path || !*path) {
+        strncpy(out, ".", outsize);
+        out[outsize-1] = '\0';
+        return;
+    }
+
+    char tmp[1024];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp)-1] = '\0';
+
+    normalize_slashes(tmp);
+
+    // remove trailing slashes
+    size_t len = strlen(tmp);
+    while (len > 1 && (tmp[len-1] == '/' || tmp[len-1] == '\\')) {
+        tmp[len-1] = '\0';
+        len--;
+    }
+
+    // find last slash
+    char *slash = strrchr(tmp, '/');
+#ifdef _WIN32
+    if (!slash) slash = strrchr(tmp, '\\');
+#endif
+
+    if (!slash) {
+        // no slash found
+        strncpy(out, ".", outsize);
+    } else if (slash == tmp) {
+        // path like "/foo"
+        strncpy(out, tmp, outsize);
+    } else {
+        *slash = '\0';
+        strncpy(out, tmp, outsize);
+    }
+
+    out[outsize-1] = '\0';
+}
+
+// Get the file/base name part of a path
+void path_basename(const char *path, char *out, size_t outsize) {
+    if (!path || !*path) {
+        strncpy(out, ".", outsize);
+        out[outsize-1] = '\0';
+        return;
+    }
+
+    char tmp[1024];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp)-1] = '\0';
+
+    normalize_slashes(tmp);
+
+    // remove trailing slashes
+    size_t len = strlen(tmp);
+    while (len > 1 && (tmp[len-1] == '/' || tmp[len-1] == '\\')) {
+        tmp[len-1] = '\0';
+        len--;
+    }
+
+    // find last slash
+    char *slash = strrchr(tmp, '/');
+#ifdef _WIN32
+    if (!slash) slash = strrchr(tmp, '\\');
+#endif
+
+    if (!slash)
+        strncpy(out, tmp, outsize);
+    else
+        strncpy(out, slash + 1, outsize);
+
+    out[outsize-1] = '\0';
 }
 
 void path_list_free(path_list *pl) {

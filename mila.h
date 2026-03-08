@@ -5,13 +5,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define ml_library_init   \
-    char **__ml_registry; \
-    unsigned int __ml_current_func = 0;
-#define ml_func(name)                           \
-    __ml_registry[__ml_current_func++] = #name; \
-    Value *name(Env *env, int argc, Value **argv)
+#define MAX_METHODS 100
 #define MAX_NUMBER_DIGITS 1000
+#define MAX_PATH_LENGTH 10000
 
 path_list *search_path;
 
@@ -38,40 +34,65 @@ typedef enum
     T_RETURN,
     T_ARG_END,
     T_NONE,
-    T_ERROR,
-    T_CONTINUE,
-    T_BREAK
+    T_ERROR
 } ValueType;
+
+typedef enum __attribute__((packed)) {
+    MethodAdd,
+    MethodSub,
+    MethodMul,
+    MethodDiv,
+    MethodMod,
+    MethodLshift,
+    MethodRshift,
+    MethodLE,
+    MethodGE,
+    MethodLess,
+    MethodGreat,
+    MethodEq,
+    MethodNe,
+    MethodAnd,
+    MethodOr,
+    MethodDefault,
+    MethodTypeCount
+} MethodType;
+
+typedef Value*(*bin_op_method)(Value* self, Value* other);
+
+typedef bin_op_method MethodTable;
+
+typedef struct {
+    char **params;  // NULL-terminated
+    char *body_src; // pointer to function body source (we'll keep a copy)
+    // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
+    char *name;
+    Env *closure; // closure environment
+} FunctionV;
+
+typedef struct {
+    NativeFn fn;
+    void *userdata;
+    char *name;
+} NativeFunctionV;
 
 struct Value
 {
-    char* type_name;
-    ValueType type;
-    int refcount; // simple refcount
+    MethodTable* method_table; // 8 bytes ptr
+    char* type_name; // 8 bytes ptr
+    ValueType type;  // 4 bytes
+    int refcount; // simple refcount (4 bytes)
+    Printer display; // 4 bytes to 8 bytes
     union {
-        long i;
-        double f;
         char *s;
-        _Bool b;
-        // function
-        struct
-        {
-            char **params;  // NULL-terminated
-            char *body_src; // pointer to function body source (we'll keep a copy)
-            // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
-            char *name;
-            Env *closure; // closure environment
-        } fn;
-        struct
-        {
-            NativeFn fn;
-            void *userdata;
-            char *name;
-        } native;
-        void *opaque;
         char* message;
+        _Bool b;
+        double f;
+        void *opaque;
+        long i;
+        // function
+        FunctionV* fn;
+        NativeFunctionV native;
     } v;
-    Printer display;
 };
 
 // == Environment
@@ -107,6 +128,9 @@ void env_register_builtins(Env *g);
 
 int is_truthy(Value *value);
 Value *val_new(ValueType t);
+void val_allocate_table(Value* v);
+void val_set_method(Value* v, MethodType t, bin_op_method func);
+void val_unset_method(Value* v, MethodType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
 void val_kill(Value *v);
@@ -123,6 +147,12 @@ Value *vnull();
 Value *vnone();
 Value *verror(char* message, ...);
 Value *vfunction(char **params, char *body_src, Env *closure);
+int is_number(Value *v);
+double to_double(Value *v);
+char *as_c_string(Value *v);
+Value *to_c_string(Value *v);
+char *as_c_string_repr(Value *v);
+void print_value(Value *v);
 
 // == Parsing
 
@@ -157,9 +187,9 @@ char *dup_substr(Src *s, int a, int b);
 char **parse_param_list(Src *s);
 Value *eval_block(Src *s, Env *env);
 Value *eval_primary(Src *s, Env *env);
-Value *binary_op(Value *a, const char *op, Value *b);
-int precedence_of(const char *op);
-char *parse_op(Src *s);
+Value *binary_op(Value *a, MethodType op, Value *b);
+int precedence_of(MethodType op);
+MethodType parse_op(Src *s);
 Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
@@ -167,13 +197,7 @@ Value *eval_statement(Src *s, Env *env);
 
 // == Helpers
 int our_asprintf(char **strp, const char *fmt, ...);
-char *as_c_string(Value *v);
-Value *to_c_string(Value *v);
-char *as_c_string_repr(Value *v);
-void print_value(Value *v);
 Value *call_function(Value *fnval, Env *env, int argc, Value **argv);
-int is_number(Value *v);
-double to_double(Value *v);
 int match_types(Value **args, ...);
 Value *eval_source(Src *s, Env *env);
 Value *eval_str(char *src, Env *env);

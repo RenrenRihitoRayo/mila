@@ -17,6 +17,7 @@
 #include <math.h>
 
 #include "ml_dict.c"
+#include "ml_ll.c"
 
 #ifdef ML_LIB
 #define ML_ALREADY
@@ -24,9 +25,9 @@
 
 #define ML_LIB
 #ifndef MILA_USE_MILA_C
-    #include "mila.h"
+#include "mila.h"
 #else
-    #include "mila.c"
+#include "mila.c"
 #endif
 
 #ifndef ML_ALREADY
@@ -34,14 +35,26 @@
 #endif
 
 #ifdef _WIN32
-    #include <windows.h>
-    #include <direct.h>
+#include <windows.h>
+#include <direct.h>
 #else
-    #include <sys/time.h>
-    #include <dlfcn.h>
-    #include <unistd.h>
-    #include <limits.h>
+#include <sys/time.h>
+#include <dlfcn.h>
+#include <unistd.h>
+#include <limits.h>
 #endif
+
+#define MILA_EDITION 202603
+#define MILA_VERSION 2
+#define MILA_LPREFIX "canon:"
+
+// Define meta tables
+
+MethodTable *file_meta = NULL;
+MethodTable *dict_meta = NULL;
+MethodTable *list_meta = NULL;
+MethodTable *array_meta = NULL;
+MethodTable *range_meta = NULL;
 
 // ---------- Native functions ----------
 
@@ -188,6 +201,8 @@ char *read_input(void)
 
 Value *native_pop_start(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
     char *raw_string = argv[0]->v.s;
@@ -203,6 +218,8 @@ Value *native_pop_start(Env *env, int argc, Value **argv)
 
 Value *native_pop_end(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
     char *raw_string = argv[0]->v.s;
@@ -220,6 +237,8 @@ Value *native_pop_end(Env *env, int argc, Value **argv)
 
 Value *native_to_ascii(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_INT, T_ARG_END))
         return vnull();
     return vstring_dup((char[]){argv[0]->v.i, '\0'});
@@ -227,6 +246,8 @@ Value *native_to_ascii(Env *env, int argc, Value **argv)
 
 Value *native_from_ascii(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if ((!match_types(argv, T_STRING, T_ARG_END)) || strlen(argv[0]->v.s) != 1)
         return vnull();
     return vint(argv[0]->v.s[0]);
@@ -234,6 +255,8 @@ Value *native_from_ascii(Env *env, int argc, Value **argv)
 
 Value *native_str_slice(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_STRING, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vstring_slice(argv[0]->v.s, argv[1]->v.i, argv[2]->v.i);
@@ -241,6 +264,8 @@ Value *native_str_slice(Env *env, int argc, Value **argv)
 
 Value *native_str_index(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_STRING, T_INT, T_ARG_END))
         return vnull();
     return vstring_index(argv[0]->v.s, argv[1]->v.i);
@@ -248,6 +273,8 @@ Value *native_str_index(Env *env, int argc, Value **argv)
 
 Value *native_str_patch(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_STRING, T_STRING, T_STRING, T_ARG_END))
         return vnull();
     return vstring_replace(argv[0]->v.s, argv[1]->v.s, argv[2]->v.s);
@@ -255,6 +282,8 @@ Value *native_str_patch(Env *env, int argc, Value **argv)
 
 Value *native_str_length(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
     return vint(strlen(argv[0]->v.s));
@@ -262,6 +291,8 @@ Value *native_str_length(Env *env, int argc, Value **argv)
 
 Value *native_bitwise_and(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vint(argv[0]->v.i & argv[1]->v.i);
@@ -269,6 +300,8 @@ Value *native_bitwise_and(Env *env, int argc, Value **argv)
 
 Value *native_bitwise_or(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vint(argv[0]->v.i | argv[1]->v.i);
@@ -276,6 +309,8 @@ Value *native_bitwise_or(Env *env, int argc, Value **argv)
 
 Value *native_bitwise_xor(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vint(argv[0]->v.i ^ argv[1]->v.i);
@@ -283,6 +318,7 @@ Value *native_bitwise_xor(Env *env, int argc, Value **argv)
 
 Value *native_not(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return vnull();
     return is_truthy(argv[0]) ? vbool(0) : vbool(1);
@@ -290,6 +326,7 @@ Value *native_not(Env *env, int argc, Value **argv)
 
 Value *native_print(Env *env, int argc, Value **argv)
 {
+    (void)env;
     for (int i = 0; i < argc; i++)
     {
         if (i)
@@ -301,6 +338,7 @@ Value *native_print(Env *env, int argc, Value **argv)
 
 Value *native_printr(Env *env, int argc, Value **argv)
 {
+    (void)env;
     for (int i = 0; i < argc; i++)
     {
         print_value(argv[i]);
@@ -310,6 +348,7 @@ Value *native_printr(Env *env, int argc, Value **argv)
 
 Value *native_println(Env *env, int argc, Value **argv)
 {
+    (void)env;
     for (int i = 0; i < argc; i++)
     {
         if (i)
@@ -322,21 +361,85 @@ Value *native_println(Env *env, int argc, Value **argv)
 
 Value *native_input(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc == 1)
         print_value(argv[0]);
     else if (argc == 0)
         return vnull();
     else
-    {
         return verror("input(prompt): Expected 1 argument (prompt) string.\n");
-    }
 
     char *res = read_input();
     return res ? vstring_take(res) : vnull();
 }
 
+Value *list_to_iter(Value* self)
+{
+    Value** iter = ll_to_iter(self->v.opaque);
+    return vopaque(iter);
+}
+
+Value* list_display(Value* self)
+{
+    LinkedList* lst = (LinkedList*)self->v.opaque;
+    Value** iter = ll_to_iter(lst);
+    char* buffer = strdup("list(");
+    for (int i = 0; iter[i]; i++) {
+        char* repr = as_c_string_repr(iter[i]);
+        if (i < lst->size-1) our_asprintf(&buffer, "%s, ", repr);
+        else our_asprintf(&buffer, "%s", repr);
+    }
+    our_asprintf(&buffer, ")");
+    return vstring_take(buffer);
+}
+
+Value *native_list_new(Env *e, int argc, Value **argv)
+{
+    (void)e;
+    LinkedList* list = ll_create();
+    for (int i=0; i < argc; i++) {
+        ll_append(list, argv[i]);
+    }
+    Value* res = vopaque_extra(list, NULL, MILA_LPREFIX "list");
+    val_set_table(res, list_meta);
+    return res;
+}
+
+Value* list_free(Value* self)
+{
+    Value** iter = ll_to_iter(self->v.opaque);
+    
+    for (int i=0; iter[i]; i++) {
+        val_release(iter[i]);
+    }
+    
+    free(iter);
+    ll_free(self->v.opaque);
+    self->type = T_NULL;
+    self->v.opaque = NULL;
+    return vnull();
+}
+
+Value *native_list_free(Env* e, int argc, Value** argv)
+{
+    if (argc != 1 || argv[0]->type != T_OPAQUE)
+        verror("list.free(lst): List opaque pointer is needed.");
+    Value** iter = ll_to_iter(argv[0]->v.opaque);
+    
+    for (int i=0; iter[i]; i++) {
+        val_release(iter[i]);
+    }
+    
+    free(iter);
+    ll_free(argv[0]->v.opaque);
+    argv[0]->type = T_NULL;
+    argv[0]->v.opaque = NULL;
+    return vnull();
+}
+
 Value *native_cast_int(Env *env, int argc, Value **argv)
 {
+    (void)env;
     long i = 0;
     if (argc == 1 && argv[0]->type == T_STRING)
     {
@@ -362,6 +465,7 @@ Value *native_cast_int(Env *env, int argc, Value **argv)
 
 Value *native_cast_float(Env *env, int argc, Value **argv)
 {
+    (void)env;
     double f = 0;
     if (argc == 1 && argv[0]->type == T_STRING)
     {
@@ -387,6 +491,7 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
 
 Value *native_cast_int_to_float(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
     {
         return vfloat(to_double(argv[0]));
@@ -399,6 +504,7 @@ Value *native_cast_int_to_float(Env *env, int argc, Value **argv)
 
 Value *native_cast_float_to_int(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc == 1 && argv[0]->type == T_FLOAT)
     {
         return vint((long)argv[0]->v.f);
@@ -411,6 +517,7 @@ Value *native_cast_float_to_int(Env *env, int argc, Value **argv)
 
 Value *native_cast_string(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc == 1)
     {
         return vstring_take(as_c_string(argv[0]));
@@ -424,6 +531,7 @@ Value *native_cast_string(Env *env, int argc, Value **argv)
 
 Value *native_type_of(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
     {
         return verror("typeof(any): Expected 1 argument (any) any.\n");
@@ -456,6 +564,7 @@ Value *native_type_of(Env *env, int argc, Value **argv)
 
 Value *native_xtype_of(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
     {
         return verror("_typeof(any): Expected 1 argument (any) any.\n");
@@ -487,13 +596,13 @@ Value *native_xtype_of(Env *env, int argc, Value **argv)
     }
 }
 
-char *file_printer(Value *self)
+Value *file_printer(Value *self)
 {
     char *buffer = NULL;
     if (!self || self->type != T_OPAQUE)
     {
         our_asprintf(&buffer, "<not-a-file>");
-        return buffer;
+        return vstring_take(buffer);
     }
     FILE *f = (FILE *)self->v.opaque;
     if (!f)
@@ -504,11 +613,12 @@ char *file_printer(Value *self)
     {
         our_asprintf(&buffer, "<file:%p>", f);
     }
-    return buffer;
+    return vstring_take(buffer);
 }
 
 Value *native_open(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2 || argv[0]->type != T_STRING || argv[1]->type != T_STRING)
     {
         return verror("= open(filename, mode) expects 2 string args.\n");
@@ -522,26 +632,29 @@ Value *native_open(Env *env, int argc, Value **argv)
             return verror("= open(filename, mode) did not find the file.\n");
         }
     }
-    char* res = path_list_find(search_path, path);
-    if (!res) return verror("File %s not found!", path);
-
+    char *res = path_list_find(search_path, path);
+    if (!res)
+        return verror("File %s not found!", path);
 
     FILE *f = fopen(res, argv[1]->v.s);
     if (!f)
     {
-        if (res) free(res);
+        if (res)
+            free(res);
         perror(NULL);
         return vnull();
     }
 
-    if (res) free(res);
+    if (res)
+        free(res);
     Value *v = vopaque(f);
-    v->display = file_printer;
+    val_set_table(v, file_meta);
     return v;
 }
 
 Value *native_fclose(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
         return verror("= fclose(file) expects 1 file handle arg.\n");
@@ -557,6 +670,7 @@ Value *native_fclose(Env *env, int argc, Value **argv)
 
 Value *native_fflush(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
         return verror("= fflush(file) expects 1 file handle arg.\n");
@@ -572,6 +686,7 @@ Value *native_fflush(Env *env, int argc, Value **argv)
 
 Value *native_fprint(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_STRING)
     {
         return verror("= fprint(file, string) expects (handle, string).\n");
@@ -588,6 +703,7 @@ Value *native_fprint(Env *env, int argc, Value **argv)
 
 Value *native_fread(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT)
     {
         return verror("= fread(file, num_bytes) expects (handle, int).\n");
@@ -613,6 +729,7 @@ Value *native_fread(Env *env, int argc, Value **argv)
 
 Value *native_fseek(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 3 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT || argv[2]->type != T_INT)
     {
         return verror("= fseek(file, offset, whence) expects (handle, int, int).\n");
@@ -643,6 +760,7 @@ Value *native_fseek(Env *env, int argc, Value **argv)
 
 Value *native_ftell(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
         return verror("= ftell(file) expects 1 file handle arg.\n");
@@ -663,29 +781,29 @@ typedef struct
     int size;
 } Array;
 
-char *array_printer(Value *self)
+Value *array_to_str(Value *self)
 {
     char *buffer = NULL;
     if (!self || self->type != T_OPAQUE)
     {
         our_asprintf(&buffer, "<not-an-array>");
-        return buffer;
+        return vstring_take(buffer);
     }
 
     Array *arr = (Array *)self->v.opaque;
     if (!arr)
     {
         our_asprintf(&buffer, "<null-array-data>");
-        return buffer;
+        return vstring_take(buffer);
     }
 
-    our_asprintf(&buffer, "Array{");
+    our_asprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
     {
         Value *slot = arr->array[i];
         if (!slot)
         {
-            our_asprintf(&buffer, "c-null");
+            our_asprintf(&buffer, "?null?");
         }
         else
         {
@@ -696,12 +814,101 @@ char *array_printer(Value *self)
         if (i < arr->size - 1)
             our_asprintf(&buffer, ", ");
     }
-    our_asprintf(&buffer, "}");
-    return buffer;
+    our_asprintf(&buffer, ")");
+    return vstring_take(buffer);
+}
+
+Value *array_to_iter(Value *self)
+{
+    Value *arrv = self;
+    if (arrv->type != T_OPAQUE)
+    {
+        return verror("array<UMethodToIter>: first arg must be an array (opaque)");
+    }
+
+    Array *arr = (Array *)arrv->v.opaque;
+    if (!arr)
+    {
+        return verror("array<UMethodToIter>: null array data");
+    }
+
+    Value **values = (Value **)malloc(sizeof(Value *) * (arr->size + 1));
+    values[arr->size + 1] = NULL;
+
+    int i = 0;
+    for (int t = 0; t < arr->size; ++t)
+    {
+        if (arr->array[t] == NULL)
+            continue;
+        values[i++] = val_retain(arr->array[t]);
+    }
+
+    return vopaque(values);
+}
+
+typedef struct
+{
+    long start;
+    long end;
+    long step;
+} Range;
+
+size_t range_len(long start, long stop, long step)
+{
+    if (step == 0)
+        return 0;
+    if (step > 0)
+    {
+        if (start >= stop)
+            return 0;
+        return (stop - start + step - 1) / step;
+    }
+    else
+    {
+        if (start <= stop)
+            return 0;
+        return (start - stop - step - 1) / (-step);
+    }
+}
+
+Value *range_to_iter(Value *self)
+{
+    Range *data = (Range *)(self->v.opaque);
+    Value **v = (Value **)malloc(
+        sizeof(Value *) *
+        (range_len(data->start, data->end, data->step) + 1));
+    long index = 0;
+    for (long i = 0; i < data->end; i += data->step)
+    {
+        v[index++] = vint(i);
+    }
+    v[index] = NULL;
+    return vopaque(v);
+}
+
+Value* range_free(Value* self) {
+    free(self->v.opaque);
+    return NULL;
+}
+
+Value *native_range(Env *env, int argc, Value **argv)
+{
+    if (argc == 1 && argv[0]->type == T_INT)
+    {
+        Range *r = (Range *)malloc(sizeof(Range));
+        r->start = 0;
+        r->end = argv[0]->v.i;
+        r->step = 1;
+        Value *res = vopaque_extra(r, NULL, MILA_LPREFIX "range");
+        val_set_table(res, range_meta);
+        return res;
+    }
+    return vnull();
 }
 
 Value *native_new_array(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
     {
         return verror("array(size): Requires one argument, array size (int)\n");
@@ -724,18 +931,40 @@ Value *native_new_array(Env *env, int argc, Value **argv)
 
     for (int i = 0; i < size; i++)
     {
-        array->array[i] = vnull(); /* each slot is a Value* with refcount==1 */
+        array->array[i] = NULL;
     }
 
     res->v.opaque = array;
-    res->display = array_printer;
-    res->type_name = strdup("array");
+    res->type_name = strdup(MILA_LPREFIX "array");
+    val_set_table(res, array_meta);
+    return res;
+}
 
+Value *native_from_array(Env *env, int argc, Value **argv)
+{
+    (void)env;
+
+    int size = argc;
+
+    Value *res = val_new(T_OPAQUE);
+    Array *array = malloc(sizeof(Array));
+    array->size = size;
+    array->array = malloc(sizeof(Value *) * size);
+
+    for (int i = 0; i < size; i++)
+    {
+        array->array[i] = argv[i];
+    }
+
+    res->v.opaque = array;
+    res->type_name = strdup(MILA_LPREFIX "array");
+    val_set_table(res, array_meta);
     return res;
 }
 
 Value *native_set_array(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 3)
     {
         return verror("array.set(array, index, value): requires 3 args");
@@ -776,6 +1005,7 @@ Value *native_set_array(Env *env, int argc, Value **argv)
 
 Value *native_get_array(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2)
     {
         return verror("array.get(array, index): requires 2 args");
@@ -815,6 +1045,7 @@ Value *native_get_array(Env *env, int argc, Value **argv)
 
 Value *native_len_array(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
     {
         return verror("array.len(array): requires 1 arg");
@@ -837,6 +1068,7 @@ Value *native_len_array(Env *env, int argc, Value **argv)
 
 Value *native_free_array(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
     {
         return verror("array.free(array): requires 1 arg");
@@ -863,8 +1095,32 @@ Value *native_free_array(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value *free_array(Value *self)
+{
+    Value *arrv = self;
+    if (arrv->type != T_OPAQUE)
+    {
+        return NULL;
+    }
+
+    Array *arr = (Array *)arrv->v.opaque;
+    if (!arr)
+    {
+        return NULL;
+    }
+
+    for (int i = 0; i < arr->size; i++)
+        if (arr->array[i])
+            val_release(arr->array[i]);
+    free(arr->array);
+    free(arr);
+
+    return vnull();
+}
+
 Value *native_report(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc == 1 && argv[0]->type == T_STRING)
         return verror("report(message): %s\n", argv[0]->v.s);
     else if (argc == 0)
@@ -876,6 +1132,7 @@ Value *native_report(Env *env, int argc, Value **argv)
 
 Value *native_exit(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
         exit((int)argv[0]->v.i);
     else if (argc == 0)
@@ -889,6 +1146,9 @@ Value *native_exit(Env *env, int argc, Value **argv)
 
 Value *native_get_time(Env *env, int argc, Value **argv)
 {
+    (void)argc;
+    (void)argv;
+    (void)env;
     if (argc != 0)
     {
         return verror("invalid number of arguments given.\n");
@@ -898,6 +1158,7 @@ Value *native_get_time(Env *env, int argc, Value **argv)
 
 Value *native_run(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1 || argv[0]->type != T_STRING)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -910,7 +1171,8 @@ Value *native_run(Env *env, int argc, Value **argv)
         {
             return verror("run(filename) did not find the file.");
         }
-        if (run_file(path, env)) {
+        if (run_file(path, env))
+        {
             return verror("problem running file %s", path);
         }
         free(path);
@@ -921,6 +1183,7 @@ Value *native_run(Env *env, int argc, Value **argv)
 
 Value *native_load(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1 || argv[0]->type != T_STRING)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -934,6 +1197,7 @@ Value *native_load(Env *env, int argc, Value **argv)
 
 Value *native_eval(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1 || argv[0]->type != T_STRING)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -944,15 +1208,25 @@ Value *native_eval(Env *env, int argc, Value **argv)
 
 Value *native_new_dict(Env *env, int argc, Value **argv)
 {
-    if (argc != 0)
+    (void)env;
+    if (argc % 2 != 0 || argc == 0)
     {
-        return verror("invalid number of arguments given or incorrect types.");
+        return verror("dict(...): Needs even number of arguments! Or no arguments.");
     }
 
     Dict *d = dict_create();
+
+    for (int i = 0; i < argc;)
+    {
+        Value *key = argv[i++];
+        Value *value = argv[i++];
+        dict_set(d, key->v.s, value);
+    }
+
     if (d)
     {
-        Value *v = vopaque_extra(d, dict_display, "dict");
+        Value *v = vopaque(d);
+        val_set_table(v, dict_meta);
         return v;
     }
     return verror("couldnt make a dict.");
@@ -960,6 +1234,7 @@ Value *native_new_dict(Env *env, int argc, Value **argv)
 
 Value *native_set_dict(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 3)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -971,6 +1246,7 @@ Value *native_set_dict(Env *env, int argc, Value **argv)
 
 Value *native_get_dict(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -982,6 +1258,7 @@ Value *native_get_dict(Env *env, int argc, Value **argv)
 
 Value *native_rem_dict(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -991,8 +1268,15 @@ Value *native_rem_dict(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value* free_dict(Value* self)
+{
+    dict_free(self->v.opaque);
+    return NULL;
+}
+
 Value *native_free_dict(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -1004,6 +1288,7 @@ Value *native_free_dict(Env *env, int argc, Value **argv)
 
 Value *native_system(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1 || argv[0]->type != T_STRING)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -1013,6 +1298,7 @@ Value *native_system(Env *env, int argc, Value **argv)
 
 Value *native_floor(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("floor(i): Requires one arguments");
     double x = argv[0]->v.f;
@@ -1021,6 +1307,7 @@ Value *native_floor(Env *env, int argc, Value **argv)
 
 Value *native_ceil(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("ceil(i): Requires one arguments");
     double x = argv[0]->v.f;
@@ -1029,6 +1316,7 @@ Value *native_ceil(Env *env, int argc, Value **argv)
 
 Value *native_sqrt(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("sqrt(i): Requires one arguments");
     double x = argv[0]->v.f;
@@ -1037,6 +1325,7 @@ Value *native_sqrt(Env *env, int argc, Value **argv)
 
 Value *native_sin(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("sin(i): Requires one arguments");
     double x = argv[0]->v.f;
@@ -1045,6 +1334,7 @@ Value *native_sin(Env *env, int argc, Value **argv)
 
 Value *native_cos(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("cos(i): Requires one arguments");
     double x = argv[0]->v.f;
@@ -1053,6 +1343,7 @@ Value *native_cos(Env *env, int argc, Value **argv)
 
 Value *native_tan(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("tan(i): Requires one arguments");
     double x = argv[0]->v.f;
@@ -1061,6 +1352,7 @@ Value *native_tan(Env *env, int argc, Value **argv)
 
 Value *native_atan2(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2)
         return verror("atan2(i, i): Requires two arguments");
     double y = argv[0]->v.f;
@@ -1070,6 +1362,7 @@ Value *native_atan2(Env *env, int argc, Value **argv)
 
 Value *native_pow(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2)
         return verror("pow(base, exp): Requires two arguments");
     return vint(pow(argv[0]->v.i, argv[1]->v.i));
@@ -1077,6 +1370,7 @@ Value *native_pow(Env *env, int argc, Value **argv)
 
 Value *native_vars_set(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 2)
         return verror("vars.set(name, val): Requires two arguments");
     env_set_local(env, argv[0]->v.s, argv[1]);
@@ -1085,6 +1379,7 @@ Value *native_vars_set(Env *env, int argc, Value **argv)
 
 Value *native_vars_get(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("vars.get(name): Requires one argument");
     return env_get(env, argv[0]->v.s);
@@ -1092,15 +1387,16 @@ Value *native_vars_get(Env *env, int argc, Value **argv)
 
 Value *native_vfree(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 1)
         return verror("vfree(value): Requires one argument");
     val_release(argv[0]);
     return vnull();
 }
 
-
 Value *native_vars_local(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 0)
         return verror("vars.local(): Requires no arguments");
     for (Var *v = env->vars; v; v = v->next)
@@ -1117,6 +1413,7 @@ Value *native_vars_local(Env *env, int argc, Value **argv)
 
 Value *native_vars_global(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc != 0)
         return verror("vars.local(): Requires no arguments");
     for (Env *cur = env; cur; cur = cur->parent)
@@ -1134,30 +1431,37 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value* test_print(Value* self, Value* other) {
-    printf("%s tried to be added to %s\n", self->v.s, other->v.s);
+Value *test_print(Value *self, Value *other)
+{
+    char *repr = as_c_string_repr(other);
+    Value *tmp = vnative(native_type_of, "typeof");
+    Value *type = call_function_with(NULL, tmp, other, NULL);
+    printf("%s tried to be added to %s of type %s\n", self->v.s, repr, type->v.s);
+    free(repr);
+    val_release(tmp);
     return vnull();
 }
 
 // just test some stuff
 Value *native_test(Env *env, int argc, Value **argv)
 {
+    (void)env;
+    (void)argc;
     if (argc != 0)
-        return verror("vars.local(): Requires no arguments");
-    Value* v = vstring_dup("test");
+        return verror("test(v): Requires one argument!");
+    Value *v = vstring_dup("what");
     val_allocate_table(v);
-    val_set_method(v, MethodAdd, test_print);
-
+    val_set_bmethod(v, BMethodAdd, test_print);
     return v;
 }
 
-
-Value *vopaque_extra(void *p, Printer dis, const char *type)
+Value *native_free(Env *e, int argc, Value **argv)
 {
-    Value *v = vopaque(p);
-    v->display = dis;
-    v->type_name = strdup(type);
-    return v;
+    (void)e;
+    free(file_meta);
+    free(dict_meta);
+    free(array_meta);
+    return vnull();
 }
 
 // Minimal MiLa Builtins
@@ -1174,7 +1478,34 @@ void env_register_builtins(Env *g)
     // tell users what implementation it is
     // heres its canon since this is the base implementation.
     env_set_raw(g, "__mila_codename", vstring_dup("canon"));
+
+    file_meta = val_make_table();
+    
+    val_set_umethod_table(file_meta, UMethodToString, file_printer);
+    
+    dict_meta = val_make_table();
+    
+    val_set_umethod_table(dict_meta, UMethodToString, dict_display);
+    val_set_umethod_table(dict_meta, UMethodFree, free_dict);
+    
+    list_meta = val_make_table();
+
+    val_set_umethod_table(list_meta, UMethodToString, list_display);
+    val_set_umethod_table(list_meta, UMethodFree, list_free);
+    
+    array_meta = val_make_table();
+    
+    val_set_umethod_table(array_meta, UMethodToIter, array_to_iter);
+    val_set_umethod_table(array_meta, UMethodToString, array_to_str);
+    val_set_umethod_table(array_meta, UMethodFree, free_array);
+    
+    range_meta = val_make_table();
+    
+    val_set_umethod_table(range_meta, UMethodToIter, range_to_iter);
+    val_set_umethod_table(range_meta, UMethodFree, range_free);
+
     // === Misc
+    env_register_native(g, "range", native_range);
     env_register_native(g, "vfree", native_vfree);
     // === Text IO
     env_register_native(g, "print", native_print);
@@ -1199,8 +1530,12 @@ void env_register_builtins(Env *g)
     env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
     env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
     env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
+    // === Lists
+    env_register_native(g, "list", native_list_new);
+    env_register_native(g, "list.free", native_list_free);
     // === Array
     env_register_native(g, "array", native_new_array);
+    env_register_native(g, "array.from", native_from_array);
     env_register_native(g, "array.set", native_set_array);
     env_register_native(g, "array.get", native_get_array);
     env_register_native(g, "array.len", native_len_array);
@@ -1262,6 +1597,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "test", native_test); // runs string
 }
 
-void _mila_lib_init(Env* e) {
+void _mila_lib_init(Env *e)
+{
     env_register_builtins(e);
 }

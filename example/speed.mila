@@ -1,0 +1,13 @@
+var start = get_time();
+
+var i = 1000000;
+
+while (i > 0) {
+    set i = i - 1;
+}
+
+var end = get_time() - start;
+println("Time: " + end + "s");
+
+// 5.1 seconds~ on -O0 build
+// 2 seconds~ on -O3 build

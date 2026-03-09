@@ -67,7 +67,7 @@ follows this specs defined bellow.
 You may add features but never remove core
 features. Such as changing syntax of while loops.
 
-## Keywords (11)
+## Keywords (10)
 
 * while
 * if
@@ -78,25 +78,22 @@ features. Such as changing syntax of while loops.
 * catch
 * block
 * let
-* break
-* continue
+* foreach
 
 ## Examples
 
 * Assignment
 
 ```Plaintext
-// Assignment not declaration
-let name = value;
+// Declaration
+var name = value;
 {
-    // This is not a different variable
+    // This is a different variable
     // from the outer name.
-    let name = value;
+    var name = value;
     
-    /*
-     * Scopes are only created with
-     * function calls.
-     */
+    // Assignment
+    set name = value;
 }
 ```
 ...
@@ -111,7 +108,7 @@ let greet = fn(name) {
 greet("Name");
 ```
 
-* Loops (only while loops)
+* Loops
 
 ```Plaintext
 let i = 0;
@@ -119,6 +116,21 @@ let sum = 0;
 while (i < 10) {
     let sum = sum + i;
     let i = i + 1;
+}
+
+var l = array(5);
+array.set(l, 0, "where");
+array.set(l, 1, "what");
+array.set(l, 2, "when");
+array.set(l, 3, "who");
+array.set(l, 4, "why");
+
+foreach item : l {
+    println(item);
+}
+
+foreach n : range(10) {
+    println(n);
 }
 ```
 
@@ -536,7 +548,7 @@ Get the element in that index.
 
 Returns number of allocated elements
 not the current set elements.
-(array isnt a linked list, fragmentation
+(array isnt a linked array, fragmentation
 may occur and skew actual count)
 
 * array.free(array)

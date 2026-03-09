@@ -194,14 +194,17 @@ void dict_free(Dict *dict)
     free(dict);
 }
 
-char *dict_display(Value *self) {
-    Dict* dict = (Dict *)self->v.opaque;
-    if (!dict || !dict->buckets) return strdup("Dict{ }");
+Value *dict_display(Value *self)
+{
+    Dict *dict = (Dict *)self->v.opaque;
+    if (!dict || !dict->buckets)
+        return vstring_dup("Dict{}");
 
-    char* buffer = NULL;
+    char *buffer = NULL;
     our_asprintf(&buffer, "Dict{");
 
-    typedef struct {
+    typedef struct
+    {
         char *key;
         Value *value;
     } KVPair;
@@ -209,16 +212,24 @@ char *dict_display(Value *self) {
     KVPair *entries = NULL;
     size_t count = 0, capacity = 16;
     entries = malloc(capacity * sizeof(KVPair));
-    if (!entries) return NULL;
+    if (!entries)
+        return NULL;
 
     // Collect all entries
-    for (size_t i = 0; i < dict->capacity; i++) {
+    for (size_t i = 0; i < dict->capacity; i++)
+    {
         DictEntry *entry = dict->buckets[i];
-        while (entry) {
-            if (count >= capacity) {
+        while (entry)
+        {
+            if (count >= capacity)
+            {
                 capacity *= 2;
                 KVPair *tmp = realloc(entries, capacity * sizeof(KVPair));
-                if (!tmp) { free(entries); return NULL; }
+                if (!tmp)
+                {
+                    free(entries);
+                    return NULL;
+                }
                 entries = tmp;
             }
             entries[count].key = entry->key;
@@ -228,13 +239,17 @@ char *dict_display(Value *self) {
         }
     }
 
-    for (size_t i = count; i > 0; i--) {
-        char *val_str = as_c_string_repr(entries[i-1].value);
-        our_asprintf(&buffer, " %s = %s,", entries[i-1].key, val_str);
+    for (size_t i = count; i > 0; i--)
+    {
+        char *val_str = as_c_string_repr(entries[i - 1].value);
+        if (i > 1)
+            our_asprintf(&buffer, "%s = %s, ", entries[i - 1].key, val_str);
+        else
+            our_asprintf(&buffer, "%s = %s", entries[i - 1].key, val_str);
         free(val_str);
     }
 
-    our_asprintf(&buffer, " }");
+    our_asprintf(&buffer, "}");
     free(entries);
-    return buffer;
+    return vstring_take(buffer);
 }

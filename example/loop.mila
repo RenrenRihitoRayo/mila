@@ -1,5 +1,18 @@
-let i = 0;
+var l = array(3);
+array.set(l, 0, "what1");
+array.set(l, 1, "what2");
+array.set(l, 2, "what3");
+
+foreach item : l {
+    println(item);
+}
+
+foreach item : range(10) {
+    println(item);
+}
+
+set i = 0;
 while (i < array.len(argv)) {
     println(array.get(argv, i));
-    let i = i + 1;
+    set i = i + 1;
 }

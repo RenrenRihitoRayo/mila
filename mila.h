@@ -32,34 +32,65 @@ typedef enum
     T_NATIVE,
     T_OPAQUE,
     T_RETURN,
-    T_ARG_END,
     T_NONE,
-    T_ERROR
+    T_ERROR,
+    T_ARG_END
 } ValueType;
 
+const char* MILA_TYPE_NAMES[] = {
+    "null",
+    "int",
+    "float",
+    "string",
+    "bool",
+    "function",
+    "native",
+    "opaque",
+    "return",
+    "none",
+    "error",
+    "arg_end",
+};
+
 typedef enum __attribute__((packed)) {
-    MethodAdd,
-    MethodSub,
-    MethodMul,
-    MethodDiv,
-    MethodMod,
-    MethodLshift,
-    MethodRshift,
-    MethodLE,
-    MethodGE,
-    MethodLess,
-    MethodGreat,
-    MethodEq,
-    MethodNe,
-    MethodAnd,
-    MethodOr,
-    MethodDefault,
-    MethodTypeCount
-} MethodType;
+    BMethodAdd,
+    BMethodSub,
+    BMethodMul,
+    BMethodDiv,
+    BMethodMod,
+    BMethodLshift,
+    BMethodRshift,
+    BMethodLE,
+    BMethodGE,
+    BMethodLess,
+    BMethodGreat,
+    BMethodEq,
+    BMethodNe,
+    BMethodAnd,
+    BMethodOr,
+    BMethodDefault,
+    BMethodTypeCount
+} BMethodType;
+
+typedef enum __attribute__((packed)) {
+    UMethodFree = BMethodTypeCount,
+    UMethodKill,
+    UMethodToString,
+    UMethodToRepr,
+    UMethodToIter,
+    MethodTotalCount
+} UMethodType;
 
 typedef Value*(*bin_op_method)(Value* self, Value* other);
+typedef Value*(*unary_op_method)(Value* self);
 
-typedef bin_op_method MethodTable;
+typedef struct {
+    _Bool is_binop;
+    union {
+        bin_op_method binop;
+        unary_op_method unary;
+    };
+} MethodTable;
 
 typedef struct {
     char **params;  // NULL-terminated
@@ -75,13 +106,16 @@ typedef struct {
     char *name;
 } NativeFunctionV;
 
+
+// Primitives are <50 bytes gauranteed.
+// worst case is 300+ Bytes (especially variables with methods
 struct Value
 {
     MethodTable* method_table; // 8 bytes ptr
     char* type_name; // 8 bytes ptr
     ValueType type;  // 4 bytes
     int refcount; // simple refcount (4 bytes)
-    Printer display; // 4 bytes to 8 bytes
+    char owns_table; // check if table can be freed or not (1 bytes)
     union {
         char *s;
         char* message;
@@ -91,8 +125,8 @@ struct Value
         long i;
         // function
         FunctionV* fn;
-        NativeFunctionV native;
-    } v;
+        NativeFunctionV* native;
+    } v; // around 8 bytes
 };
 
 // == Environment
@@ -129,8 +163,15 @@ void env_register_builtins(Env *g);
 int is_truthy(Value *value);
 Value *val_new(ValueType t);
 void val_allocate_table(Value* v);
-void val_set_method(Value* v, MethodType t, bin_op_method func);
-void val_unset_method(Value* v, MethodType t);
+MethodTable* val_make_table(void);
+void val_set_table(Value* v, MethodTable *t);
+void val_set_bmethod(Value* v, BMethodType t, bin_op_method func);
+void val_set_umethod(Value* v, UMethodType t, unary_op_method func);
+void val_set_bmethod_table(MethodTable* v, BMethodType t, bin_op_method func);
+void val_set_umethod_table(MethodTable* v, UMethodType t, unary_op_method func);
+void val_unset_bmethod_table(MethodTable* v, BMethodType t);
+void val_unset_umethod_table(MethodTable* v, UMethodType t);
+void val_unset_method(Value* v, BMethodType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
 void val_kill(Value *v);
@@ -140,7 +181,6 @@ Value *vbool(int b);
 Value *vstring_dup(const char *s);
 Value *vstring_take(char *s);
 Value *vopaque(void *p);
-Value *vopaque_extra(void *p, Printer dis, const char *type);
 Value *vnative(NativeFn fn, const char *name);
 Value *vtruthy(Value *value);
 Value *vnull();
@@ -153,6 +193,8 @@ char *as_c_string(Value *v);
 Value *to_c_string(Value *v);
 char *as_c_string_repr(Value *v);
 void print_value(Value *v);
+Value *call_function_with(Env* env, Value* fnval, Value *first, ...);
+Value *vopaque_extra(void *p, Value*(*dis)(Value*), const char *type);
 
 // == Parsing
 
@@ -187,9 +229,9 @@ char *dup_substr(Src *s, int a, int b);
 char **parse_param_list(Src *s);
 Value *eval_block(Src *s, Env *env);
 Value *eval_primary(Src *s, Env *env);
-Value *binary_op(Value *a, MethodType op, Value *b);
-int precedence_of(MethodType op);
-MethodType parse_op(Src *s);
+Value *binary_op(Value *a, BMethodType op, Value *b);
+int precedence_of(BMethodType op);
+BMethodType parse_op(Src *s);
 Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);

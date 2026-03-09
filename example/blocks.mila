@@ -1,7 +1,12 @@
+// !{...} captures the code inside
+// useful for creating control structures
+println(!{
+    println("What");
+});
 
 // Yes blocks can be used as arguments!
-// but unlike regular blocks these are scoped!
-println(.{
+// but unlike regular blocks these are not scoped!
+println({
 	return "Hello, world!";
 });
 
@@ -20,6 +25,6 @@ println(i); // 90
 }
 println(i); // 80
 
-// other code blocks except functions are not scoped.
+// other code blocks except functions and a are not scoped.
 // var always binds to local (faster)
 // set tried to bind from local to global and only sets in local if it couldnt find a variable of the same name. (slower)

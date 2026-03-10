@@ -67,18 +67,21 @@ follows this specs defined bellow.
 You may add features but never remove core
 features. Such as changing syntax of while loops.
 
-## Keywords (10)
+## Keywords (13)
 
-* while
 * if
 * elif
 * else
-* return
 * fn
+* return
 * catch
 * block
-* let
+* set
+* var
 * foreach
+* while
+* break
+* continue
 
 ## Examples
 

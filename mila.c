@@ -197,6 +197,8 @@ int is_truthy(Value *value)
 
 Value *vnull() { return val_new(T_NULL); }
 Value *vnone() { return val_new(T_NONE); }
+Value *vbreak() { return val_new(T_BREAK); }
+Value *vcontinue() { return val_new(T_CONTINUE); }
 Value *verror(char *fmt, ...)
 {
     va_list ap;
@@ -263,8 +265,10 @@ Value *vopaque(void *p)
 {
     Value *v = val_new(T_OPAQUE);
     v->v.opaque = p;
-    if (!p)
-        v->type = T_NULL;
+    if (!p) {
+        val_kill(v);
+        return NULL;
+    }
     return v;
 }
 Value *vnative(NativeFn fn, const char *name)
@@ -344,8 +348,7 @@ char *as_c_string(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        our_asprintf(&buffer, "?null?");
-        return buffer;
+        return strdup("cnull");
     }
     if (v->method_table && (!v->method_table[UMethodToString].is_binop) && v->method_table[UMethodToString].unary)
     {
@@ -424,8 +427,7 @@ char *as_c_string_repr(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        our_asprintf(&buffer, "?null?");
-        return buffer;
+        return strdup("cnull");
     }
     if (v->method_table && (!v->method_table[UMethodToRepr].is_binop) && v->method_table[UMethodFree].unary)
     {
@@ -459,7 +461,19 @@ char *as_c_string_repr(Value *v)
         our_asprintf(&buffer, "%f", v->v.f);
         break;
     case T_STRING:
-        our_asprintf(&buffer, "\"%s\"", v->v.s ? v->v.s : "");
+        our_asprintf(&buffer, "\"");
+        char* temp = v->v.s ? v->v.s : "";
+        for (size_t i=0; i<strlen(temp); ++i) {
+            switch (temp[i]) {
+                case  7: our_asprintf(&buffer, "\\a"); break;
+                case  9: our_asprintf(&buffer, "\\t"); break;
+                case 10: our_asprintf(&buffer, "\\n"); break;
+                case 11: our_asprintf(&buffer, "\\v"); break;
+                case 12: our_asprintf(&buffer, "\\f"); break;
+                default: our_asprintf(&buffer, "%c", temp[i]);
+            }
+        }
+        our_asprintf(&buffer, "\"");
         break;
     case T_BOOL:
         our_asprintf(&buffer, "%s", v->v.b ? "true" : "false");
@@ -493,6 +507,13 @@ char *as_c_string_repr(Value *v)
 void print_value(Value *v)
 {
     char *txt = as_c_string(v);
+    printf("%s", txt);
+    free(txt);
+}
+
+void print_value_repr(Value *v)
+{
+    char *txt = as_c_string_repr(v);
     printf("%s", txt);
     free(txt);
 }
@@ -1211,6 +1232,15 @@ Value *parse_string(Src *s)
             case 'r':
                 c = '\r';
                 break;
+            case 'f':
+                c = '\f';
+                break;
+            case 'v':
+                c = '\v';
+                break;
+            case 'a':
+                c = '\a';
+                break;
             case '\\':
                 c = '\\';
                 break;
@@ -1334,15 +1364,36 @@ Value *eval_block(Src *s, Env *env)
             break;
 
         Value *st = eval_statement(s, frame);
-        if (!st)
-            st = vnull();
 
         if (last)
             val_release(last);
         last = st;
+
+        if (IS_CONTROL(st))
+        {
+            env_free(frame);
+            HANDLE_CONTROL(st);
+        }
     }
     env_free(frame);
-    return last ? last : vnull();
+    return last;
+}
+
+Value* parse_subscript(Src* s, Env* e)
+{
+    if (!match_char(s, '['))
+    {
+        return verror("Subscript was expected!");
+    }
+    
+    Value* res = parse_expr(s, e);
+    
+    if (!match_char(s, ']'))
+    {
+        return verror("Closing square bracket was expected!");
+    }
+    
+    return res;
 }
 
 Value *eval_block_raw(Src *s, Env *frame)
@@ -1350,7 +1401,7 @@ Value *eval_block_raw(Src *s, Env *frame)
     skip_ws(s);
     if (!match_char(s, '{'))
     {
-        return vnull();
+        return verror("Block was expected!");
     }
     // new local frame
     Value *last = vnull(); // last expression value
@@ -1361,16 +1412,18 @@ Value *eval_block_raw(Src *s, Env *frame)
             break;
         if (match_char(s, '}'))
             break;
-
         Value *st = eval_statement(s, frame);
-        if (!st)
-            st = vnull();
 
         if (last)
             val_release(last);
         last = st;
+
+        if (IS_CONTROL(st))
+        {
+            HANDLE_CONTROL(st);
+        }
     }
-    return last ? last : vnull();
+    return last;
 }
 
 // now we need eval_primary, function call, member? only call expressions and binary ops
@@ -1452,7 +1505,7 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
         for (int i = 0; i < count; i++)
             val_release(args[i]);
         free(args);
-        return res ? res : vnull();
+        return res;
     }
     else
     {
@@ -1541,7 +1594,7 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
         for (int i = 0; i < count; i++)
             val_release(args[i]);
         free(args);
-        return res ? res : vnull();
+        return res;
     }
     else
     {
@@ -1611,20 +1664,15 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
 
         src_free(child);
         env_free(frame);
-        // If res is return value (T_RETURN) it will have been unwrapped earlier in eval_block but to be safe:
-        if (res && res->type == T_RETURN)
-        {
-            Value *rv = (Value *)res->v.opaque;
-            val_kill(res);
-            return rv;
-        }
-        return res ? res : vnull();
+        if (IS_CONTROL(res))
+            HANDLE_CONTROL(res);
     }
     else
     {
         // not callable
         return verror("Attempt to call non-callable value.");
     }
+    return vnull();
 }
 
 // parse expression with precedence:
@@ -1704,21 +1752,17 @@ Value *eval_primary(Src *s, Env *env)
             val_release(expr);
             return res;
         }
-        return expr ? expr : vnull();
+        return expr;
     }
     if (c == '{')
     {
         Value *v = eval_block(s, env);
         skip_ws(s);
 
-        if (v->type == T_RETURN)
-        {
-            Value *res = (Value *)v->v.opaque;
-            val_release(v);
-            return res;
-        }
+        if (IS_CONTROL(v))
+            HANDLE_CONTROL(v);
 
-        return v ? v : vnull();
+        return v;
     }
     if (c == '!' && s->src[s->pos + 1] == '{')
     {
@@ -1801,6 +1845,11 @@ Value *eval_primary(Src *s, Env *env)
             free(id);
             return vnull();
         }
+        if (strcmp(id, "cnull") == 0)
+        {
+            free(id);
+            return NULL;
+        }
         if (strcmp(id, "none") == 0)
         {
             free(id);
@@ -1816,6 +1865,16 @@ Value *eval_primary(Src *s, Env *env)
             free(id);
             return vbool(0);
         }
+        if (strcmp(id, "break") == 0)
+        {
+            free(id);
+            return vbreak();
+        }
+        if (strcmp(id, "continue") == 0)
+        {
+            free(id);
+            return vcontinue();
+        }
         // look ahead: function call?
         skip_ws(s);
         if (src_peek(s) == '(')
@@ -1826,6 +1885,8 @@ Value *eval_primary(Src *s, Env *env)
             Value **args = NULL;
             int argc = 0;
             skip_ws(s);
+
+            // handle (value)(...) calls
             if (src_peek(s) != ')')
             {
                 for (;;)
@@ -1865,7 +1926,7 @@ Value *eval_primary(Src *s, Env *env)
                 val_release(args[i]);
             free(args);
 
-            return res;
+            HANDLE_CONTROL(res);
         }
         else
         {
@@ -2020,7 +2081,12 @@ Value *binary_op(Value *a, BMethodType op, Value *b)
                 return vbool(ia == ib);
             if (op == BMethodNe)
                 return vbool(ia != ib);
+            if (op == BMethodLshift)
+                return vint(ia << ib);
+            if (op == BMethodRshift)
+                return vint(ia >> ib);
         }
+        return vnull();
     }
     // equality for strings
     if (BMethodEq == op)
@@ -2155,7 +2221,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec)
     // unary + - not implemented separately; parse primary then handle binary ops
     Value *lhs = eval_primary(s, env);
     if (!lhs)
-        lhs = vnull();
+        return NULL;
     for (;;)
     {
         int saved_pos = s->pos;
@@ -2374,6 +2440,7 @@ Value *eval_statement(Src *s, Env *env)
             match_char(s, ')');
             int truth = is_truthy(cond);
             val_release(cond);
+            skip_ws(s);
             if (truth)
             {
                 Value *res = NULL;
@@ -2384,7 +2451,7 @@ Value *eval_statement(Src *s, Env *env)
 
                 clean_elif_chain(s);
 
-                return res ? res : vnull();
+                HANDLE_CONTROL(res);
             }
             else
             {
@@ -2413,7 +2480,7 @@ Value *eval_statement(Src *s, Env *env)
 
                             clean_elif_chain(s);
                             val_release(cond);
-                            return res ? res : vnull();
+                            HANDLE_CONTROL(res);
                         }
                         else
                         {
@@ -2437,7 +2504,7 @@ Value *eval_statement(Src *s, Env *env)
                     else
                         res = eval_statement(s, env);
                     // check for return propagation
-                    return res ? res : vnull();
+                    HANDLE_CONTROL(res);
                 }
             }
         }
@@ -2482,11 +2549,22 @@ Value *eval_statement(Src *s, Env *env)
                 bod = eval_block(s, env);
 
                 // --- Handle body result ---
-                if (bod && bod->type == T_RETURN)
+                if (bod->type == T_BREAK)
                 {
-                    val_retain(bod);
                     s->pos = body_end_pos;
-                    return bod;
+                    return vnull();
+                }
+                else if (bod->type == T_CONTINUE)
+                {
+                    s->pos = cond_start_pos;
+                    continue;
+                }
+                else if (bod->type == T_RETURN)
+                {
+                    Value *res = bod->v.opaque;
+                    val_release(bod);
+                    s->pos = body_end_pos;
+                    return res;
                 }
             }
             return bod;
@@ -2508,6 +2586,10 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *v = iter_obj->method_table[UMethodToIter].unary(iter_obj);
                 value = v->v.opaque;
+                if (!value) {
+                    free(id);
+                    return verror("Value returned by ");
+                }
                 val_kill(v);
             }
             else
@@ -2534,19 +2616,31 @@ Value *eval_statement(Src *s, Env *env)
                 env_set_local_raw(env, id, v);
                 bod = eval_block_raw(s, frame);
                 env_free(frame);
-
                 // --- Handle body result ---
-                if (bod && bod->type == T_RETURN)
+                if (bod->type == T_BREAK)
                 {
-                    val_retain(bod);
                     s->pos = body_end_pos;
-                    free(id);
-                    return bod;
+                    val_release(bod);
+                    return vnull();
+                }
+                else if (bod->type == T_CONTINUE)
+                {
+                    s->pos = body_start_pos;
+                    if (bod)
+                        val_release(bod);
+                    continue;
+                }
+                else if (bod->type == T_RETURN)
+                {
+                    Value *res = bod->v.opaque;
+                    val_release(bod);
+                    s->pos = body_end_pos;
+                    return res;
                 }
 
-                if (bod)
-                    val_release(bod);
+                val_release(bod);
             }
+            s->pos = body_end_pos;
             free(id);
             return bod;
         }
@@ -2596,6 +2690,10 @@ Value *eval_statement(Src *s, Env *env)
     // expression statement
     Value *e = eval_expr(s, env);
     match_char(s, ';');
+    if (e && e->type == T_FUNCTION || e->type == T_NATIVE) {
+        Value* res = call_function_with(env, e, NULL);
+        return res;
+    }
     return e;
 }
 
@@ -2636,20 +2734,13 @@ Value *eval_source(Src *s, Env *env)
         if (src_eof(s))
             break;
         Value *st = eval_statement(s, env);
-        if (st)
+        
+        val_release(last);
+        last = st;
+        if (last && last->type == T_ERROR)
         {
-            if (last)
-            {
-                val_release(last);
-                last = st;
-            }
-            else
-                last = st;
-            if (last->type == T_ERROR)
-            {
-                printf("\n= Error: %s\n", last->v.message);
-                return last;
-            }
+            printf("\n= Error: %s\n", last->v.message);
+            return last;
         }
     }
     return last;
@@ -2681,8 +2772,7 @@ int run_file(char *name, Env *env)
     fclose(f);
     Src *S = src_new(src_text);
     Value *res = eval_source(S, env);
-    if (res)
-        val_release(res);
+    val_release(res);
     src_free(S);
     free(src_text);
     return 0;
@@ -2823,7 +2913,6 @@ int main(int argc, char **argv)
         }
 
         // read file
-
         fseek(f, 0, SEEK_END);
         long size = ftell(f);
         fseek(f, 0, SEEK_SET);
@@ -2836,8 +2925,7 @@ int main(int argc, char **argv)
         Value *res = eval_source(S, g);
 
         // cleanup
-        if (res)
-            val_release(res);
+        val_release(res);
         src_free(S);
 
         free(src_text);
@@ -2845,6 +2933,7 @@ int main(int argc, char **argv)
         if (is_builtins)
         {
             val_release(call_function_str(g, "array.free", array, NULL));
+            call_function_str(g, "__mila_canonical_builtins_free", NULL);
         }
 
         env_free(g);
@@ -2904,16 +2993,16 @@ int main(int argc, char **argv)
                 // evaluate accumulated buffer
                 Src *S = src_new(buffer);
                 Value *res = eval_source(S, g);
-
-                if (res && res->type != T_NULL)
-                {
+                
+                if (res && res->type != T_NULL){
                     printf("  : ");
-                    print_value(res);
+                    print_value_repr(res);
                     putchar('\n');
+                } else if (!res) {
+                    printf("  : cnull\n");
                 }
 
-                if (res)
-                    val_release(res);
+                val_release(res);
                 src_free(S);
 
                 // clear buffer

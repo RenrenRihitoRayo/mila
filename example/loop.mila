@@ -8,7 +8,10 @@ foreach item : l {
 }
 
 foreach item : range(10) {
-    println(item);
+    println(item, item == 5, typeof(item));
+    if (item == 5) {
+        break;
+    }
 }
 
 set i = 0;

@@ -9,6 +9,29 @@
 #define MAX_NUMBER_DIGITS 1000
 #define MAX_PATH_LENGTH 10000
 
+#define HANDLE_CONTROL(val) \
+    {\
+        if (!val) return val;\
+        if (val->type == T_BREAK)\
+            return val;\
+        if (val->type == T_CONTINUE)\
+            return val;\
+        if (val->type == T_RETURN)\
+        {\
+            Value *res = val->v.opaque;\
+            val_release(val);\
+            return res;\
+        }\
+        if (val->type == T_ERROR)\
+        {\
+            fprintf(stderr, "= Error:v%s\n", val->v.message);\
+            exit(1);\
+        }\
+        return val;\
+    }\
+
+#define IS_CONTROL(v) (v && v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN)
+
 path_list *search_path;
 
 typedef struct Value Value;
@@ -16,8 +39,9 @@ typedef struct Env Env;
 typedef Value *(*NativeFn)(Env *env, int argc, Value **argv);
 typedef char *(*Printer)(Value *self);
 
-typedef struct {
-    char* name;
+typedef struct
+{
+    char *name;
     NativeFn func;
 } NativeEntry;
 
@@ -34,10 +58,12 @@ typedef enum
     T_RETURN,
     T_NONE,
     T_ERROR,
+    T_BREAK,
+    T_CONTINUE,
     T_ARG_END
 } ValueType;
 
-const char* MILA_TYPE_NAMES[] = {
+const char *MILA_TYPE_NAMES[] = {
     "null",
     "int",
     "float",
@@ -49,10 +75,13 @@ const char* MILA_TYPE_NAMES[] = {
     "return",
     "none",
     "error",
+    "break",
+    "continue",
     "arg_end",
 };
 
-typedef enum __attribute__((packed)) {
+typedef enum __attribute__((packed))
+{
     BMethodAdd,
     BMethodSub,
     BMethodMul,
@@ -69,10 +98,13 @@ typedef enum __attribute__((packed)) {
     BMethodAnd,
     BMethodOr,
     BMethodDefault,
+    BMethodGetItem,
+    BMethodSetItem,
     BMethodTypeCount
 } BMethodType;
 
-typedef enum __attribute__((packed)) {
+typedef enum __attribute__((packed))
+{
     UMethodFree = BMethodTypeCount,
     UMethodKill,
     UMethodToString,
@@ -81,10 +113,11 @@ typedef enum __attribute__((packed)) {
     MethodTotalCount
 } UMethodType;
 
-typedef Value*(*bin_op_method)(Value* self, Value* other);
-typedef Value*(*unary_op_method)(Value* self);
+typedef Value *(*bin_op_method)(Value *self, Value *other);
+typedef Value *(*unary_op_method)(Value *self);
 
-typedef struct {
+typedef struct
+{
     _Bool is_binop;
     union {
         bin_op_method binop;
@@ -92,7 +125,8 @@ typedef struct {
     };
 } MethodTable;
 
-typedef struct {
+typedef struct
+{
     char **params;  // NULL-terminated
     char *body_src; // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
@@ -100,32 +134,32 @@ typedef struct {
     Env *closure; // closure environment
 } FunctionV;
 
-typedef struct {
+typedef struct
+{
     NativeFn fn;
     void *userdata;
     char *name;
 } NativeFunctionV;
 
-
 // Primitives are <50 bytes gauranteed.
 // worst case is 300+ Bytes (especially variables with methods
 struct Value
 {
-    MethodTable* method_table; // 8 bytes ptr
-    char* type_name; // 8 bytes ptr
-    ValueType type;  // 4 bytes
-    int refcount; // simple refcount (4 bytes)
-    char owns_table; // check if table can be freed or not (1 bytes)
+    MethodTable *method_table; // 8 bytes ptr
+    char *type_name;           // 8 bytes ptr
+    ValueType type;            // 4 bytes
+    int refcount;              // simple refcount (4 bytes)
+    char owns_table;           // check if table can be freed or not (1 bytes)
     union {
         char *s;
-        char* message;
+        char *message;
         _Bool b;
         double f;
         void *opaque;
         long i;
         // function
-        FunctionV* fn;
-        NativeFunctionV* native;
+        FunctionV *fn;
+        NativeFunctionV *native;
     } v; // around 8 bytes
 };
 
@@ -162,16 +196,16 @@ void env_register_builtins(Env *g);
 
 int is_truthy(Value *value);
 Value *val_new(ValueType t);
-void val_allocate_table(Value* v);
-MethodTable* val_make_table(void);
-void val_set_table(Value* v, MethodTable *t);
-void val_set_bmethod(Value* v, BMethodType t, bin_op_method func);
-void val_set_umethod(Value* v, UMethodType t, unary_op_method func);
-void val_set_bmethod_table(MethodTable* v, BMethodType t, bin_op_method func);
-void val_set_umethod_table(MethodTable* v, UMethodType t, unary_op_method func);
-void val_unset_bmethod_table(MethodTable* v, BMethodType t);
-void val_unset_umethod_table(MethodTable* v, UMethodType t);
-void val_unset_method(Value* v, BMethodType t);
+void val_allocate_table(Value *v);
+MethodTable *val_make_table(void);
+void val_set_table(Value *v, MethodTable *t);
+void val_set_bmethod(Value *v, BMethodType t, bin_op_method func);
+void val_set_umethod(Value *v, UMethodType t, unary_op_method func);
+void val_set_bmethod_table(MethodTable *v, BMethodType t, bin_op_method func);
+void val_set_umethod_table(MethodTable *v, UMethodType t, unary_op_method func);
+void val_unset_bmethod_table(MethodTable *v, BMethodType t);
+void val_unset_umethod_table(MethodTable *v, UMethodType t);
+void val_unset_method(Value *v, BMethodType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
 void val_kill(Value *v);
@@ -185,7 +219,7 @@ Value *vnative(NativeFn fn, const char *name);
 Value *vtruthy(Value *value);
 Value *vnull();
 Value *vnone();
-Value *verror(char* message, ...);
+Value *verror(char *message, ...);
 Value *vfunction(char **params, char *body_src, Env *closure);
 int is_number(Value *v);
 double to_double(Value *v);
@@ -193,8 +227,8 @@ char *as_c_string(Value *v);
 Value *to_c_string(Value *v);
 char *as_c_string_repr(Value *v);
 void print_value(Value *v);
-Value *call_function_with(Env* env, Value* fnval, Value *first, ...);
-Value *vopaque_extra(void *p, Value*(*dis)(Value*), const char *type);
+Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
+Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 
 // == Parsing
 

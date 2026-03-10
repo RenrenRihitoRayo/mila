@@ -422,6 +422,7 @@ Value* list_free(Value* self)
 
 Value *native_list_free(Env* e, int argc, Value** argv)
 {
+    (void)e;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
         verror("list.free(lst): List opaque pointer is needed.");
     Value** iter = ll_to_iter(argv[0]->v.opaque);
@@ -893,6 +894,7 @@ Value* range_free(Value* self) {
 
 Value *native_range(Env *env, int argc, Value **argv)
 {
+    (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
     {
         Range *r = (Range *)malloc(sizeof(Range));
@@ -953,7 +955,7 @@ Value *native_from_array(Env *env, int argc, Value **argv)
 
     for (int i = 0; i < size; i++)
     {
-        array->array[i] = argv[i];
+        array->array[i] = val_retain(argv[i]);
     }
 
     res->v.opaque = array;
@@ -1397,6 +1399,7 @@ Value *native_vfree(Env *env, int argc, Value **argv)
 Value *native_vars_local(Env *env, int argc, Value **argv)
 {
     (void)env;
+    (void)argv;
     if (argc != 0)
         return verror("vars.local(): Requires no arguments");
     for (Var *v = env->vars; v; v = v->next)
@@ -1414,6 +1417,7 @@ Value *native_vars_local(Env *env, int argc, Value **argv)
 Value *native_vars_global(Env *env, int argc, Value **argv)
 {
     (void)env;
+    (void)argv;
     if (argc != 0)
         return verror("vars.local(): Requires no arguments");
     for (Env *cur = env; cur; cur = cur->parent)
@@ -1431,37 +1435,17 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value *test_print(Value *self, Value *other)
-{
-    char *repr = as_c_string_repr(other);
-    Value *tmp = vnative(native_type_of, "typeof");
-    Value *type = call_function_with(NULL, tmp, other, NULL);
-    printf("%s tried to be added to %s of type %s\n", self->v.s, repr, type->v.s);
-    free(repr);
-    val_release(tmp);
-    return vnull();
-}
-
-// just test some stuff
-Value *native_test(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    (void)argc;
-    if (argc != 0)
-        return verror("test(v): Requires one argument!");
-    Value *v = vstring_dup("what");
-    val_allocate_table(v);
-    val_set_bmethod(v, BMethodAdd, test_print);
-    return v;
-}
-
 Value *native_free(Env *e, int argc, Value **argv)
 {
     (void)e;
+    (void)argc;
+    (void)argv;
     free(file_meta);
     free(dict_meta);
     free(array_meta);
-    return vnull();
+    free(list_meta);
+    free(range_meta);
+    return NULL;
 }
 
 // Minimal MiLa Builtins
@@ -1478,6 +1462,9 @@ void env_register_builtins(Env *g)
     // tell users what implementation it is
     // heres its canon since this is the base implementation.
     env_set_raw(g, "__mila_codename", vstring_dup("canon"));
+
+    
+    env_register_native(g, "__mila_canonical_builtins_free", native_free);
 
     file_meta = val_make_table();
     
@@ -1594,7 +1581,6 @@ void env_register_builtins(Env *g)
     env_register_native(g, "run", native_run);   // runs file
     env_register_native(g, "load", native_load); // loads dlls or so file
     env_register_native(g, "eval", native_eval); // runs string
-    env_register_native(g, "test", native_test); // runs string
 }
 
 void _mila_lib_init(Env *e)

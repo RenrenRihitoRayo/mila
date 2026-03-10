@@ -18,19 +18,14 @@
             return val;\
         if (val->type == T_RETURN)\
         {\
-            Value *res = val->v.opaque;\
+            Value *res = (Value*)val->v.opaque;\
             val_release(val);\
             return res;\
-        }\
-        if (val->type == T_ERROR)\
-        {\
-            fprintf(stderr, "= Error:v%s\n", val->v.message);\
-            exit(1);\
         }\
         return val;\
     }\
 
-#define IS_CONTROL(v) (v && v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN)
+#define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
 
 path_list *search_path;
 

@@ -55,6 +55,12 @@ MethodTable *dict_meta = NULL;
 MethodTable *list_meta = NULL;
 MethodTable *array_meta = NULL;
 MethodTable *range_meta = NULL;
+MethodTable *self_free_meta = NULL;
+
+Value* self_free(Value* self) {
+    val_release(self);
+    return NULL;
+}
 
 // ---------- Native functions ----------
 
@@ -834,7 +840,7 @@ Value *array_to_iter(Value *self)
     }
 
     Value **values = (Value **)malloc(sizeof(Value *) * (arr->size + 1));
-    values[arr->size + 1] = NULL;
+    values[arr->size] = NULL;
 
     int i = 0;
     for (int t = 0; t < arr->size; ++t)
@@ -875,13 +881,12 @@ size_t range_len(long start, long stop, long step)
 Value *range_to_iter(Value *self)
 {
     Range *data = (Range *)(self->v.opaque);
-    Value **v = (Value **)malloc(
-        sizeof(Value *) *
-        (range_len(data->start, data->end, data->step) + 1));
+    Value **v = (Value **)malloc(sizeof(Value *) * (range_len(data->start, data->end, data->step) + 1));
     long index = 0;
     for (long i = 0; i < data->end; i += data->step)
     {
-        v[index++] = vint(i);
+        Value* n = vint(i);
+        v[index++] = n;
     }
     v[index] = NULL;
     return vopaque(v);
@@ -901,6 +906,26 @@ Value *native_range(Env *env, int argc, Value **argv)
         r->start = 0;
         r->end = argv[0]->v.i;
         r->step = 1;
+        Value *res = vopaque_extra(r, NULL, MILA_LPREFIX "range");
+        val_set_table(res, range_meta);
+        return res;
+    }
+    if (argc == 2 && argv[0]->type == T_INT && argv[1]->type == T_INT)
+    {
+        Range *r = (Range *)malloc(sizeof(Range));
+        r->start = argv[0]->v.i;
+        r->end = argv[1]->v.i;
+        r->step = 1;
+        Value *res = vopaque_extra(r, NULL, MILA_LPREFIX "range");
+        val_set_table(res, range_meta);
+        return res;
+    }
+    if (argc == 3 && argv[0]->type == T_INT && argv[1]->type == T_INT && argv[2]->type == T_INT)
+    {
+        Range *r = (Range *)malloc(sizeof(Range));
+        r->start = argv[0]->v.i;
+        r->end = argv[1]->v.i;
+        r->step = argv[2]->v.i;
         Value *res = vopaque_extra(r, NULL, MILA_LPREFIX "range");
         val_set_table(res, range_meta);
         return res;
@@ -1117,7 +1142,7 @@ Value *free_array(Value *self)
     free(arr->array);
     free(arr);
 
-    return vnull();
+    return NULL;
 }
 
 Value *native_report(Env *env, int argc, Value **argv)
@@ -1490,6 +1515,10 @@ void env_register_builtins(Env *g)
     
     val_set_umethod_table(range_meta, UMethodToIter, range_to_iter);
     val_set_umethod_table(range_meta, UMethodFree, range_free);
+
+    self_free_meta = val_make_table();
+
+    val_set_umethod_table(self_free_meta, UMethodFree, self_free);
 
     // === Misc
     env_register_native(g, "range", native_range);

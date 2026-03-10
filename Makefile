@@ -1,5 +1,5 @@
 all: mila.c ml_builtins.c ml_dict.c mila.h
-	gcc -std=c99 -lm -Wall -o mila mila.c -fsanitize=address -g
+	gcc -std=c99 -lm -Wall -O3 -o mila mila.c
 
 bare: mila.c ml_builtins.c ml_dict.c mila.h
 	gcc -std=c99 -lm -Wall -o mila mila.c -D MILA_USE_SHARED
@@ -16,7 +16,7 @@ release: ml.c ml_builtins.c ml_dict.c ml.h
 
 clean:
 	rm mila
-	@for file in *.so; do \
+	for file in *.so; do \
 		[ -e "$$f" ] || continue; \
 		rm $${file}; \
 	done

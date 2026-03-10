@@ -357,7 +357,7 @@ char *as_c_string(Value *v)
         val_kill(str);
         return res;
     }
-    if (v->method_table && (!v->method_table[UMethodToRepr].is_binop) && v->method_table[UMethodFree].unary)
+    if (v->method_table && (!v->method_table[UMethodToRepr].is_binop) && v->method_table[UMethodToRepr].unary)
     {
         Value *str = v->method_table[UMethodToRepr].unary(v);
         char *res = strdup(str->v.s);
@@ -398,7 +398,7 @@ char *as_c_string(Value *v)
         our_asprintf(&buffer, "<native:%s at %p>", v->v.native->name ? v->v.native->name : "???", v->v.native->fn);
         break;
     case T_OPAQUE:
-        if (*v->type_name)
+        if (v->type_name)
             our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
         else
             our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
@@ -429,14 +429,14 @@ char *as_c_string_repr(Value *v)
     {
         return strdup("cnull");
     }
-    if (v->method_table && (!v->method_table[UMethodToRepr].is_binop) && v->method_table[UMethodFree].unary)
+    if (v->method_table && (!v->method_table[UMethodToRepr].is_binop) && v->method_table[UMethodToRepr].unary)
     {
         Value *str = v->method_table[UMethodToRepr].unary(v);
         char *res = strdup(str->v.s);
         val_kill(str);
         return res;
     }
-    if (v->method_table && (!v->method_table[UMethodToString].is_binop) && v->method_table[UMethodToString].unary)
+    if (v->method_table && (!v->method_table[UMethodToRepr].is_binop) && v->method_table[UMethodToRepr].unary)
     {
         Value *str = v->method_table[UMethodToString].unary(v);
         char *res = strdup(str->v.s);
@@ -485,7 +485,7 @@ char *as_c_string_repr(Value *v)
         our_asprintf(&buffer, "<native:%s at %p>", v->v.native->name ? v->v.native->name : "???", v->v.native->fn);
         break;
     case T_OPAQUE:
-        if (*v->type_name)
+        if (v->type_name)
             our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
         else
             our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
@@ -513,6 +513,10 @@ void print_value(Value *v)
 
 void print_value_repr(Value *v)
 {
+    if (!v) {
+        printf("cnull");
+        return;
+    }
     char *txt = as_c_string_repr(v);
     printf("%s", txt);
     free(txt);
@@ -529,6 +533,7 @@ void val_release(Value *v)
         if (v->method_table && !v->method_table[UMethodFree].is_binop && v->method_table[UMethodFree].unary)
         {
             v->method_table[UMethodFree].unary(v);
+            if (v->type_name) free(v->type_name);
             free(v);
             return;
         }
@@ -557,6 +562,7 @@ void val_release(Value *v)
         {
             if (v->v.native->name)
                 free(v->v.native->name);
+            free(v->v.native);
         }
         if (v->type_name)
             free(v->type_name);
@@ -568,17 +574,20 @@ void val_release(Value *v)
 
 void val_kill(Value *v)
 {
+    // printf("val_kill: "); print_value_repr(v); puts("");
     if (!v)
         return;
     if (v->method_table && !v->method_table[UMethodKill].is_binop && v->method_table[UMethodKill].unary)
     {
         v->method_table[UMethodKill].unary(v);
+        if (v->type_name) free(v->type_name);
         free(v);
         return;
     }
     if (v->method_table && !v->method_table[UMethodFree].is_binop && v->method_table[UMethodFree].unary)
     {
         v->method_table[UMethodFree].unary(v);
+        if (v->type_name) free(v->type_name);
         free(v);
         return;
     }
@@ -607,6 +616,7 @@ void val_kill(Value *v)
     {
         if (v->v.native->name)
             free(v->v.native->name);
+        free(v->v.native);
     }
     free(v->type_name);
     if (v->method_table && v->owns_table)
@@ -772,7 +782,7 @@ int env_set_raw(Env *e, const char *name, Value *val)
 {
     // assign to nearest visible frame that contains name, else set local
     /* try to set the name variable, makes debugging easier */
-    if (val->type == T_FUNCTION && val->v.fn->name == NULL)
+    if (val != NULL && val->type == T_FUNCTION && val->v.fn->name == NULL)
     {
         val->v.fn->name = strdup(name);
     }
@@ -791,6 +801,32 @@ int env_set_raw(Env *e, const char *name, Value *val)
     // not found, set locally
     env_set_local_raw(e, name, val);
     return 1;
+}
+
+void env_remove(Env *env, const char *name)
+{
+    if (!env || !env->vars)
+        return;
+
+    Var *prev = NULL;
+    Var *cur = env->vars;
+
+    while (cur)
+    {
+        if (strcmp(cur->name, name) == 0)
+        {
+            if (prev)
+                prev->next = cur->next;
+            else
+                env->vars = cur->next;
+            free(cur->name);
+            free(cur);
+            return;
+        }
+
+        prev = cur;
+        cur = cur->next;
+    }
 }
 
 int load_library(Env *env, const char *libpath)
@@ -917,8 +953,7 @@ int load_library(Env *env, const char *libpath)
 void env_register_native(Env *env, const char *name, NativeFn fn)
 {
     Value *nv = vnative(fn, name);
-    env_set_local(env, name, nv);
-    val_release(nv);
+    env_set_local_raw(env, name, nv);
 }
 
 // ---------- Parser/Evaluator that directly reads source and evaluates (no separate lexer) ----------
@@ -1364,9 +1399,7 @@ Value *eval_block(Src *s, Env *env)
             break;
 
         Value *st = eval_statement(s, frame);
-
-        if (last)
-            val_release(last);
+        val_release(last);
         last = st;
 
         if (IS_CONTROL(st))
@@ -1386,7 +1419,7 @@ Value* parse_subscript(Src* s, Env* e)
         return verror("Subscript was expected!");
     }
     
-    Value* res = parse_expr(s, e);
+    Value* res = eval_expr(s, e);
     
     if (!match_char(s, ']'))
     {
@@ -1414,8 +1447,7 @@ Value *eval_block_raw(Src *s, Env *frame)
             break;
         Value *st = eval_statement(s, frame);
 
-        if (last)
-            val_release(last);
+        val_release(last);
         last = st;
 
         if (IS_CONTROL(st))
@@ -2085,6 +2117,8 @@ Value *binary_op(Value *a, BMethodType op, Value *b)
                 return vint(ia << ib);
             if (op == BMethodRshift)
                 return vint(ia >> ib);
+            if (op == BMethodMod)
+                return vint(ia % ib);
         }
         return vnull();
     }
@@ -2445,7 +2479,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = NULL;
                 if (src_peek(s) == '{')
-                    res = eval_block(s, env);
+                    res = eval_block_raw(s, env);
                 else
                     res = eval_statement(s, env);
 
@@ -2474,7 +2508,7 @@ Value *eval_statement(Src *s, Env *env)
                         {
                             Value *res = NULL;
                             if (src_peek(s) == '{')
-                                res = eval_block(s, env);
+                                res = eval_block_raw(s, env);
                             else
                                 res = eval_statement(s, env);
 
@@ -2500,7 +2534,7 @@ Value *eval_statement(Src *s, Env *env)
                     Value *res = NULL;
                     skip_ws(s);
                     if (src_peek(s) == '{')
-                        res = eval_block(s, env);
+                        res = eval_block_raw(s, env);
                     else
                         res = eval_statement(s, env);
                     // check for return propagation
@@ -2544,18 +2578,19 @@ Value *eval_statement(Src *s, Env *env)
                 val_release(cond);
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
-                if (bod)
-                    val_release(bod);
+                val_release(bod);
                 bod = eval_block(s, env);
 
                 // --- Handle body result ---
                 if (bod->type == T_BREAK)
                 {
                     s->pos = body_end_pos;
+                    val_release(bod);
                     return vnull();
                 }
                 else if (bod->type == T_CONTINUE)
                 {
+                    val_release(bod);
                     s->pos = cond_start_pos;
                     continue;
                 }
@@ -2585,19 +2620,26 @@ Value *eval_statement(Src *s, Env *env)
             if (iter_obj->method_table && (!iter_obj->method_table[UMethodToIter].is_binop) && iter_obj->method_table[UMethodToIter].unary)
             {
                 Value *v = iter_obj->method_table[UMethodToIter].unary(iter_obj);
+                if (!v) {
+                    free(id);
+                    return verror("Iterable is NULL!");
+                }
                 value = v->v.opaque;
                 if (!value) {
                     free(id);
-                    return verror("Value returned by ");
+                    return verror("Value returned null!");
                 }
                 val_kill(v);
             }
             else
             {
                 free(id);
-                return verror("Type %s does not implement UMethodToIter", iter_obj->type_name ? iter_obj->type_name : MILA_TYPE_NAMES[iter_obj->type]);
+                Value* err =  verror("Type %s does not implement UMethodToIter", iter_obj->type_name ? iter_obj->type_name : MILA_TYPE_NAMES[iter_obj->type]);
+                val_release(iter_obj);
+                return err;
             }
             skip_ws(s);
+            val_release(iter_obj);
 
             uint64_t body_start_pos = s->pos;
             skip_block(s);
@@ -2613,14 +2655,20 @@ Value *eval_statement(Src *s, Env *env)
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
                 Env *frame = env_new(env);
-                env_set_local_raw(env, id, v);
+
+                env_set_local_raw(frame, id, v);
                 bod = eval_block_raw(s, frame);
+                val_release(v);
+                env_remove(frame, id);
+
                 env_free(frame);
                 // --- Handle body result ---
                 if (bod->type == T_BREAK)
                 {
                     s->pos = body_end_pos;
                     val_release(bod);
+                    free(value);
+                    free(id);
                     return vnull();
                 }
                 else if (bod->type == T_CONTINUE)
@@ -2635,6 +2683,8 @@ Value *eval_statement(Src *s, Env *env)
                     Value *res = bod->v.opaque;
                     val_release(bod);
                     s->pos = body_end_pos;
+                    free(value);
+                    free(id);
                     return res;
                 }
 
@@ -2642,7 +2692,8 @@ Value *eval_statement(Src *s, Env *env)
             }
             s->pos = body_end_pos;
             free(id);
-            return bod;
+            free(value);
+            return vnull();
         }
     }
     if (is_keyword_at(s, "block"))
@@ -2690,7 +2741,7 @@ Value *eval_statement(Src *s, Env *env)
     // expression statement
     Value *e = eval_expr(s, env);
     match_char(s, ';');
-    if (e && e->type == T_FUNCTION || e->type == T_NATIVE) {
+    if (e && (e->type == T_FUNCTION || e->type == T_NATIVE)) {
         Value* res = call_function_with(env, e, NULL);
         return res;
     }
@@ -2930,13 +2981,7 @@ int main(int argc, char **argv)
 
         free(src_text);
 
-        if (is_builtins)
-        {
-            val_release(call_function_str(g, "array.free", array, NULL));
-            call_function_str(g, "__mila_canonical_builtins_free", NULL);
-        }
-
-        env_free(g);
+        env_kill(g);
     }
     else
     {

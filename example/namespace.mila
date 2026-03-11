@@ -1,8 +1,9 @@
 
-var d = dict(
-    "name", "Darren chase papa",
-    "age", 17,
-    "greet", fn(name) {println("Hello, " + name + "!"); }
-);
+namespace test {
+    var .data = dict(
+        "name", "Ez",
+        "age", 17
+    );
+}
 
-println((d["greet"])("Darren"));
+println(test.data["name"], test.data["age"]);

@@ -2042,6 +2042,7 @@ Value *eval_primary(Src *s, Env *env)
         {
             // variable lookup
             Value *vv = env_get(env, id);
+            printf("    ?? read %s\n", id);
             free(id);
             if (!vv)
             {

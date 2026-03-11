@@ -103,8 +103,13 @@ const char *MILA_TYPE_NAMES[] = {
     "arg_end",
 };
 
+// each of these methods may be reffered to as
+// type<method name>
+// like array<UMethodToIter>
+// or simple UMethodToIter
 typedef enum __attribute__((packed))
 {
+    // value op value syntax
     BMethodAdd,
     BMethodSub,
     BMethodMul,
@@ -121,13 +126,20 @@ typedef enum __attribute__((packed))
     BMethodAnd,
     BMethodOr,
     BMethodDefault,
-    BMethodGetItem,
-    TMethodSetItem,
-    UMethodFree,
-    UMethodKill,
+
+    BMethodGetItem, // name[...] syntax
+    TMethodSetItem, // var name[...] or set name[...] syntax
+
+    // when converting objects into strings
     UMethodToString,
     UMethodToRepr,
+
+    // foreach syntax
     UMethodToIter,
+
+    UMethodFree,
+    UMethodKill,
+
     MethodTotalCount
 } MethodType;
 

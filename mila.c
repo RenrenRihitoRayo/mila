@@ -91,7 +91,7 @@ void float_to_string(float f, char *buf, size_t bufsize)
 
 Value *val_new(ValueType t)
 {
-    Value *p = malloc(sizeof(Value));
+    Value *p = mila_malloc(sizeof(Value));
     p->type = t;
     p->refcount = 1;
     p->type_name = NULL;
@@ -105,13 +105,13 @@ Value *val_new(ValueType t)
 
 void val_allocate_table(Value *v)
 {
-    v->method_table = (MethodTable *)malloc(sizeof(MethodTable) * MethodTotalCount);
+    v->method_table = (MethodTable *)mila_malloc(sizeof(MethodTable) * MethodTotalCount);
     memset(v->method_table, 0, sizeof(MethodTable) * MethodTotalCount);
 }
 
 MethodTable *val_make_table(void)
 {
-    MethodTable *t = (MethodTable *)malloc(sizeof(MethodTable) * MethodTotalCount);
+    MethodTable *t = (MethodTable *)mila_malloc(sizeof(MethodTable) * MethodTotalCount);
     memset(t, 0, sizeof(MethodTable) * MethodTotalCount);
     return t;
 }
@@ -191,7 +191,7 @@ Value *verror(char *fmt, ...)
         return NULL;
     }
 
-    char *buf = malloc(len + 1);
+    char *buf = mila_malloc(len + 1);
     if (!buf)
     {
         va_end(ap);
@@ -245,7 +245,7 @@ Value *vopaque(void *p)
 Value *vnative(NativeFn fn, const char *name)
 {
     Value *v = val_new(T_NATIVE);
-    v->v.native = (NativeFunctionV *)malloc(sizeof(NativeFunctionV));
+    v->v.native = (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
     v->v.native->fn = fn;
     v->v.native->userdata = NULL;
     v->v.native->name = name ? strdup(name) : NULL;
@@ -628,7 +628,7 @@ void val_kill(Value *v)
 
 Env *env_new(Env *parent)
 {
-    Env *e = malloc(sizeof(Env));
+    Env *e = mila_malloc(sizeof(Env));
     e->vars = NULL;
     e->parent = parent;
     return e;
@@ -722,7 +722,7 @@ void env_set_local(Env *e, const char *name, Value *val)
     {
         val->v.fn->name = strdup(name);
     }
-    Var *nv = malloc(sizeof(Var));
+    Var *nv = mila_malloc(sizeof(Var));
     nv->name = strdup(name);
     nv->value = val_retain(val);
     nv->next = e->vars;
@@ -771,7 +771,7 @@ void env_set_local_raw(Env *e, const char *name, Value *val)
     {
         val->v.fn->name = strdup(name);
     }
-    Var *nv = malloc(sizeof(Var));
+    Var *nv = mila_malloc(sizeof(Var));
     nv->name = strdup(name);
     nv->value = val;
     nv->next = e->vars;
@@ -960,7 +960,7 @@ void env_register_native(Env *env, const char *name, NativeFn fn)
 
 Src *src_new(const char *s)
 {
-    Src *S = malloc(sizeof(Src));
+    Src *S = mila_malloc(sizeof(Src));
     S->len = strlen(s);
     S->src = strdup(s);
     S->pos = 0;
@@ -1173,7 +1173,7 @@ char *parse_ident(Src *s)
         src_get(s);
     int en = s->pos;
     int n = en - st;
-    char *res = malloc(n + 1);
+    char *res = mila_malloc(n + 1);
     memcpy(res, s->src + st, n);
     res[n] = 0;
 
@@ -1235,7 +1235,7 @@ Value *parse_number(Src *s)
     }
     else
     {
-        char *buf = malloc(len + 1);
+        char *buf = mila_malloc(len + 1);
         memcpy(buf, s->src + st, len);
         buf[len] = 0;
         Value *r;
@@ -1258,7 +1258,7 @@ Value *parse_string(Src *s)
 
     size_t cap = 256;
     size_t len = 0;
-    char *buf = malloc(cap);
+    char *buf = mila_malloc(cap);
     if (!buf)
         return NULL; // check allocation
 
@@ -1345,7 +1345,7 @@ int is_keyword_at(Src *s, const char *kw)
 char *dup_substr(Src *s, int a, int b)
 {
     int n = b - a;
-    char *r = malloc(n + 1);
+    char *r = mila_malloc(n + 1);
     memcpy(r, s->src + a, n);
     r[n] = 0;
     return r;
@@ -1361,7 +1361,7 @@ char **parse_param_list(Src *s)
     // empty
     if (match_char(s, ')'))
     {
-        char **p = malloc(sizeof(char *));
+        char **p = mila_malloc(sizeof(char *));
         p[0] = NULL;
         return p;
     }
@@ -1487,7 +1487,7 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
     va_end(ap);
 
     /* Allocate array (+1 if you want NULL terminator preserved) */
-    Value **args = malloc((count + 1) * sizeof(Value *));
+    Value **args = mila_malloc((count + 1) * sizeof(Value *));
     if (!args)
         return NULL;
 
@@ -1575,7 +1575,7 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
     va_end(ap);
 
     /* Allocate array (+1 if you want NULL terminator preserved) */
-    Value **args = malloc((count + 1) * sizeof(Value *));
+    Value **args = mila_malloc((count + 1) * sizeof(Value *));
     if (!args)
         return NULL;
 
@@ -1663,7 +1663,7 @@ Value **make_args(Value *first, ...)
     }
     va_end(ap);
 
-    Value **args = malloc((count) * sizeof(Value *));
+    Value **args = mila_malloc((count) * sizeof(Value *));
     if (!args)
         return NULL;
 
@@ -1848,7 +1848,7 @@ Value *eval_primary(Src *s, Env *env)
         size_t end = s->pos - 1; // avoid the closing }
         skip_ws(s);
 
-        char *buffer = (char *)malloc(sizeof(char) * (end - start) + 1);
+        char *buffer = (char *)mila_malloc(sizeof(char) * (end - start) + 1);
         memcpy(buffer, s->src + start, end - start);
 
         return vstring_take(buffer);
@@ -1901,7 +1901,7 @@ Value *eval_primary(Src *s, Env *env)
         if (i > s->len)
             i = s->len;
         int blen = i - start;
-        char *body = malloc(blen + 1);
+        char *body = mila_malloc(blen + 1);
         memcpy(body, s->src + start, blen);
         body[blen] = 0;
         s->pos = i;
@@ -2029,7 +2029,7 @@ Value *eval_primary(Src *s, Env *env)
                 Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
                 val_release(index);
                 free(id);
-                return res;
+                return val_retain(res);
             }
             else
             {
@@ -2103,7 +2103,7 @@ Value *binary_op(Value *a, MethodType op, Value *b)
     if (op == BMethodAdd && a->type == T_STRING && b->type == T_STRING)
     {
         size_t la = strlen(a->v.s), lb = strlen(b->v.s);
-        char *buf = malloc(la + lb + 1);
+        char *buf = mila_malloc(la + lb + 1);
         memcpy(buf, a->v.s, la);
         memcpy(buf + la, b->v.s, lb);
         buf[la + lb] = 0;
@@ -2115,7 +2115,7 @@ Value *binary_op(Value *a, MethodType op, Value *b)
         char *stringyfied = as_c_string(b);
         if (stringyfied)
         {
-            char *buf = malloc(la + strlen(stringyfied) + 1);
+            char *buf = mila_malloc(la + strlen(stringyfied) + 1);
             if (!buf)
                 return vnull();
             strcpy(buf, a->v.s);
@@ -2131,7 +2131,7 @@ Value *binary_op(Value *a, MethodType op, Value *b)
         char *stringyfied = as_c_string(a);
         if (stringyfied)
         {
-            char *buf = malloc(la + strlen(stringyfied) + 1);
+            char *buf = mila_malloc(la + strlen(stringyfied) + 1);
             if (!buf)
                 return vnull();
             strcpy(buf, stringyfied);
@@ -2431,6 +2431,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 val_release(index);
                 Value *ret = verror("%s cannot be subscripted as it is cnull", id);
+                val_release(v);
                 free(id);
                 return ret;
             }
@@ -2438,14 +2439,19 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
+                val_release(obj);
+                val_release(v);
                 free(id);
                 return res;
             }
             else
             {
                 val_release(index);
+                val_release(v);
                 free(id);
-                return verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPE(obj));
+                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPE(obj));
+                val_release(obj);
+                return res;
             }
         }
 
@@ -2504,6 +2510,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 val_release(index);
                 Value *ret = verror("%s cannot be subscripted as it is cnull", id);
+                val_release(v);
                 free(id);
                 return ret;
             }
@@ -2511,14 +2518,18 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
+                val_release(v);
                 free(id);
                 return res;
             }
             else
             {
                 val_release(index);
+                val_release(v);
                 free(id);
-                return verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPE(obj));
+                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPE(obj));
+                val_release(obj);
+                return res;
             }
         }
         if (v && v->type == T_FUNCTION)
@@ -2745,29 +2756,31 @@ Value *eval_statement(Src *s, Env *env)
 
                 env_free(frame);
                 // --- Handle body result ---
-                if (bod->type == T_BREAK)
-                {
-                    s->pos = body_end_pos;
-                    val_release(bod);
-                    free(value);
-                    free(id);
-                    return vnull();
-                }
-                else if (bod->type == T_CONTINUE)
-                {
-                    s->pos = body_start_pos;
-                    if (bod)
+                if (bod) {
+                    if (bod->type == T_BREAK)
+                    {
+                        s->pos = body_end_pos;
                         val_release(bod);
-                    continue;
-                }
-                else if (bod->type == T_RETURN)
-                {
-                    Value *res = bod->v.opaque;
-                    val_release(bod);
-                    s->pos = body_end_pos;
-                    free(value);
-                    free(id);
-                    return res;
+                        free(value);
+                        free(id);
+                        return vnull();
+                    }
+                    else if (bod->type == T_CONTINUE)
+                    {
+                        s->pos = body_start_pos;
+                        if (bod)
+                            val_release(bod);
+                        continue;
+                    }
+                    else if (bod->type == T_RETURN)
+                    {
+                        Value *res = bod->v.opaque;
+                        val_release(bod);
+                        s->pos = body_end_pos;
+                        free(value);
+                        free(id);
+                        return res;
+                    }
                 }
 
                 val_release(bod);
@@ -2866,7 +2879,7 @@ f:
 Value *vfunction(char **params, char *body_src, Env *closure)
 {
     Value *v = val_new(T_FUNCTION);
-    v->v.fn = (FunctionV *)malloc(sizeof(FunctionV));
+    v->v.fn = (FunctionV *)mila_malloc(sizeof(FunctionV));
     v->v.fn->params = params;
     v->v.fn->body_src = body_src;
     v->v.fn->closure = closure;
@@ -2915,7 +2928,7 @@ int run_file(char *name, Env *env)
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    src_text = malloc(size + 1);
+    src_text = mila_malloc(size + 1);
     fread(src_text, 1, size, f);
     src_text[size] = 0;
     fclose(f);
@@ -3065,7 +3078,7 @@ int main(int argc, char **argv)
         fseek(f, 0, SEEK_END);
         long size = ftell(f);
         fseek(f, 0, SEEK_SET);
-        src_text = malloc(size + 1);
+        src_text = mila_malloc(size + 1);
         fread(src_text, 1, size, f);
         src_text[size] = 0;
         fclose(f);

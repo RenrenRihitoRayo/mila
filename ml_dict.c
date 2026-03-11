@@ -42,13 +42,25 @@ static unsigned long hash_string(const char *str)
     return hash;
 }
 
+static unsigned long hash_value(Value* val)
+{
+    char* og = as_c_string_repr(val);
+    char* str = og;
+    unsigned long hash = 5381;
+    int c;
+    while ((c = *str++))
+        hash = ((hash << 5) + hash) + c;
+    free(og);
+    return hash;
+}
+
 static DictEntry *dict_entry_create(const char *key, Value *value)
 {
-    DictEntry *entry = (DictEntry *)malloc(sizeof(DictEntry));
+    DictEntry *entry = (DictEntry *)mila_malloc(sizeof(DictEntry));
     if (!entry)
         return NULL;
     entry->key = strdup(key);
-    entry->value = value;
+    entry->value = val_retain(value);
     entry->next = NULL;
     return entry;
 }
@@ -64,7 +76,7 @@ static void dict_entry_free(DictEntry *entry)
 
 Dict *dict_create()
 {
-    Dict *dict = (Dict *)malloc(sizeof(Dict));
+    Dict *dict = (Dict *)mila_malloc(sizeof(Dict));
     if (!dict)
         return NULL;
     dict->capacity = INITIAL_CAPACITY;
@@ -103,7 +115,7 @@ static void dict_resize(Dict *dict)
     dict->capacity = new_capacity;
 }
 
-int dict_set(Dict *dict, const char *key, Value *value)
+int dict_set(Dict *dict, Value *key, Value *value)
 {
     if (!dict || !key)
         return 0;
@@ -113,54 +125,67 @@ int dict_set(Dict *dict, const char *key, Value *value)
         dict_resize(dict);
     }
 
-    unsigned long index = hash_string(key) % dict->capacity;
+    char* key_str = as_c_string_repr(key);
+
+    unsigned long index = hash_string(key_str) % dict->capacity;
     DictEntry *entry = dict->buckets[index];
 
     while (entry)
     {
-        if (strcmp(entry->key, key) == 0)
+        if (strcmp(entry->key, key_str) == 0)
         {
+            val_release(entry->value);
             entry->value = val_retain(value);
+            free(key_str);
             return 1; // updated existing
         }
         entry = entry->next;
     }
 
-    DictEntry *new_entry = dict_entry_create(key, val_retain(value));
-    if (!new_entry)
+    DictEntry *new_entry = dict_entry_create(key_str, value);
+    if (!new_entry) {
+        free(key_str);
         return 0;
+    }
     new_entry->next = dict->buckets[index];
     dict->buckets[index] = new_entry;
     dict->size++;
+    free(key_str);
     return 1; // new insertion
 }
 
-Value *dict_get(Dict *dict, const char *key)
+Value *dict_get(Dict *dict, Value *key)
 {
     if (!dict || !key)
         return NULL;
-    unsigned long index = hash_string(key) % dict->capacity;
+    char* key_str = as_c_string_repr(key);
+    unsigned long index = hash_string(key_str) % dict->capacity;
     DictEntry *entry = dict->buckets[index];
     while (entry)
     {
-        if (strcmp(entry->key, key) == 0)
+        if (strcmp(entry->key, key_str) == 0) {
+            free(key_str);
             return entry->value;
+        }
         entry = entry->next;
     }
+    free(key_str);
     return NULL;
 }
 
-int dict_remove(Dict *dict, const char *key)
+int dict_remove(Dict *dict, Value *key)
 {
     if (!dict || !key)
         return 0;
-    unsigned long index = hash_string(key) % dict->capacity;
+
+    char* key_str = as_c_string_repr(key);
+    unsigned long index = hash_string(key_str) % dict->capacity;
     DictEntry *entry = dict->buckets[index];
     DictEntry *prev = NULL;
 
     while (entry)
     {
-        if (strcmp(entry->key, key) == 0)
+        if (strcmp(entry->key, key_str) == 0)
         {
             if (prev)
                 prev->next = entry->next;
@@ -168,11 +193,13 @@ int dict_remove(Dict *dict, const char *key)
                 dict->buckets[index] = entry->next;
             dict_entry_free(entry);
             dict->size--;
+            free(key_str);
             return 1;
         }
         prev = entry;
         entry = entry->next;
     }
+    free(key_str);
     return 0;
 }
 
@@ -198,10 +225,10 @@ Value *dict_display(Value *self)
 {
     Dict *dict = (Dict *)self->v.opaque;
     if (!dict || !dict->buckets)
-        return vstring_dup("Dict{}");
+        return vstring_dup("dict()");
 
     char *buffer = NULL;
-    our_asprintf(&buffer, "Dict{");
+    our_asprintf(&buffer, "dict(");
 
     typedef struct
     {
@@ -211,7 +238,7 @@ Value *dict_display(Value *self)
 
     KVPair *entries = NULL;
     size_t count = 0, capacity = 16;
-    entries = malloc(capacity * sizeof(KVPair));
+    entries = mila_malloc(capacity * sizeof(KVPair));
     if (!entries)
         return NULL;
 
@@ -243,13 +270,13 @@ Value *dict_display(Value *self)
     {
         char *val_str = as_c_string_repr(entries[i - 1].value);
         if (i > 1)
-            our_asprintf(&buffer, "%s = %s, ", entries[i - 1].key, val_str);
+            our_asprintf(&buffer, "%s, %s, ", entries[i - 1].key, val_str);
         else
-            our_asprintf(&buffer, "%s = %s", entries[i - 1].key, val_str);
+            our_asprintf(&buffer, "%s, %s", entries[i - 1].key, val_str);
         free(val_str);
     }
 
-    our_asprintf(&buffer, "}");
+    our_asprintf(&buffer, ")");
     free(entries);
     return vstring_take(buffer);
 }

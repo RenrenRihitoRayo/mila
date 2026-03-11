@@ -15,7 +15,7 @@ typedef struct LinkedList {
 } LinkedList;
 
 LinkedList* ll_create() {
-    LinkedList* list = malloc(sizeof(LinkedList));
+    LinkedList* list = mila_malloc(sizeof(LinkedList));
     if (!list) return NULL;
     list->head = NULL;
     list->tail = NULL;
@@ -36,7 +36,7 @@ void ll_free(LinkedList* list) {
 
 void ll_append(LinkedList* list, Value* val) {
     if (!list) return;
-    LLNode* node = malloc(sizeof(LLNode));
+    LLNode* node = mila_malloc(sizeof(LLNode));
     if (!node) return;
     node->value = val;
     node->next = NULL;
@@ -59,7 +59,7 @@ void ll_insert(LinkedList* list, size_t index, Value* val) {
         return;
     }
 
-    LLNode* node = malloc(sizeof(LLNode));
+    LLNode* node = mila_malloc(sizeof(LLNode));
     if (!node) return;
     node->value = val;
 
@@ -113,7 +113,7 @@ Value* ll_pop(LinkedList* list, size_t index) {
 
 Value** ll_to_iter(LinkedList* list) {
     if (!list) return NULL;
-    Value** arr = malloc((list->size + 1) * sizeof(Value*));
+    Value** arr = mila_malloc((list->size + 1) * sizeof(Value*));
     if (!arr) return NULL;
     LLNode* cur = list->head;
     size_t i = 0;

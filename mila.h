@@ -292,3 +292,9 @@ int run_file(char *name, Env *env);
 double get_unix_timestamp();
 char *read_input(void);
 int load_library(Env *env, const char *libpath);
+
+void* mila_malloc(size_t size) {
+    void* ptr = malloc(size);
+    memset(ptr, 0, size);
+    return ptr;
+}

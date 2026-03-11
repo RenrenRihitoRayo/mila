@@ -92,7 +92,7 @@ Value *vstring_slice(const char *src, size_t start, size_t len)
     if (start + len > n)
         len = n - start;
 
-    char *buf = malloc(len + 1);
+    char *buf = mila_malloc(len + 1);
     if (!buf)
         return vnull();
 
@@ -108,7 +108,7 @@ Value *vstring_index(const char *src, size_t index)
     if (index >= n)
         return vnull();
 
-    char *buf = malloc(2);
+    char *buf = mila_malloc(2);
     if (!buf)
         return vnull();
 
@@ -140,7 +140,7 @@ Value *vstring_replace(const char *src,
 
     // Allocate output buffer
     size_t new_len = src_len + count * (r_len - n_len);
-    char *buf = malloc(new_len + 1);
+    char *buf = mila_malloc(new_len + 1);
     if (!buf)
         return vnull();
 
@@ -174,7 +174,7 @@ char *read_input(void)
 {
     size_t bufsize = 64; // initial buffer size
     size_t len = 0;      // number of chars read
-    char *buffer = malloc(bufsize);
+    char *buffer = mila_malloc(bufsize);
     if (!buffer)
     {
         fprintf(stderr, "read_input: Allocation failed.\n");
@@ -232,7 +232,7 @@ Value *native_pop_end(Env *env, int argc, Value **argv)
     char ch = *(raw_string + strlen(raw_string) - 1); // get last char
 
     uint64_t size = strlen(raw_string) - 1;
-    char *copy = (char *)malloc(sizeof(char) * size);
+    char *copy = (char *)mila_malloc(sizeof(char) * size);
     memcpy(copy, raw_string, size);
 
     free(argv[0]->v.s);
@@ -724,7 +724,7 @@ Value *native_fread(Env *env, int argc, Value **argv)
     if (n <= 0)
         return vstring_dup("");
 
-    char *buf = malloc(n + 1);
+    char *buf = mila_malloc(n + 1);
     if (!buf)
         return vnull();
 
@@ -839,7 +839,7 @@ Value *array_to_iter(Value *self)
         return verror("array<UMethodToIter>: null array data");
     }
 
-    Value **values = (Value **)malloc(sizeof(Value *) * (arr->size + 1));
+    Value **values = (Value **)mila_malloc(sizeof(Value *) * (arr->size + 1));
     values[arr->size] = NULL;
 
     int i = 0;
@@ -881,7 +881,7 @@ size_t range_len(long start, long stop, long step)
 Value *range_to_iter(Value *self)
 {
     Range *data = (Range *)(self->v.opaque);
-    Value **v = (Value **)malloc(sizeof(Value *) * (range_len(data->start, data->end, data->step) + 1));
+    Value **v = (Value **)mila_malloc(sizeof(Value *) * (range_len(data->start, data->end, data->step) + 1));
     long index = 0;
     for (long i = 0; i < data->end; i += data->step)
     {
@@ -902,7 +902,7 @@ Value *native_range(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
     {
-        Range *r = (Range *)malloc(sizeof(Range));
+        Range *r = (Range *)mila_malloc(sizeof(Range));
         r->start = 0;
         r->end = argv[0]->v.i;
         r->step = 1;
@@ -912,7 +912,7 @@ Value *native_range(Env *env, int argc, Value **argv)
     }
     if (argc == 2 && argv[0]->type == T_INT && argv[1]->type == T_INT)
     {
-        Range *r = (Range *)malloc(sizeof(Range));
+        Range *r = (Range *)mila_malloc(sizeof(Range));
         r->start = argv[0]->v.i;
         r->end = argv[1]->v.i;
         r->step = 1;
@@ -922,7 +922,7 @@ Value *native_range(Env *env, int argc, Value **argv)
     }
     if (argc == 3 && argv[0]->type == T_INT && argv[1]->type == T_INT && argv[2]->type == T_INT)
     {
-        Range *r = (Range *)malloc(sizeof(Range));
+        Range *r = (Range *)mila_malloc(sizeof(Range));
         r->start = argv[0]->v.i;
         r->end = argv[1]->v.i;
         r->step = argv[2]->v.i;
@@ -952,9 +952,9 @@ Value *native_new_array(Env *env, int argc, Value **argv)
     }
 
     Value *res = val_new(T_OPAQUE);
-    Array *array = malloc(sizeof(Array));
+    Array *array = mila_malloc(sizeof(Array));
     array->size = size;
-    array->array = malloc(sizeof(Value *) * size);
+    array->array = mila_malloc(sizeof(Value *) * size);
 
     for (int i = 0; i < size; i++)
     {
@@ -974,9 +974,9 @@ Value *native_from_array(Env *env, int argc, Value **argv)
     int size = argc;
 
     Value *res = val_new(T_OPAQUE);
-    Array *array = malloc(sizeof(Array));
+    Array *array = mila_malloc(sizeof(Array));
     array->size = size;
-    array->array = malloc(sizeof(Value *) * size);
+    array->array = mila_malloc(sizeof(Value *) * size);
 
     for (int i = 0; i < size; i++)
     {
@@ -1295,9 +1295,9 @@ Value *native_eval(Env *env, int argc, Value **argv)
 Value *native_new_dict(Env *env, int argc, Value **argv)
 {
     (void)env;
-    if (argc % 2 != 0 || argc == 0)
+    if (((argc % 2) != 0) && argc != 0)
     {
-        return verror("dict(...): Needs even number of arguments! Or no arguments.");
+        return verror("dict(...): Provide even number of arguments or none at all! Got %i.", argc);
     }
 
     Dict *d = dict_create();
@@ -1306,14 +1306,14 @@ Value *native_new_dict(Env *env, int argc, Value **argv)
     {
         Value *key = argv[i++];
         Value *value = argv[i++];
-        dict_set(d, key->v.s, value);
+        dict_set(d, key, value);
     }
 
     if (d)
     {
         Value *v = vopaque(d);
         val_set_table(v, dict_meta);
-        return v;
+        return val_retain(v);
     }
     return verror("couldnt make a dict.");
 }
@@ -1326,7 +1326,7 @@ Value *native_set_dict(Env *env, int argc, Value **argv)
         return verror("invalid number of arguments given or incorrect types.");
     }
 
-    dict_set(argv[0]->v.opaque, argv[1]->v.s, argv[2]);
+    dict_set(argv[0]->v.opaque, argv[1], val_retain(argv[2]));
     return vnull();
 }
 
@@ -1338,24 +1338,20 @@ Value *native_get_dict(Env *env, int argc, Value **argv)
         return verror("invalid number of arguments given or incorrect types.");
     }
 
-    Value *v = dict_get(argv[0]->v.opaque, argv[1]->v.s);
+    Value *v = dict_get(argv[0]->v.opaque, argv[1]);
     return v ? v : vnull();
 }
 
 Value *set_dict(Value* self, Value* name, Value* val)
 {
-    Value* v = dict_get(self->v.opaque, name->v.s);
-    if (v) {
-        val_release(v);
-    }
-    dict_set(self->v.opaque, name->v.s, val);
+    dict_set(self->v.opaque, name, val);
     return vnull();
 }
 
 Value *get_dict(Value* self, Value* name)
 {
-    Value *v = dict_get(self->v.opaque, name->v.s);
-    return val_retain(v);
+    Value *v = dict_get(self->v.opaque, name);
+    return v;
 }
 
 Value *native_rem_dict(Env *env, int argc, Value **argv)
@@ -1366,7 +1362,7 @@ Value *native_rem_dict(Env *env, int argc, Value **argv)
         return verror("invalid number of arguments given or incorrect types.");
     }
 
-    dict_remove(argv[0]->v.opaque, argv[1]->v.s);
+    dict_remove(argv[0]->v.opaque, argv[1]);
     return vnull();
 }
 

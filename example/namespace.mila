@@ -1,14 +1,8 @@
-namespace test {
-    set .greet = fn(name) {
-        println("Hello, " + name + "!");
-    };
-}
 
 var d = dict(
-    "name", "Darren",
-    "age",  17
+    "name", "Darren chase papa",
+    "age", 17,
+    "greet", fn(name) {println("Hello, " + name + "!"); }
 );
 
-println(d["name"]);
-var d["name"] = "Edward";
-println(d["name"]);
+println((d["greet"])("Darren"));

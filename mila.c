@@ -2881,11 +2881,6 @@ Value *eval_statement(Src *s, Env *env)
     // expression statement
     Value *e = eval_expr(s, env);
     match_char(s, ';');
-    if (e && (e->type == T_FUNCTION || e->type == T_NATIVE))
-    {
-        Value *res = call_function_with(env, e, NULL);
-        return res;
-    }
     return e;
 }
 

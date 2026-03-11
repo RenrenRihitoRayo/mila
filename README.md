@@ -64,10 +64,10 @@ or you will be held acountable for it.
 Make sure your fork of MiLa still
 follows this specs defined bellow.
 <br><br>
-You may add features but never remove core
-features. Such as changing syntax of while loops.
+You may add features but never modify syntax.
+Such as changing syntax of while loops.
 
-## Keywords (13)
+## Keywords (18 total)
 
 * if
 * elif
@@ -82,8 +82,30 @@ features. Such as changing syntax of while loops.
 * while
 * break
 * continue
+* cnull
+* true
+* false
+* null
+* none
 
 ## Examples
+
+* Operators
+
+|      Method      | Operation/Statement |
+|-----------------:|:-------------------:|
+|    BMethodAdd    |        a +  b       |
+|    BMethodSub    |        a -  b       |
+|    BMethodMul    |        a *  b       |
+|    BMethodAdd    |        a /  b       |
+|  BMethodRshift   |        a >> b       |
+|  BMethodLshift   |        a << b       |
+|    BMethodOr     |        a \|\| b       |
+|    BMethodAnd    |        a && b       |
+|  BMethodDefault  |        a ?? b       |
+|  BMethodGetItem  |         a[b]        |
+|  BMethodSetItem  |   var a[b] = c;     |
+|  BMethodSetItem  |   set a[b] = c;     |
 
 * Assignment
 
@@ -180,6 +202,27 @@ elif (cond)
 else ...;
 ```
 
+* Subscripting
+
+```
+var a = array.from("hello", 42, 138);
+// hello 42 138
+println(a[0], a[1], a[2]);
+
+var d = dict(
+    "name", "Ezha",
+    "age", 17,
+    "addresses", dict(
+        0, "city 1",
+        1, "city 2"
+    )
+);
+
+println(d["name"], d["age"]);
+println((d["addresses"])[0]);
+println((d["addresses"])[1]);
+```
+
 ## Example of using MiLa (in C)
 
 ```C
@@ -211,7 +254,6 @@ int main(void) {
     env_free(e);
     return 0;
 }
-
 ```
 
 ### Or with a file
@@ -249,7 +291,7 @@ Value* hello(Env* e, int argc, Value** argv) {
     return vnull();
 }
 
-// Ootional init function
+// Optional init function
 void _mila_lib_init(Env* e) {
     (void)e;
     printf("Lib init!");
@@ -278,7 +320,7 @@ const NativeEntry lib_function_entries[] = {
 
 If the pointer is already owned
 
-* vstrinf_dup(char*)
+* vstrinf_dup(const char*)
 
 Used with const char* also duplicating strings.
 
@@ -314,7 +356,7 @@ struct {
 
 ## How MiLa Manages Memory
 
-MiLa uses a refcount system for managinf memory.
+MiLa uses a refcount system for managing memory.
 Particularly the functions `val_retain`, `val_release`, and
 `val_kill`.
 

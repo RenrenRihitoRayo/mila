@@ -1835,10 +1835,9 @@ Value *eval_primary(Src *s, Env *env)
     {
         Value *v = eval_block(s, env);
         skip_ws(s);
+        match_char(s, '}');
 
         HANDLE_CONTROL(v);
-
-        return v;
     }
     if (c == '!' && s->src[s->pos + 1] == '{')
     {
@@ -2042,7 +2041,9 @@ Value *eval_primary(Src *s, Env *env)
         {
             // variable lookup
             Value *vv = env_get(env, id);
+#ifdef MILA_DEBUG
             printf("    ?? read %s\n", id);
+#endif
             free(id);
             if (!vv)
             {

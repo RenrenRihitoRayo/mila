@@ -10,7 +10,7 @@ bare: mila.c ml_builtins.c ml_dict.c mila.h
 termux:
 	gcc -fsanitize=address -lm -Wl,--dynamic-linker=~/../usr/bin/llvm-symbolizer mila.c -o mila
 
-release: ml.c ml_builtins.c ml_dict.c ml.h
+release: mila.c ml_builtins.c ml_dict.c mila.h
 	gcc -std=c99 -lm -O3 -ffast-math -o mila mila.c
 	strip mila
 

@@ -9,5 +9,10 @@ while (i > 0) {
 var end = get_time() - start;
 println("Time: " + end + "s");
 
+// On Android
 // 5.1 seconds~ on -O0 build
 // 2 seconds~ on -O3 build
+
+// On Arch Linux
+// 0.8 seconds~ on -O0 build
+// 0.4 seconds~ on -O3 build

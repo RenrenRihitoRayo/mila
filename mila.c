@@ -1394,6 +1394,23 @@ char **parse_param_list(Src *s)
     return arr;
 }
 
+Value *parse_subscript(Src *s, Env *e)
+{
+    if (!match_char(s, '['))
+    {
+        return verror("Subscript was expected!");
+    }
+
+    Value *res = eval_expr(s, e);
+
+    if (!match_char(s, ']'))
+    {
+        return verror("Closing square bracket was expected!");
+    }
+
+    return res;
+}
+
 // parse block: {...}
 Value *eval_block(Src *s, Env *env)
 {
@@ -1412,7 +1429,6 @@ Value *eval_block(Src *s, Env *env)
             break;
         if (match_char(s, '}'))
             break;
-
         Value *st = eval_statement(s, frame);
         val_release(last);
         last = st;
@@ -1420,28 +1436,12 @@ Value *eval_block(Src *s, Env *env)
         if (IS_CONTROL(st))
         {
             env_free(frame);
+            if (st->type == T_RETURN) return st;
             HANDLE_CONTROL(st);
         }
     }
     env_free(frame);
     return last;
-}
-
-Value *parse_subscript(Src *s, Env *e)
-{
-    if (!match_char(s, '['))
-    {
-        return verror("Subscript was expected!");
-    }
-
-    Value *res = eval_expr(s, e);
-
-    if (!match_char(s, ']'))
-    {
-        return verror("Closing square bracket was expected!");
-    }
-
-    return res;
 }
 
 Value *eval_block_raw(Src *s, Env *frame)
@@ -1685,7 +1685,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
     if (fnval->type == T_NATIVE)
     {
         Value *result = fnval->v.native->fn(env, argc, argv);
-        HANDLE_CONTROL_RETURN(result);
+        return result;
     }
     else if (fnval->type == T_FUNCTION)
     {
@@ -2008,7 +2008,7 @@ Value *eval_primary(Src *s, Env *env)
                 val_release(args[i]);
             free(args);
 
-            HANDLE_CONTROL_RETURN(res);
+            return res;
         }
         else if (src_peek(s) == '[')
         {
@@ -2429,6 +2429,14 @@ Value *eval_statement(Src *s, Env *env)
             {
                 v = eval_statement(s, env);
             }
+
+            if (v && v->type == T_RETURN) 
+            {
+                Value* tmp = v;
+                v = (Value*)tmp->v.opaque;
+                val_release(tmp);
+            }
+
             if (!obj)
             {
                 val_release(index);
@@ -2457,7 +2465,14 @@ Value *eval_statement(Src *s, Env *env)
             }
         }
 
-        if (v && v->type == T_FUNCTION)
+
+        if (v && v->type == T_RETURN) 
+        {
+            Value* tmp = v;
+            v = (Value*)tmp->v.opaque;
+            val_release(tmp);
+        }
+        else if (v && v->type == T_FUNCTION)
         {
             v->v.fn->name = strdup(id);
         }
@@ -2467,6 +2482,7 @@ Value *eval_statement(Src *s, Env *env)
         else
             env_set_raw(env, id, val_retain(v));
         free(id);
+        match_char(s, ';');
         return v;
     }
     if (is_keyword_at(s, "var"))
@@ -2508,6 +2524,14 @@ Value *eval_statement(Src *s, Env *env)
             {
                 v = eval_statement(s, env);
             }
+
+            if (v && v->type == T_RETURN) 
+            {
+                Value* tmp = v;
+                v = (Value*)tmp->v.opaque;
+                val_release(tmp);
+            }
+
             if (!obj)
             {
                 val_release(index);
@@ -2520,6 +2544,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
+                val_release(obj);
                 val_release(v);
                 free(id);
                 return res;
@@ -2534,7 +2559,14 @@ Value *eval_statement(Src *s, Env *env)
                 return res;
             }
         }
-        if (v && v->type == T_FUNCTION)
+
+        if (v && v->type == T_RETURN) 
+        {
+            Value* tmp = v;
+            v = (Value*)tmp->v.opaque;
+            val_release(tmp);
+        }
+        else if (v && v->type == T_FUNCTION)
         {
             v->v.fn->name = strdup(id);
         }
@@ -2665,6 +2697,7 @@ Value *eval_statement(Src *s, Env *env)
                 if (!is_truthy(cond))
                 {
                     val_release(cond);
+                    val_release(bod);
                     skip_block(s);
                     return vnull();
                 }
@@ -2673,6 +2706,7 @@ Value *eval_statement(Src *s, Env *env)
                 s->pos = body_start_pos;
                 val_release(bod);
                 bod = eval_block(s, env);
+
 
                 // --- Handle body result ---
                 if (bod->type == T_BREAK)
@@ -2689,10 +2723,8 @@ Value *eval_statement(Src *s, Env *env)
                 }
                 else if (bod->type == T_RETURN)
                 {
-                    Value *res = bod->v.opaque;
-                    val_release(bod);
                     s->pos = body_end_pos;
-                    return res;
+                    return bod;
                 }
             }
             return bod;
@@ -2776,12 +2808,8 @@ Value *eval_statement(Src *s, Env *env)
                     }
                     else if (bod->type == T_RETURN)
                     {
-                        Value *res = bod->v.opaque;
-                        val_release(bod);
                         s->pos = body_end_pos;
-                        free(value);
-                        free(id);
-                        return res;
+                        return bod;
                     }
                 }
 
@@ -2901,10 +2929,18 @@ Value *eval_source(Src *s, Env *env)
 
         val_release(last);
         last = st;
-        if (last && last->type == T_ERROR)
-        {
-            printf("\n= Error: %s\n", last->v.message);
-            return last;
+        if (last) {
+            if (last->type == T_ERROR)
+            {
+                printf("\n= Error: %s\n", last->v.message);
+                return last;
+            }
+            else if (last->type == T_RETURN)
+            {
+                Value* res = (Value*)last->v.opaque;
+                val_release(last);
+                return res;
+            }
         }
     }
     return last;

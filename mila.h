@@ -11,16 +11,7 @@
 
 #define MILA_GET_TYPE(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 
-#define HANDLE_CONTROL_RETURN(val) \
-    {\
-        if (val->type == T_RETURN)\
-        {\
-            Value *res = (Value*)val->v.opaque;\
-            val_kill(val);\
-            return res;\
-        }\
-        return val;\
-    }\
+#define HANDLE_RETURN(val) { if (val && val->type == T_RETURN) return val; }
 
 #define HANDLE_CONTROL(val) \
     {\
@@ -29,12 +20,6 @@
             return val;\
         if (val->type == T_CONTINUE)\
             return val;\
-        if (val->type == T_RETURN)\
-        {\
-            Value *res = (Value*)val->v.opaque;\
-            val_kill(val);\
-            return res;\
-        }\
         return val;\
     }\
 

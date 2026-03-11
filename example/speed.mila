@@ -1,6 +1,6 @@
 var start = get_time();
 
-var i = 1000000;
+var i = 5000000;
 
 while (i > 0) {
     set i = i - 1;

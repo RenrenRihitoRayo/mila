@@ -1,5 +1,15 @@
-var i = 5000000;
-while (i > 0) {
+var i = 20;
+var huh : while (i > 0) {
     println(i);
     set i = i - 1;
+
+    var d = 10;
+    while (d > 0) {
+        println(d);
+        set d = d - 1;
+    }
+    return 90;
 }
+
+println(huh);
+println(huh);

@@ -1,3 +1,37 @@
+test:
+	gcc -o test.o0.mila -O0 mila.c -lm
+	gcc -o test.o3.mila -O3 mila.c -lm
+	gcc -o test.os.mila -Os mila.c -lm
+
+	gcc -o test.s.o0.mila -O0 mila.c -lm
+	strip test.s.o0.mila
+	gcc -o test.s.o3.mila -O3 mila.c -lm
+	strip test.s.o0.mila
+	gcc -o test.s.os.mila -Os mila.c -lm
+	strip test.s.os.mila
+
+	@echo "MiLa -O0 build"
+	@file test.o0.mila
+	@./test.o0.mila ./example/speed.mila
+	@echo -e "\nMiLa -O3 build"
+	@file test.o0.mila
+	@./test.o3.mila ./example/speed.mila
+	@echo -e "\nMiLa -Os build"
+	@file test.os.mila
+	@./test.os.mila ./example/speed.mila
+
+	@echo -e "\nMiLa -O0 build stripped"
+	@file test.s.o0.mila
+	@./test.s.o0.mila ./example/speed.mila
+	@echo -e "\nMiLa -O3 build stripped"
+	@file test.s.o0.mila
+	@./test.s.o3.mila ./example/speed.mila
+	@echo -e "\nMiLa -Os build stripped"
+	@file test.s.os.mila
+	@./test.s.os.mila ./example/speed.mila
+
+	@rm test.*
+
 all: mila.c ml_builtins.c ml_dict.c mila.h
 	gcc -std=c99 -lm -o mila mila.c -fsanitize=address -g
 

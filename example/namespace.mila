@@ -1,0 +1,12 @@
+namespace test {
+    set .greet = fn(name) {
+        println("Hello, " + name + "!");
+    };
+}
+
+test.greet("Darren");
+
+var l = array.from(1);
+println(l[0]);
+var l[0] = 90;
+println(l[90]);

@@ -1093,6 +1093,67 @@ Value *native_len_array(Env *env, int argc, Value **argv)
     return vint(arr->size);
 }
 
+Value *get_array(Value* self, Value* index)
+{
+
+    Value *arrv = self;
+    Array *arr = (Array *)arrv->v.opaque;
+    if (!arr)
+    {
+        return verror("array.get(array, index): null array data");
+    }
+
+    if (index->type != T_INT)
+    {
+        return verror("array.get(array, index): index must be int");
+    }
+
+    int idx = (int)index->v.i;
+    if (idx < 0 || idx >= arr->size)
+    {
+        return verror("array.get(array, index): index %d out of bounds (size %d)", idx, arr->size);
+    }
+
+    Value *val = arr->array[idx];
+    if (val)
+        val_retain(val);
+    else
+        return vnull();
+
+    return val;
+}
+
+Value *set_array(Value* self, Value* index, Value* val)
+{
+
+    Value *arrv = self;
+    Array *arr = (Array *)arrv->v.opaque;
+    if (!arr)
+    {
+        return verror("array.set(array, index, value): null array data");
+    }
+
+    if (index->type != T_INT)
+    {
+        return verror("array.set(array, index, value): index must be int");
+    }
+
+    int idx = (int)index->v.i;
+    if (idx < 0 || idx >= arr->size)
+    {
+        return verror("array.set(array, index, value): index %d out of bounds (size %d)", idx, arr->size);
+    }
+
+    Value *old = arr->array[idx];
+    if (old)
+        val_release(old);
+
+    arr->array[idx] = val;
+    val_retain(val);
+
+    return vnull();
+}
+
 Value *native_free_array(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -1490,35 +1551,37 @@ void env_register_builtins(Env *g)
 
     
     env_register_native(g, "__mila_canonical_builtins_free", native_free);
-
+ 
     file_meta = val_make_table();
     
-    val_set_umethod_table(file_meta, UMethodToString, file_printer);
+    val_set_method_table(file_meta, UMethodToString, file_printer);
     
     dict_meta = val_make_table();
     
-    val_set_umethod_table(dict_meta, UMethodToString, dict_display);
-    val_set_umethod_table(dict_meta, UMethodFree, free_dict);
+    val_set_method_table(dict_meta, UMethodToString, dict_display);
+    val_set_method_table(dict_meta, UMethodFree, free_dict);
     
     list_meta = val_make_table();
 
-    val_set_umethod_table(list_meta, UMethodToString, list_display);
-    val_set_umethod_table(list_meta, UMethodFree, list_free);
+    val_set_method_table(list_meta, UMethodToString, list_display);
+    val_set_method_table(list_meta, UMethodFree, list_free);
     
     array_meta = val_make_table();
     
-    val_set_umethod_table(array_meta, UMethodToIter, array_to_iter);
-    val_set_umethod_table(array_meta, UMethodToString, array_to_str);
-    val_set_umethod_table(array_meta, UMethodFree, free_array);
+    val_set_method_table(array_meta, UMethodToIter, array_to_iter);
+    val_set_method_table(array_meta, UMethodToString, array_to_str);
+    val_set_method_table(array_meta, UMethodFree, free_array);
+    val_set_method_table(array_meta, BMethodGetItem, get_array);
+    val_set_method_table(array_meta, TMethodSetItem, set_array);
     
     range_meta = val_make_table();
     
-    val_set_umethod_table(range_meta, UMethodToIter, range_to_iter);
-    val_set_umethod_table(range_meta, UMethodFree, range_free);
+    val_set_method_table(range_meta, UMethodToIter, range_to_iter);
+    val_set_method_table(range_meta, UMethodFree, range_free);
 
     self_free_meta = val_make_table();
 
-    val_set_umethod_table(self_free_meta, UMethodFree, self_free);
+    val_set_method_table(self_free_meta, UMethodFree, self_free);
 
     // === Misc
     env_register_native(g, "range", native_range);

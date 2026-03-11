@@ -9,6 +9,8 @@
 #define MAX_NUMBER_DIGITS 1000
 #define MAX_PATH_LENGTH 10000
 
+#define MILA_GET_TYPE(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
+
 #define HANDLE_CONTROL(val) \
     {\
         if (!val) return val;\
@@ -94,31 +96,21 @@ typedef enum __attribute__((packed))
     BMethodOr,
     BMethodDefault,
     BMethodGetItem,
-    BMethodSetItem,
-    BMethodTypeCount
-} BMethodType;
-
-typedef enum __attribute__((packed))
-{
-    UMethodFree = BMethodTypeCount,
+    TMethodSetItem,
+    UMethodFree,
     UMethodKill,
     UMethodToString,
     UMethodToRepr,
     UMethodToIter,
     MethodTotalCount
-} UMethodType;
+} MethodType;
 
-typedef Value *(*bin_op_method)(Value *self, Value *other);
-typedef Value *(*unary_op_method)(Value *self);
 
-typedef struct
-{
-    _Bool is_binop;
-    union {
-        bin_op_method binop;
-        unary_op_method unary;
-    };
-} MethodTable;
+typedef Value *(*trinary_method)(Value *self, Value *b, Value* c);
+typedef Value *(*binary_method)(Value *self, Value *other);
+typedef Value *(*unary_method)(Value *self);
+
+typedef void* MethodTable;
 
 typedef struct
 {
@@ -194,13 +186,10 @@ Value *val_new(ValueType t);
 void val_allocate_table(Value *v);
 MethodTable *val_make_table(void);
 void val_set_table(Value *v, MethodTable *t);
-void val_set_bmethod(Value *v, BMethodType t, bin_op_method func);
-void val_set_umethod(Value *v, UMethodType t, unary_op_method func);
-void val_set_bmethod_table(MethodTable *v, BMethodType t, bin_op_method func);
-void val_set_umethod_table(MethodTable *v, UMethodType t, unary_op_method func);
-void val_unset_bmethod_table(MethodTable *v, BMethodType t);
-void val_unset_umethod_table(MethodTable *v, UMethodType t);
-void val_unset_method(Value *v, BMethodType t);
+void val_set_method(Value *v, MethodType t, void* func);
+void val_set_method_table(MethodTable *v, MethodType t, void* func);
+void val_unset_method_table(MethodTable *v, MethodType t);
+void val_unset_method(Value *v, MethodType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
 void val_kill(Value *v);
@@ -258,9 +247,9 @@ char *dup_substr(Src *s, int a, int b);
 char **parse_param_list(Src *s);
 Value *eval_block(Src *s, Env *env);
 Value *eval_primary(Src *s, Env *env);
-Value *binary_op(Value *a, BMethodType op, Value *b);
-int precedence_of(BMethodType op);
-BMethodType parse_op(Src *s);
+Value *binary_op(Value *a, MethodType op, Value *b);
+int precedence_of(MethodType op);
+MethodType parse_op(Src *s);
 Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);

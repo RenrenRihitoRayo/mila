@@ -4,9 +4,11 @@ namespace test {
     };
 }
 
-test.greet("Darren");
+var d = dict(
+    "name", "Darren",
+    "age",  17
+);
 
-var l = array.from(1);
-println(l[0]);
-var l[0] = 90;
-println(l[90]);
+println(d["name"]);
+var d["name"] = "Edward";
+println(d["name"]);

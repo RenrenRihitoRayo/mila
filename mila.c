@@ -97,6 +97,9 @@ Value *val_new(ValueType t)
     p->type_name = NULL;
     p->method_table = NULL;
     p->owns_table = 1;
+#ifdef MILA_DEBUG
+    printf("  ++ %s type allocated!\n     pointer: %p\n", MILA_GET_TYPE(p), p);
+#endif
     return p;
 }
 
@@ -237,11 +240,6 @@ Value *vopaque(void *p)
 {
     Value *v = val_new(T_OPAQUE);
     v->v.opaque = p;
-    if (!p)
-    {
-        val_kill(v);
-        return NULL;
-    }
     return v;
 }
 Value *vnative(NativeFn fn, const char *name)
@@ -307,7 +305,7 @@ int our_asprintf(char **strp, const char *fmt, ...)
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type)
 {
     Value *v = vopaque(p);
-    if (dis)
+    if (dis && v)
     {
         val_allocate_table(v);
         val_set_method(v, UMethodToString, dis);
@@ -492,6 +490,11 @@ char *as_c_string_repr(Value *v)
 // print value (for debug / native print)
 void print_value(Value *v)
 {
+    if (!v)
+    {
+        printf("cnull");
+        return;
+    }
     char *txt = as_c_string(v);
     printf("%s", txt);
     free(txt);
@@ -514,6 +517,10 @@ void val_release(Value *v)
 {
     if (!v)
         return;
+#ifdef MILA_DEBUG
+    printf("  -- val_relase:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPE(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    print_value_repr(v); puts("");
+#endif
     v->refcount--;
     if (v->refcount <= 0)
     {
@@ -562,9 +569,12 @@ void val_release(Value *v)
 
 void val_kill(Value *v)
 {
-    // printf("val_kill: "); print_value_repr(v); puts("");
     if (!v)
         return;
+#ifdef MILA_DEBUG
+    printf("  -- val_kill:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPE(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    print_value_repr(v); puts("");
+#endif
     if (v->method_table && v->method_table[UMethodKill])
     {
         ((unary_method)v->method_table[UMethodKill])(v);
@@ -757,7 +767,7 @@ void env_set_local_raw(Env *e, const char *name, Value *val)
         }
     }
     /* try to set the name variable, makes debugging easier */
-    if (val->type == T_FUNCTION && val->v.fn->name == NULL)
+    if (val && val->type == T_FUNCTION && val->v.fn->name == NULL)
     {
         val->v.fn->name = strdup(name);
     }
@@ -1455,10 +1465,7 @@ Value *eval_block_raw(Src *s, Env *frame)
         val_release(last);
         last = st;
 
-        if (IS_CONTROL(st))
-        {
-            HANDLE_CONTROL(st);
-        }
+        HANDLE_CONTROL_LOOP(st);
     }
     return last;
 }
@@ -1678,7 +1685,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
     if (fnval->type == T_NATIVE)
     {
         Value *result = fnval->v.native->fn(env, argc, argv);
-        return result;
+        HANDLE_CONTROL_RETURN(result);
     }
     else if (fnval->type == T_FUNCTION)
     {
@@ -1701,8 +1708,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
 
         src_free(child);
         env_free(frame);
-        if (IS_CONTROL(res))
-            HANDLE_CONTROL(res);
+        HANDLE_CONTROL(res);
     }
     else
     {
@@ -1766,6 +1772,7 @@ Value *eval_primary(Src *s, Env *env)
                     Value *a = eval_expr(s, env);
                     if (a && a->type == T_ERROR) {
                         free(args);
+                        val_release(expr);
                         for (int i = 0; i < argc; i++)
                             val_release(args[i]);
                         return a;
@@ -1793,6 +1800,35 @@ Value *eval_primary(Src *s, Env *env)
             val_release(expr);
             return res;
         }
+
+        else if (src_peek(s) == '[')
+        {
+            Value *index = parse_subscript(s, env);
+            Value *obj = expr;
+
+            if (!obj)
+            {
+                val_release(index);
+                val_release(obj);
+                Value *ret = verror("cannot be subscripted as it is cnull");
+                return ret;
+            }
+
+            if (obj->method_table && obj->method_table[BMethodGetItem])
+            {
+                Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
+                val_release(index);
+                val_release(obj);
+                return res;
+            }
+            else
+            {
+                val_release(index);
+                Value* res = verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPE(obj));
+                val_release(obj);
+                return res;
+            }
+        }
         return expr;
     }
     if (c == '{')
@@ -1800,8 +1836,7 @@ Value *eval_primary(Src *s, Env *env)
         Value *v = eval_block(s, env);
         skip_ws(s);
 
-        if (IS_CONTROL(v))
-            HANDLE_CONTROL(v);
+        HANDLE_CONTROL(v);
 
         return v;
     }
@@ -1935,6 +1970,7 @@ Value *eval_primary(Src *s, Env *env)
                     Value *a = eval_expr(s, env);
                     if (a && a->type == T_ERROR) {
                         free(args);
+                        free(id);
                         for (int i = 0; i < argc; i++)
                             val_release(args[i]);
                         return a;
@@ -1973,7 +2009,7 @@ Value *eval_primary(Src *s, Env *env)
                 val_release(args[i]);
             free(args);
 
-            HANDLE_CONTROL(res);
+            HANDLE_CONTROL_RETURN(res);
         }
         else if (src_peek(s) == '[')
         {
@@ -2294,7 +2330,6 @@ MethodType parse_op(Src *s)
 Value *eval_expr_prec(Src *s, Env *env, int min_prec)
 {
     skip_ws(s);
-    // unary + - not implemented separately; parse primary then handle binary ops
     Value *lhs = eval_primary(s, env);
     if (!lhs)
         return NULL;
@@ -2414,20 +2449,12 @@ Value *eval_statement(Src *s, Env *env)
             }
         }
 
-        // unwrap return
-        if (v->type == T_RETURN)
-        {
-            Value *tmp = (Value*)v->v.opaque;
-            v = tmp;
-            free(id);
-            val_release(tmp);
-        }
-        else if (v->type == T_FUNCTION)
+        if (v && v->type == T_FUNCTION)
         {
             v->v.fn->name = strdup(id);
         }
         skip_ws(s);
-        if (v->type != T_STRING)
+        if (v && v->type != T_STRING)
             env_set(env, id, v);
         else
             env_set_raw(env, id, val_retain(v));
@@ -2494,22 +2521,13 @@ Value *eval_statement(Src *s, Env *env)
                 return verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPE(obj));
             }
         }
-
-        // unwrap return
-        if (v->type == T_RETURN)
-        {
-            Value *tmp = (Value*)v->v.opaque;
-            v = tmp;
-            free(id);
-            val_release(tmp);
-        }
-        else if (v->type == T_FUNCTION)
+        if (v && v->type == T_FUNCTION)
         {
             v->v.fn->name = strdup(id);
         }
         skip_ws(s);
         match_char(s, ';');
-        if (v->type != T_STRING)
+        if (v && v->type != T_STRING)
             env_set_local(env, id, v);
         else
             env_set_local_raw(env, id, val_retain(v));

@@ -1147,9 +1147,7 @@ Value *set_array(Value* self, Value* index, Value* val)
     Value *old = arr->array[idx];
     if (old)
         val_release(old);
-
     arr->array[idx] = val;
-    val_retain(val);
 
     return vnull();
 }
@@ -1342,6 +1340,22 @@ Value *native_get_dict(Env *env, int argc, Value **argv)
 
     Value *v = dict_get(argv[0]->v.opaque, argv[1]->v.s);
     return v ? v : vnull();
+}
+
+Value *set_dict(Value* self, Value* name, Value* val)
+{
+    Value* v = dict_get(self->v.opaque, name->v.s);
+    if (v) {
+        val_release(v);
+    }
+    dict_set(self->v.opaque, name->v.s, val);
+    return vnull();
+}
+
+Value *get_dict(Value* self, Value* name)
+{
+    Value *v = dict_get(self->v.opaque, name->v.s);
+    return val_retain(v);
 }
 
 Value *native_rem_dict(Env *env, int argc, Value **argv)
@@ -1560,6 +1574,8 @@ void env_register_builtins(Env *g)
     
     val_set_method_table(dict_meta, UMethodToString, dict_display);
     val_set_method_table(dict_meta, UMethodFree, free_dict);
+    val_set_method_table(dict_meta, BMethodGetItem, get_dict);
+    val_set_method_table(dict_meta, TMethodSetItem, set_dict);
     
     list_meta = val_make_table();
 

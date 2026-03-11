@@ -11,6 +11,17 @@
 
 #define MILA_GET_TYPE(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 
+#define HANDLE_CONTROL_RETURN(val) \
+    {\
+        if (val->type == T_RETURN)\
+        {\
+            Value *res = (Value*)val->v.opaque;\
+            val_kill(val);\
+            return res;\
+        }\
+        return val;\
+    }\
+
 #define HANDLE_CONTROL(val) \
     {\
         if (!val) return val;\
@@ -21,10 +32,25 @@
         if (val->type == T_RETURN)\
         {\
             Value *res = (Value*)val->v.opaque;\
-            val_release(val);\
+            val_kill(val);\
             return res;\
         }\
         return val;\
+    }\
+
+#define HANDLE_CONTROL_LOOP(val) \
+    {\
+        if (!val) return val;\
+        if (val->type == T_BREAK)\
+            return val;\
+        if (val->type == T_CONTINUE)\
+            return val;\
+        if (val->type == T_RETURN)\
+        {\
+            Value *res = (Value*)val->v.opaque;\
+            val_kill(val);\
+            return res;\
+        }\
     }\
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
@@ -211,6 +237,7 @@ char *as_c_string(Value *v);
 Value *to_c_string(Value *v);
 char *as_c_string_repr(Value *v);
 void print_value(Value *v);
+void print_value_repr(Value *v);
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 

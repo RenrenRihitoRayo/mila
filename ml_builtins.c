@@ -1531,19 +1531,6 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_free(Env *e, int argc, Value **argv)
-{
-    (void)e;
-    (void)argc;
-    (void)argv;
-    free(file_meta);
-    free(dict_meta);
-    free(array_meta);
-    free(list_meta);
-    free(range_meta);
-    return NULL;
-}
-
 // Minimal MiLa Builtins
 // We do not support objects,
 // the dots are namespaces.
@@ -1558,9 +1545,6 @@ void env_register_builtins(Env *g)
     // tell users what implementation it is
     // heres its canon since this is the base implementation.
     env_set_raw(g, "__mila_codename", vstring_dup("canon"));
-
-    
-    env_register_native(g, "__mila_canonical_builtins_free", native_free);
  
     file_meta = val_make_table();
     

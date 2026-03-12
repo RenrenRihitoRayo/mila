@@ -1,0 +1,56 @@
+load("./raylib.so");
+
+InitWindow(800, 400, "test");
+
+var RAYWHITE = -657931;
+var WHITE = -1;
+var BLACK = -16777216;
+
+var x = 0;
+var y = 0;
+
+var KEY_RIGHT = 262; // Key: Cursor right
+var KEY_LEFT  = 263; // Key: Cursor left
+var KEY_DOWN  = 264; // Key: Cursor down
+var KEY_UP    = 265; // Key: Cursor up
+var KEY_W     = 87;  // Key: W
+var KEY_A     = 65;  // Key: A
+var KEY_S     = 83;  // Key: S
+var KEY_D     = 68;  // Key: D
+
+SetTargetFPS(50);
+
+while (not(WindowShouldClose()))
+{
+    BeginDrawing();
+    ClearBackground(RAYWHITE);
+    DrawRectangle(x, y, 180, 60, BLACK);
+    DrawText("Hello world!", x+10, y+10, 24, WHITE);
+
+    if (IsKeyPressed(KEY_RIGHT)) {
+        set x = x + 10;
+    } 
+    elif (IsKeyDown(KEY_LEFT)) {
+        set x = x - 10;
+    }
+    elif (IsKeyDown(KEY_UP)) {
+        set y = y - 10;
+    } 
+    elif (IsKeyDown(KEY_DOWN)) {
+        set y = y + 10;
+    }
+    elif (IsKeyDown(KEY_D)) {
+        set x = x + 10;
+    } 
+    elif (IsKeyDown(KEY_A)) {
+        set x = x - 10;
+    }
+    elif (IsKeyDown(KEY_W)) {
+        set y = y - 10;
+    } 
+    elif (IsKeyDown(KEY_S)) {
+        set y = y + 10;
+    }
+
+    EndDrawing();
+}

@@ -98,7 +98,7 @@ Value *val_new(ValueType t)
     p->method_table = NULL;
     p->owns_table = 1;
 #ifdef MILA_DEBUG
-    printf("  ++ %s type allocated!\n     pointer: %p\n", MILA_GET_TYPE(p), p);
+    printf("  ++ %s type allocated!\n     pointer: %p\n", MILA_GET_TYPENAME(p), p);
 #endif
     return p;
 }
@@ -518,7 +518,7 @@ void val_release(Value *v)
     if (!v)
         return;
 #ifdef MILA_DEBUG
-    printf("  -- val_relase:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPE(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    printf("  -- val_relase:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v); puts("");
 #endif
     v->refcount--;
@@ -572,7 +572,7 @@ void val_kill(Value *v)
     if (!v)
         return;
 #ifdef MILA_DEBUG
-    printf("  -- val_kill:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPE(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    printf("  -- val_kill:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v); puts("");
 #endif
     if (v->method_table && v->method_table[UMethodKill])
@@ -617,6 +617,10 @@ void val_kill(Value *v)
         if (v->v.native->name)
             free(v->v.native->name);
         free(v->v.native);
+    }
+    if (v->type == T_RETURN)
+    {
+        val_kill(v->v.opaque);
     }
     free(v->type_name);
     if (v->method_table && v->owns_table)
@@ -1194,10 +1198,8 @@ Value *parse_number(Src *s)
     skip_ws(s);
     int st = s->pos;
     int seen_dot = 0;
-    int neg = 0;
-    if (src_peek(s) == '+' || src_peek(s) == '-')
+    if (src_peek(s) == '-')
     {
-        neg = 1;
         src_get(s);
     }
     while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.')
@@ -1225,24 +1227,25 @@ Value *parse_number(Src *s)
         if (seen_dot)
         {
             double f = atof(tmp);
-            return vfloat(neg ? f * -1 : f);
+            return vfloat(f);
         }
         else
         {
             long i = atol(tmp);
-            return vint(neg ? i * -1 : i);
+            return vint(i);
         }
     }
     else
     {
+        // implement arbritrarily sized integers in the future
         char *buf = mila_malloc(len + 1);
         memcpy(buf, s->src + st, len);
         buf[len] = 0;
         Value *r;
         if (seen_dot)
-            r = vfloat(neg ? atof(buf) * -1 : atof(buf));
+            r = vfloat(atof(buf));
         else
-            r = vint(neg ? atol(buf) * -1 : atol(buf));
+            r = vint(atol(buf));
         free(buf);
         return r;
     }
@@ -1697,6 +1700,9 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         for (; p && p[i]; ++i)
         {
             // if fewer args provided, bind null
+            if (i < argc && MILA_GET_TYPE(argv[i]) == T_ERROR) {
+                return argv[i];
+            }
             Value *a = (i < argc) ? argv[i] : vnull();
             env_set_local(frame, p[i], a);
         }
@@ -1798,7 +1804,12 @@ Value *eval_primary(Src *s, Env *env)
                 val_release(args[i]);
             free(args);
             val_release(expr);
-            return res;
+            if (MILA_GET_TYPE(res) == T_RETURN) {
+                Value* tmp = (Value*)res->v.opaque;
+                val_release(res);
+                return tmp;
+            }
+            HANDLE_CONTROL(res);
         }
 
         else if (src_peek(s) == '[')
@@ -1824,7 +1835,7 @@ Value *eval_primary(Src *s, Env *env)
             else
             {
                 val_release(index);
-                Value* res = verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPE(obj));
+                Value* res = verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
                 val_release(obj);
                 return res;
             }
@@ -2008,7 +2019,8 @@ Value *eval_primary(Src *s, Env *env)
                 val_release(args[i]);
             free(args);
 
-            return res;
+            HANDLE_RETURN(res);
+            HANDLE_CONTROL(res);
         }
         else if (src_peek(s) == '[')
         {
@@ -2034,7 +2046,7 @@ Value *eval_primary(Src *s, Env *env)
             {
                 val_release(index);
                 free(id);
-                return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPE(obj));
+                return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
             }
         }
         else
@@ -2459,7 +2471,7 @@ Value *eval_statement(Src *s, Env *env)
                 val_release(index);
                 val_release(v);
                 free(id);
-                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPE(obj));
+                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPENAME(obj));
                 val_release(obj);
                 return res;
             }
@@ -2554,7 +2566,7 @@ Value *eval_statement(Src *s, Env *env)
                 val_release(index);
                 val_release(v);
                 free(id);
-                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPE(obj));
+                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPENAME(obj));
                 val_release(obj);
                 return res;
             }
@@ -2603,10 +2615,7 @@ Value *eval_statement(Src *s, Env *env)
             if (truth)
             {
                 Value *res = NULL;
-                if (src_peek(s) == '{')
-                    res = eval_block_raw(s, env);
-                else
-                    res = eval_statement(s, env);
+                res = eval_block_raw(s, env);
 
                 clean_elif_chain(s);
 
@@ -2615,10 +2624,7 @@ Value *eval_statement(Src *s, Env *env)
             else
             {
                 // skip then clause
-                if (src_peek(s) == '{')
-                    skip_block(s);
-                else
-                    skip_stmt(s);
+                skip_block(s);
                 // check elifs
                 skip_ws(s);
                 while (is_keyword_at(s, "elif"))
@@ -2632,10 +2638,7 @@ Value *eval_statement(Src *s, Env *env)
                         if (is_truthy(cond))
                         {
                             Value *res = NULL;
-                            if (src_peek(s) == '{')
-                                res = eval_block_raw(s, env);
-                            else
-                                res = eval_statement(s, env);
+                            res = eval_block_raw(s, env);
 
                             clean_elif_chain(s);
                             val_release(cond);
@@ -2644,10 +2647,7 @@ Value *eval_statement(Src *s, Env *env)
                         else
                         {
                             val_release(cond);
-                            if (src_peek(s) == '{')
-                                skip_block(s);
-                            else
-                                skip_stmt(s);
+                            skip_block(s);
                         }
                     }
                     skip_ws(s);
@@ -2658,10 +2658,7 @@ Value *eval_statement(Src *s, Env *env)
                     s->pos += strlen("else");
                     Value *res = NULL;
                     skip_ws(s);
-                    if (src_peek(s) == '{')
-                        res = eval_block_raw(s, env);
-                    else
-                        res = eval_statement(s, env);
+                    res = eval_block_raw(s, env);
                     // check for return propagation
                     HANDLE_CONTROL(res);
                 }
@@ -2694,6 +2691,11 @@ Value *eval_statement(Src *s, Env *env)
                 skip_ws(s);
                 match_char(s, ')');
 
+                if (MILA_GET_TYPE(cond) == T_ERROR)
+                {
+                    val_release(bod);
+                    return cond;
+                }
                 if (!is_truthy(cond))
                 {
                     val_release(cond);
@@ -2761,7 +2763,7 @@ Value *eval_statement(Src *s, Env *env)
             else
             {
                 free(id);
-                Value *err = verror("Type %s does not implement UMethodToIter", MILA_GET_TYPE(iter_obj));
+                Value *err = verror("Type %s does not implement UMethodToIter", MILA_GET_TYPENAME(iter_obj));
                 val_release(iter_obj);
                 return err;
             }
@@ -3054,7 +3056,7 @@ int main(int argc, char **argv)
     env_register_builtins(g);
     env_set_raw(g, "__mila_builtins_dynamic", vbool(0));
 #else
-    // allows users to use so files instead.
+    // allows users to use '.so' files instead.
     // Must be on LD_PATH
     if (load_library(g, "mila_builtins.so"))
         env_set_raw(g, "__mila_builtins_dynamic_failed", vbool(1));

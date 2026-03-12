@@ -1,0 +1,18 @@
+
+var greet = fn(name) {
+	println("Hello " + name + "!");
+};
+
+greet("Darren");
+(fn(name) {println("Hello " + name + "!");})("Darren");
+
+var add = fn(a, b){
+	return a + b;	
+};
+
+var add_implicit_return = fn(a, b){
+	a + b;
+};
+
+println(add(1, 2));
+println(add_implicit_return(1, 2));

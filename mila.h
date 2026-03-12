@@ -9,9 +9,10 @@
 #define MAX_NUMBER_DIGITS 1000
 #define MAX_PATH_LENGTH 10000
 
-#define MILA_GET_TYPE(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
+#define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
+#define MILA_GET_TYPE(v) (v ? v->type : -1 )
 
-#define HANDLE_RETURN(val) { if (val && val->type == T_RETURN) return val; }
+#define HANDLE_RETURN(val) { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
 
 #define HANDLE_CONTROL(val) \
     {\

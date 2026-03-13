@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <math.h>
+#include <signal.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -38,6 +39,12 @@ _Bool mila_is_builtins_dynamic = 1;
 #endif
 
 #include "mila.h"
+
+static void signal_handle(int sig)
+{
+    printf("\n\nGot signal %s\n", strsignal(sig));
+    exit(1);
+}
 
 path_list *search_path = NULL;
 
@@ -1240,14 +1247,14 @@ Value *parse_string(Src *s)
 {
     skip_ws(s);
     if (src_peek(s) != '"')
-        return NULL;
+        return verror("String unterminated!");
     src_get(s); // consume opening "
 
     size_t cap = 256;
     size_t len = 0;
     char *buf = mila_malloc(cap);
     if (!buf)
-        return NULL; // check allocation
+        return verror("Allocation failure");
 
     while (!src_eof(s))
     {
@@ -1295,7 +1302,7 @@ Value *parse_string(Src *s)
             if (!tmp)
             {
                 free(buf);
-                return NULL; // allocation failed
+                return verror("Allocation failure!");
             }
             buf = tmp;
         }
@@ -1719,28 +1726,17 @@ Value *eval_primary(Src *s, Env *env)
     if (c == '\0')
         return vnull();
     // number
-//    if ((isdigit((unsigned char)c) || (c == '+' || c == '-')) && isdigit((unsigned char)s->src[s->pos + 1]))
-//    {
-//        return parse_number(s);
-//    }
-//    if (isdigit((unsigned char)c) && (unsigned char)s->src[s->pos + 1] == '.')
-//    {
-//        return parse_number(s);
-//    }
-    if ((isdigit((unsigned char)c) || (c == '+' || c == '-')) && (isdigit((unsigned char)s->src[s->pos + 1])) || s->src[s->pos + 1] == '.' || s->src[s->pos + 1] == 'u' || s->src[s->pos + 1] == 'U') // && (unsigned char)s->src[s->pos + 2] == '.')
+    if (
+        isdigit((unsigned char)c) ||
+        ((c == '+' || c == '-') &&  isdigit((unsigned char)s->src[s->pos+1]))
+    )
     {
         return parse_number(s);
     }
-//    if (isdigit((unsigned char)c))
-//    {
-//        int i = src_get(s) - 48;
-//        _Bool is_unsigned = src_peek(s) == 'U' || src_peek(s) == 'U';
-//        if (is_unsigned) i = i > 0 ? i : -i;
-//        return is_unsigned ? vuint(i) : vint(i);
-//    }
     // string
-    if (c == '"')
+    if (c == '"') {
         return parse_string(s);
+    }
     // parentheses
     if (c == '(')
     {
@@ -2082,7 +2078,7 @@ Value *binary_op(Value *a, MethodType op, Value *b)
     {
         return ((binary_method)a->method_table[op])(a, b);
     }
-    if (op == BMethodDefault)
+    else if (op == BMethodDefault)
     {
         if (a->type == T_NONE || a->type == T_NULL || !is_truthy(a))
         {
@@ -2093,84 +2089,17 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             return val_retain(a);
         }
     }
-    if ((a->type == T_NONE || a->type == T_NULL) && (b->type == T_NONE || b->type == T_NULL))
+    else if ((a->type == T_NONE || a->type == T_NULL) && (b->type == T_NONE || b->type == T_NULL))
     {
         if (BMethodEq == op)
             return vbool(a->type == b->type);
         if (BMethodNe == op)
             return vbool(a->type != b->type);
     }
-    // string concatenation for '+'
-    if (op == BMethodAdd && a->type == T_STRING && b->type == T_STRING)
+    else if (is_number(a) && is_number(b))
     {
-        size_t la = strlen(a->v.s), lb = strlen(b->v.s);
-        char *buf = mila_malloc(la + lb + 1);
-        memcpy(buf, a->v.s, la);
-        memcpy(buf + la, b->v.s, lb);
-        buf[la + lb] = 0;
-        return vstring_take(buf);
-    }
-    if (op == BMethodAdd && a->type == T_STRING)
-    {
-        size_t la = strlen(a->v.s);
-        char *stringyfied = as_c_string(b);
-        if (stringyfied)
-        {
-            char *buf = mila_malloc(la + strlen(stringyfied) + 1);
-            if (!buf)
-                return vnull();
-            strcpy(buf, a->v.s);
-            strcat(buf, stringyfied);
-            free(stringyfied);
-            return vstring_take(buf);
-        }
-        return vnull();
-    }
-    if (op == BMethodAdd && b->type == T_STRING)
-    {
-        size_t la = strlen(b->v.s);
-        char *stringyfied = as_c_string(a);
-        if (stringyfied)
-        {
-            char *buf = mila_malloc(la + strlen(stringyfied) + 1);
-            if (!buf)
-                return vnull();
-            strcpy(buf, stringyfied);
-            strcat(buf, b->v.s);
-            free(stringyfied);
-            return vstring_take(buf);
-        }
-        return vnull();
-    }
-    // numeric arithmetic
-    if (is_number(a) && is_number(b))
-    {
-        if (a->type == T_FLOAT || b->type == T_FLOAT)
-        {
-            double ra = to_double(a), rb = to_double(b);
-            if (op == BMethodAdd)
-                return vfloat(ra + rb);
-            if (op == BMethodSub)
-                return vfloat(ra - rb);
-            if (op == BMethodMul)
-                return vfloat(ra * rb);
-            if (op == BMethodDiv)
-                return vfloat(ra / rb);
-            if (op == BMethodLess)
-                return vbool(ra < rb);
-            if (op == BMethodGreat)
-                return vbool(ra > rb);
-            if (op == BMethodLE)
-                return vbool(ra <= rb);
-            if (op == BMethodGE)
-                return vbool(ra >= rb);
-            if (op == BMethodEq)
-                return vbool(ra == rb);
-            if (op == BMethodNe)
-                return vbool(ra != rb);
-        }
-        // treat both numbers as unsigned.
         if (a->type == T_UINT || b->type == T_UINT)
+        // treat both numbers as unsigned.
         {
             unsigned long ia = a->v.ui, ib = b->v.ui;
             if (op == BMethodAdd)
@@ -2199,6 +2128,33 @@ Value *binary_op(Value *a, MethodType op, Value *b)
                 return vuint(ia >> ib);
             if (op == BMethodMod)
                 return vuint(ia % ib);
+            return vnull();
+        }
+        // numeric arithmetic
+        else if (a->type == T_FLOAT || b->type == T_FLOAT)
+        {
+            double ra = to_double(a), rb = to_double(b);
+            if (op == BMethodAdd)
+                return vfloat(ra + rb);
+            if (op == BMethodSub)
+                return vfloat(ra - rb);
+            if (op == BMethodMul)
+                return vfloat(ra * rb);
+            if (op == BMethodDiv)
+                return vfloat(ra / rb);
+            if (op == BMethodLess)
+                return vbool(ra < rb);
+            if (op == BMethodGreat)
+                return vbool(ra > rb);
+            if (op == BMethodLE)
+                return vbool(ra <= rb);
+            if (op == BMethodGE)
+                return vbool(ra >= rb);
+            if (op == BMethodEq)
+                return vbool(ra == rb);
+            if (op == BMethodNe)
+                return vbool(ra != rb);
+            return vnull();
         }
         else
         {
@@ -2229,11 +2185,11 @@ Value *binary_op(Value *a, MethodType op, Value *b)
                 return vint(ia >> ib);
             if (op == BMethodMod)
                 return vint(ia % ib);
+            return vnull();
         }
-        return vnull();
     }
     // equality for strings
-    if (BMethodEq == op)
+    else if (BMethodEq == op)
     {
         if (!a && !b)
             return vbool(1);
@@ -2244,22 +2200,64 @@ Value *binary_op(Value *a, MethodType op, Value *b)
         // fallback pointer equality
         return vbool(a == b);
     }
-    if (BMethodNe == op)
+    else if (BMethodNe == op)
     {
         Value *eq = binary_op(a, BMethodEq, b);
         int res = (eq->type == T_BOOL && eq->v.b == 0);
         val_release(eq);
         return vbool(res);
     }
-    if (BMethodAnd == op)
+    else if (BMethodAnd == op)
     {
         int res = is_truthy(a) && is_truthy(b);
         return vbool(res);
     }
-    if (BMethodOr == op)
+    else if (BMethodOr == op)
     {
         int res = is_truthy(a) || is_truthy(b);
         return vbool(res);
+    }
+    // string concatenation for '+'
+    else if (op == BMethodAdd && a->type == T_STRING && b->type == T_STRING)
+    {
+        size_t la = strlen(a->v.s), lb = strlen(b->v.s);
+        char *buf = mila_malloc(la + lb + 1);
+        memcpy(buf, a->v.s, la);
+        memcpy(buf + la, b->v.s, lb);
+        buf[la + lb] = 0;
+        return vstring_take(buf);
+    }
+    else if (op == BMethodAdd && a->type == T_STRING)
+    {
+        size_t la = strlen(a->v.s);
+        char *stringyfied = as_c_string(b);
+        if (stringyfied)
+        {
+            char *buf = mila_malloc(la + strlen(stringyfied) + 1);
+            if (!buf)
+                return vnull();
+            strcpy(buf, a->v.s);
+            strcat(buf, stringyfied);
+            free(stringyfied);
+            return vstring_take(buf);
+        }
+        return vnull();
+    }
+    else if (op == BMethodAdd && b->type == T_STRING)
+    {
+        size_t la = strlen(b->v.s);
+        char *stringyfied = as_c_string(a);
+        if (stringyfied)
+        {
+            char *buf = mila_malloc(la + strlen(stringyfied) + 1);
+            if (!buf)
+                return vnull();
+            strcpy(buf, stringyfied);
+            strcat(buf, b->v.s);
+            free(stringyfied);
+            return vstring_take(buf);
+        }
+        return vnull();
     }
     return vnull();
 }
@@ -2290,7 +2288,7 @@ MethodType parse_op(Src *s)
 {
     skip_ws(s);
     char a = src_peek(s);
-    char b = (s->pos + 1 < s->len) ? s->src[s->pos + 1] : '\0';
+    char b = s->src[s->pos + 1];
     // two-char ops
     if (a == '|' && b == '|')
     {
@@ -2364,7 +2362,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec)
     skip_ws(s);
     Value *lhs = eval_primary(s, env);
     if (!lhs)
-        return NULL;
+        return verror("Invalid expression!");
     for (;;)
     {
         int saved_pos = s->pos;
@@ -2403,18 +2401,13 @@ void clean_elif_chain(Src *s)
         if (match_char(s, '('))
             skip_expr(s);
         match_char(s, ')');
-        if (src_peek(s) == '{')
-            skip_block(s);
-        else
-            skip_stmt(s);
+        skip_block(s);
     }
     if (is_keyword_at(s, "else"))
     {
         s->pos += strlen("else");
-        if (src_peek(s) == '{')
-            skip_block(s);
-        else
-            skip_stmt(s);
+        skip_ws(s);
+        skip_block(s);
     }
 }
 
@@ -2634,7 +2627,6 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = NULL;
                 res = eval_block_raw(s, env);
-
                 clean_elif_chain(s);
 
                 HANDLE_CONTROL(res);
@@ -2664,6 +2656,7 @@ Value *eval_statement(Src *s, Env *env)
                         }
                         else
                         {
+                            // skip elif then clause
                             val_release(cond);
                             skip_block(s);
                         }
@@ -2708,17 +2701,19 @@ Value *eval_statement(Src *s, Env *env)
                 Value *cond = eval_expr(s, env);
                 skip_ws(s);
                 match_char(s, ')');
-
                 if (MILA_GET_TYPE(cond) == T_ERROR)
                 {
                     val_release(bod);
                     return cond;
                 }
-                if (!is_truthy(cond))
+                else if (!is_truthy(cond))
                 {
                     val_release(cond);
+                    if (MILA_GET_TYPE(bod) == T_RETURN) {
+                        return bod;
+                    }
                     val_release(bod);
-                    skip_block(s);
+                    s->pos = body_end_pos;
                     return vnull();
                 }
                 val_release(cond);
@@ -2726,7 +2721,6 @@ Value *eval_statement(Src *s, Env *env)
                 s->pos = body_start_pos;
                 val_release(bod);
                 bod = eval_block(s, env);
-
 
                 // --- Handle body result ---
                 if (bod->type == T_BREAK)
@@ -3021,6 +3015,18 @@ int needs_more(const char *src)
     return in_string || parens > 0 || braces > 0;
 }
 
+Env* mila_init(void)
+{
+    Env* g = env_new(NULL);
+    env_register_builtins(g);
+
+    if (signal(SIGINT, signal_handle) == SIG_ERR) {perror("signal SIGINT"); exit(1);}
+    if (signal(SIGSEGV, signal_handle) == SIG_ERR) {perror("signal SIGSEGV"); exit(1);}
+    if (signal(SIGTERM, signal_handle) == SIG_ERR) {perror("signal SIGTERM"); exit(1);}
+
+    return g;
+}
+
 #ifndef ML_LIB
 int main(int argc, char **argv)
 {
@@ -3068,12 +3074,12 @@ int main(int argc, char **argv)
     }
 
     // prepare global env
-    Env *g = env_new(NULL);
 #ifndef MILA_USE_SHARED
     // register native functions
-    env_register_builtins(g);
+    Env* g = mila_init();
     env_set_raw(g, "__mila_builtins_dynamic", vbool(0));
 #else
+    Env *g = env_new(NULL);
     // allows users to use '.so' files instead.
     // Must be on LD_PATH
     if (load_library(g, "mila_builtins.so"))
@@ -3088,6 +3094,18 @@ int main(int argc, char **argv)
                       builtins_flag->v.i == 202603L;
 
     search_path = path_list_new();
+    char* cwd = path_get_cwd();
+    if (!cwd) fprintf(stderr, "current working directory was not determined.");
+    else path_list_add(search_path, cwd);
+
+    path_list_add(search_path, "~/.local/lib/mila");
+
+    char out_pwd[MAX_PATH_LENGTH] = {0};
+    char out[MAX_PATH_LENGTH] = {0};
+    path_dirname(argv[1], out, sizeof(out));
+    path_join(out_pwd, sizeof(out_pwd), 2, cwd, out);
+    path_list_add(search_path, out_pwd);
+    free(cwd);
 
     if (argc >= 2)
     {
@@ -3098,15 +3116,6 @@ int main(int argc, char **argv)
             env_kill(g);
             return 1;
         }
-
-        char out[MAX_PATH_LENGTH] = {0};
-        path_dirname(argv[1], out, sizeof(out));
-        path_list_add(search_path, out);
-
-        char cwd[MAX_PATH_LENGTH] = {0};
-        path_get_cwd(cwd, 1024);
-        path_list_add(search_path, cwd);
-        path_list_add(search_path, "~/.local/lib/mila");
 
         // argv handling is the only part that touches the builtins.
 
@@ -3139,6 +3148,8 @@ int main(int argc, char **argv)
         Src *S = src_new(src_text);
         Value *res = eval_source(S, g);
 
+        path_list_free(search_path);
+
         // cleanup
         val_release(res);
         src_free(S);
@@ -3146,13 +3157,12 @@ int main(int argc, char **argv)
         free(src_text);
 
         env_kill(g);
+#ifndef MILA_USE_SHARED
+        env_free_builtins();
+#endif
     }
     else
     {
-        char cwd[MAX_PATH_LENGTH] = {0};
-        path_get_cwd(cwd, 1024);
-        path_list_add(search_path, cwd);
-        path_list_add(search_path, "~/.local/lib/mila");
 
         printf("MiLa REPL\n");
         printf("Running MiLa '%s'\n", env_get(g, "__mila_codename") ? env_get(g, "__mila_codename")->v.s : "???");

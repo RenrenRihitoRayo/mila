@@ -12,6 +12,15 @@
 #include <limits.h>
 #endif
 
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <direct.h>
+#define PATH_GETCWD _getcwd
+#else
+#include <unistd.h>
+#define PATH_GETCWD getcwd
+#endif
+
 typedef struct {
     char **items;
     int count;
@@ -373,6 +382,7 @@ char *path_list_find(path_list *pl, const char *file) {
             full[rl] = sep, full[rl+1] = '\0';
 
         strcat(full, tfile);
+        puts(full);
         if (file_exists(full)) {
             free(tfile);
             return full;
@@ -385,11 +395,12 @@ char *path_list_find(path_list *pl, const char *file) {
 
 // other
 
-int path_get_cwd(char *out, size_t n)
-{
-#if defined(_WIN32) || defined(_WIN64)
-    return _getcwd(out, n) ? 0 : -1;
-#else
-    return getcwd(out, n) ? 0 : -1;
-#endif
+
+// Return malloc'd absolute path of current working directory. Caller must free.
+char* path_get_cwd(void) {
+    char *cwd = PATH_GETCWD(NULL, 0); // allocate buffer
+    if (!cwd) return NULL;
+
+    normalize_slashes(cwd);
+    return cwd;
 }

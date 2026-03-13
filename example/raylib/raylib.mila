@@ -18,14 +18,14 @@ var KEY_A     = 65;  // Key: A
 var KEY_S     = 83;  // Key: S
 var KEY_D     = 68;  // Key: D
 
-SetTargetFPS(50);
+SetTargetFPS(60);
 
 while (not(WindowShouldClose()))
 {
     BeginDrawing();
     ClearBackground(RAYWHITE);
     DrawRectangle(x, y, 180, 60, BLACK);
-    DrawText("Hello world!", x+10, y+10, 24, WHITE);
+    DrawText("Hello world!\nBox.", x+10, y+10, 24, WHITE);
 
     if (IsKeyPressed(KEY_RIGHT)) {
         set x = x + 10;
@@ -41,7 +41,7 @@ while (not(WindowShouldClose()))
     }
     elif (IsKeyDown(KEY_D)) {
         set x = x + 10;
-    } 
+    }
     elif (IsKeyDown(KEY_A)) {
         set x = x - 10;
     }

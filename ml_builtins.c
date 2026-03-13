@@ -1215,14 +1215,19 @@ Value *native_run(Env *env, int argc, Value **argv)
 Value *native_load(Env *env, int argc, Value **argv)
 {
     (void)env;
-    if (argc != 1 || argv[0]->type != T_STRING)
+    if (argc != 1 || (!argv[0]) || argv[0]->type != T_STRING)
     {
         return verror("invalid number of arguments given or incorrect types.");
     }
 
-    if (load_library(env, argv[0]->v.s))
+    char* new_path = path_list_find(search_path, argv[0]->v.s);
+    if (!new_path)
         return verror("problem loading file %s\n", argv[0]->v.s);
-
+    if (load_library(env, new_path)) {
+        free(new_path);
+        return verror("problem loading file %s\n", argv[0]->v.s);
+    }
+    free(new_path);
     return vnull();
 }
 
@@ -1476,8 +1481,20 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value* env_free_builtins()
+{
+    free(dict_meta);
+    free(array_meta);
+    free(self_free_meta);
+    free(list_meta);
+    free(file_meta);
+    free(range_meta);
+
+    return NULL;
+}
+
 // Minimal MiLa Builtins
-// We do not support objects,
+// We do not support normal objects,
 // the dots are namespaces.
 // And yes if you remove this file it wont trash the interpreter.
 void env_register_builtins(Env *g)

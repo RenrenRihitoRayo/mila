@@ -24,11 +24,7 @@
 #endif
 
 #define ML_LIB
-#ifndef MILA_USE_MILA_C
 #include "mila.h"
-#else
-#include "mila.c"
-#endif
 
 #ifndef ML_ALREADY
 #undef ML_LIB
@@ -1202,11 +1198,14 @@ Value *native_run(Env *env, int argc, Value **argv)
         {
             return verror("run(filename) did not find the file.");
         }
-        if (run_file(path, env))
+        Env* frame = env_new(env);
+        Value* res = run_file_keep_res(path, env);
         {
             return verror("problem running file %s", path);
         }
+        val_retain(res);
         free(path);
+        return res;
     }
 
     return vnull();
@@ -1266,6 +1265,21 @@ Value *native_new_dict(Env *env, int argc, Value **argv)
         return val_retain(v);
     }
     return verror("couldnt make a dict.");
+}
+
+Value *native_register_atexit(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+    {
+        return verror("register_atexit(function): Provide a single argument. Got %i.", argc);
+    }
+
+    print_value(argv[0]); puts("");
+
+    mila_add_atexit(argv[0]);
+
+    return vnull();
 }
 
 Value *native_set_dict(Env *env, int argc, Value **argv)
@@ -1543,7 +1557,7 @@ void env_register_builtins(Env *g)
 
     // === Misc
     env_register_native(g, "range", native_range);
-    env_register_native(g, "vfree", native_vfree);
+    env_register_native(g, "register_atexit", native_register_atexit);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);

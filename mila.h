@@ -8,6 +8,7 @@
 #define MAX_METHODS 100
 #define MAX_NUMBER_DIGITS 1000
 #define MAX_PATH_LENGTH 10000
+#define MAX_ATEXIT_FUNCTIONS 100
 
 #define GET_STRING(v) (v ? v->v.s : NULL)
 #define GET_INTEGER(v) (v ? v->v.i : 0)
@@ -49,7 +50,7 @@
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
 
-path_list *search_path;
+path_list *search_path = NULL;
 
 typedef struct Value Value;
 typedef struct Env Env;
@@ -80,6 +81,9 @@ typedef enum
     T_CONTINUE,
     T_ARG_END
 } ValueType;
+
+Value* mila_atexit_functions[MAX_ATEXIT_FUNCTIONS];
+int mila_atexit_functions_count = 0;
 
 const char *MILA_TYPE_NAMES[] = {
     "null",
@@ -298,9 +302,16 @@ int match_types(Value **args, ...);
 Value *eval_source(Src *s, Env *env);
 Value *eval_str(char *src, Env *env);
 int run_file(char *name, Env *env);
+Value* run_file_keep_res(char *name, Env *env);
 double get_unix_timestamp();
 char *read_input(void);
 int load_library(Env *env, const char *libpath);
+void mila_add_atexit(Value* fn);
+
+// Initialize a minimal environment for a MiLa script
+// This will automatically inject built ins
+Env* mila_init(void);
+void mila_deinit(Env* env);
 
 void* mila_malloc(size_t size) {
     void* ptr = malloc(size);

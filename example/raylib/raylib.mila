@@ -1,13 +1,21 @@
 load("./raylib.so");
 
-InitWindow(800, 400, "test");
+register_atexit(fn() {
+    println("Bye!");
+});
+
+
+var screen_w = 800;
+var screen_h = 400;
+
+InitWindow(800, 400, "Raylib in MiLa!");
 
 var RAYWHITE = -657931;
 var WHITE = -1;
 var BLACK = -16777216;
 
-var x = 0;
-var y = 0;
+var x = (screen_w / 2) - 90;
+var y = (screen_h / 2) - 30;
 
 var KEY_RIGHT = 262; // Key: Cursor right
 var KEY_LEFT  = 263; // Key: Cursor left
@@ -27,15 +35,15 @@ while (not(WindowShouldClose()))
     DrawRectangle(x, y, 180, 60, BLACK);
     DrawText("Hello world!\nBox.", x+10, y+10, 24, WHITE);
 
-    if (IsKeyPressed(KEY_RIGHT)) {
+    if (IsKeyDown(KEY_RIGHT)) {
         set x = x + 10;
+    } 
+    elif (IsKeyDown(KEY_UP)) {
+        set y = y - 10;
     } 
     elif (IsKeyDown(KEY_LEFT)) {
         set x = x - 10;
     }
-    elif (IsKeyDown(KEY_UP)) {
-        set y = y - 10;
-    } 
     elif (IsKeyDown(KEY_DOWN)) {
         set y = y + 10;
     }

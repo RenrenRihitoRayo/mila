@@ -14,7 +14,6 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <math.h>
 #include <signal.h>
 
 #ifdef _WIN32
@@ -40,13 +39,26 @@ _Bool mila_is_builtins_dynamic = 1;
 
 #include "mila.h"
 
+void mila_add_atexit(Value* fn)
+{
+    if (MILA_GET_TYPE(fn) != T_FUNCTION)
+    {
+        fprintf(stderr, "Expected a function type but got %s instead.\n", MILA_GET_TYPENAME(fn));
+        exit(1);
+    }
+    if (mila_atexit_functions_count >= MAX_ATEXIT_FUNCTIONS) {
+        fprintf(stderr, "Too many functions registered!\n");
+        exit(1);
+    }
+    mila_atexit_functions[mila_atexit_functions_count] = fn;
+    mila_atexit_functions_count = mila_atexit_functions_count + 1;
+}
+
 static void signal_handle(int sig)
 {
     printf("\n\nGot signal %s\n", strsignal(sig));
     exit(1);
 }
-
-path_list *search_path = NULL;
 
 void print_memory_usage()
 {
@@ -2288,6 +2300,7 @@ MethodType parse_op(Src *s)
 {
     skip_ws(s);
     char a = src_peek(s);
+    if (a == '\0') return -1;
     char b = s->src[s->pos + 1];
     // two-char ops
     if (a == '|' && b == '|')
@@ -2987,6 +3000,28 @@ int run_file(char *name, Env *env)
     return 0;
 }
 
+Value* run_file_keep_res(char *name, Env *env)
+{
+    char *src_text = NULL;
+    FILE *f = fopen(name, "rb");
+    if (!f)
+    {
+        return verror("Cannot open %s\n", name);
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    src_text = mila_malloc(size + 1);
+    fread(src_text, 1, size, f);
+    src_text[size] = 0;
+    fclose(f);
+    Src *S = src_new(src_text);
+    Value *res = eval_source(S, env);
+    src_free(S);
+    free(src_text);
+    return res;
+}
+
 int needs_more(const char *src)
 {
     int parens = 0, braces = 0;
@@ -3025,6 +3060,19 @@ Env* mila_init(void)
     if (signal(SIGTERM, signal_handle) == SIG_ERR) {perror("signal SIGTERM"); exit(1);}
 
     return g;
+}
+
+void mila_deinit(Env* g)
+{
+    // we might handle stuff here
+    printf("%i\n", mila_atexit_functions_count);
+    for (int i = 0; i < mila_atexit_functions_count; ++i)
+    {
+        print_value(mila_atexit_functions[i]); puts("");
+        val_release(call_function_with(g, mila_atexit_functions[i], NULL));
+        val_release(mila_atexit_functions[i]);
+    }
+    env_free(g);
 }
 
 #ifndef ML_LIB
@@ -3125,9 +3173,12 @@ int main(int argc, char **argv)
         if (is_builtins)
         {
             array = call_function_str(g, "array", vint(argc - 1), NULL);
-            for (int i = 1; i < argc; i++)
-                val_release(call_function_str(g, "array.set", val_retain(array), vint(i - 1), vstring_dup(argv[i]), NULL));
-            env_set(g, "argv", array);
+            for (int i = 1; i < argc; i++) {
+                Value* str = vstring_dup(argv[i]);
+                val_release(call_function_str(g, "array.set", val_retain(array), vint(i - 1), str, NULL));
+                // val_release(str);
+            }
+            env_set_raw(g, "argv", array);
         }
         else
         {
@@ -3156,7 +3207,12 @@ int main(int argc, char **argv)
 
         free(src_text);
 
-        env_kill(g);
+        // if (is_builtins)
+        // {
+        //     val_release(call_function_str(g, "array.free", array, NULL));
+        // }
+
+        mila_deinit(g);
 #ifndef MILA_USE_SHARED
         env_free_builtins();
 #endif
@@ -3239,7 +3295,7 @@ int main(int argc, char **argv)
             }
         }
 
-        env_free(g);
+        mila_deinit(g);
     }
     return 0;
 }

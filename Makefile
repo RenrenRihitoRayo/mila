@@ -1,5 +1,5 @@
 all: mila.c ml_builtins.c ml_dict.c mila.h
-	gcc -std=c23 -lc -lm -o mila mila.c -fsanitize=address -g
+	gcc -std=c23 -lc -lm -O0 -o mila mila.c -fsanitize=address -g
 
 test:
 	gcc -o test.o0.mila -O0 mila.c -lm

@@ -545,62 +545,7 @@ Value *native_type_of(Env *env, int argc, Value **argv)
     }
     if (argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
-    switch (argv[0]->type)
-    {
-    case T_STRING:
-        return vstring_dup("string");
-    case T_INT:
-        return vstring_dup("int");
-    case T_FLOAT:
-        return vstring_dup("float");
-    case T_OPAQUE:
-        return vstring_dup("opaque");
-    case T_FUNCTION:
-    case T_NATIVE:
-        return vstring_dup("function");
-    case T_BOOL:
-        return vstring_dup("bool");
-    case T_NULL:
-        return vstring_dup("null");
-    case T_NONE:
-        return vstring_dup("none");
-    default:
-        return vstring_dup("unknown");
-    }
-}
-
-Value *native_xtype_of(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1)
-    {
-        return verror("_typeof(any): Expected 1 argument (any) any.\n");
-    }
-    if (*argv[0]->type_name)
-        return vstring_dup(argv[0]->type_name);
-    switch (argv[0]->type)
-    {
-    case T_STRING:
-        return vstring_dup("string");
-    case T_INT:
-        return vstring_dup("int");
-    case T_FLOAT:
-        return vstring_dup("float");
-    case T_OPAQUE:
-        return vstring_dup("opaque");
-    case T_FUNCTION:
-        return vstring_dup("function");
-    case T_NATIVE:
-        return vstring_dup("native");
-    case T_BOOL:
-        return vstring_dup("bool");
-    case T_NULL:
-        return vstring_dup("null");
-    case T_NONE:
-        return vstring_dup("none");
-    default:
-        return vstring_dup("unknown");
-    }
+    return vstring_dup(MILA_GET_TYPENAME(argv[0]));
 }
 
 Value *file_printer(Value *self)
@@ -1628,7 +1573,6 @@ void env_register_builtins(Env *g)
     env_register_native(g, "cast.i2f", native_cast_int_to_float);
     env_register_native(g, "cast.f2i", native_cast_float_to_int);
     env_register_native(g, "typeof", native_type_of);
-    env_register_native(g, "_typeof", native_xtype_of);
     // === String
     env_register_native(g, "str.slice", native_str_slice);
     env_register_native(g, "str.index", native_str_index);

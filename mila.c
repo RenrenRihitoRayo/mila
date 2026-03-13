@@ -212,6 +212,12 @@ Value *vint(long x)
     v->v.i = x;
     return v;
 }
+Value *vuint(unsigned long x)
+{
+    Value *v = val_new(T_UINT);
+    v->v.ui = x;
+    return v;
+}
 Value *vfloat(double f)
 {
     Value *v = val_new(T_FLOAT);
@@ -374,6 +380,10 @@ char *as_c_string(Value *v)
         else
             our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
         break;
+    case T_UINT:
+        our_asprintf(&buffer, "%lu", v->v.ui);
+        our_asprintf(&buffer, "u");
+        break;
     case T_RETURN:
     {
         char *str = as_c_string_repr(v->v.opaque);
@@ -416,21 +426,6 @@ char *as_c_string_repr(Value *v)
     }
     switch (v->type)
     {
-    case T_NULL:
-        our_asprintf(&buffer, "null");
-        break;
-    case T_NONE:
-        our_asprintf(&buffer, "none");
-        break;
-    case T_ERROR:
-        our_asprintf(&buffer, "<error:%s>", v->v.message);
-        break;
-    case T_INT:
-        our_asprintf(&buffer, "%ld", v->v.i);
-        break;
-    case T_FLOAT:
-        our_asprintf(&buffer, "%f", v->v.f);
-        break;
     case T_STRING:
         our_asprintf(&buffer, "\"");
         char *temp = v->v.s ? v->v.s : "";
@@ -459,30 +454,11 @@ char *as_c_string_repr(Value *v)
         }
         our_asprintf(&buffer, "\"");
         break;
-    case T_BOOL:
-        our_asprintf(&buffer, "%s", v->v.b ? "true" : "false");
-        break;
-    case T_FUNCTION:
-        our_asprintf(&buffer, "<function:%s at %p>", v->v.fn->name ? v->v.fn->name : "(lambda)", v);
-        break;
-    case T_NATIVE:
-        our_asprintf(&buffer, "<native:%s at %p>", v->v.native->name ? v->v.native->name : "???", v->v.native->fn);
-        break;
-    case T_OPAQUE:
-        if (v->type_name)
-            our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
-        else
-            our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
-        break;
-    case T_RETURN:
-    {
-        char *str = as_c_string_repr(v->v.opaque);
-        our_asprintf(&buffer, "<return:%s>", str);
-        free(str);
-    }
-    break;
-    default:
-        our_asprintf(&buffer, "???");
+    default: {
+            char* tmp = as_c_string(v);
+            our_asprintf(&buffer, "%s", tmp);
+            free(tmp);
+        }
     }
     return buffer;
 }
@@ -1197,7 +1173,8 @@ Value *parse_number(Src *s)
 {
     skip_ws(s);
     int st = s->pos;
-    int seen_dot = 0;
+    _Bool seen_dot = 0;
+    _Bool is_unsigned = 0;
     if (src_peek(s) == '-')
     {
         src_get(s);
@@ -1212,6 +1189,11 @@ Value *parse_number(Src *s)
             }
             seen_dot = 1;
         }
+        src_get(s);
+    }
+    if (src_peek(s) == 'u' || src_peek(s) == 'U')
+    {
+        is_unsigned = 1;
         src_get(s);
     }
     int en = s->pos;
@@ -1232,7 +1214,7 @@ Value *parse_number(Src *s)
         else
         {
             long i = atol(tmp);
-            return vint(i);
+            return is_unsigned ? vuint(i > 0 ? i : -i) : vint(atol(tmp));
         }
     }
     else
@@ -1244,8 +1226,10 @@ Value *parse_number(Src *s)
         Value *r;
         if (seen_dot)
             r = vfloat(atof(buf));
-        else
-            r = vint(atol(buf));
+        else {
+            long tmp = atol(buf);
+            r = is_unsigned ? vuint(tmp > 0 ? tmp : -tmp) : vint(atol(buf));
+        }
         free(buf);
         return r;
     }
@@ -1735,22 +1719,25 @@ Value *eval_primary(Src *s, Env *env)
     if (c == '\0')
         return vnull();
     // number
-    if ((isdigit((unsigned char)c) || (c == '+' || c == '-')) && isdigit((unsigned char)s->src[s->pos + 1]))
+//    if ((isdigit((unsigned char)c) || (c == '+' || c == '-')) && isdigit((unsigned char)s->src[s->pos + 1]))
+//    {
+//        return parse_number(s);
+//    }
+//    if (isdigit((unsigned char)c) && (unsigned char)s->src[s->pos + 1] == '.')
+//    {
+//        return parse_number(s);
+//    }
+    if ((isdigit((unsigned char)c) || (c == '+' || c == '-')) && (isdigit((unsigned char)s->src[s->pos + 1])) || s->src[s->pos + 1] == '.' || s->src[s->pos + 1] == 'u' || s->src[s->pos + 1] == 'U') // && (unsigned char)s->src[s->pos + 2] == '.')
     {
         return parse_number(s);
     }
-    if (isdigit((unsigned char)c) && (unsigned char)s->src[s->pos + 1] == '.')
-    {
-        return parse_number(s);
-    }
-    if ((isdigit((unsigned char)c) || (c == '+' || c == '-')) && isdigit((unsigned char)s->src[s->pos + 1]) && (unsigned char)s->src[s->pos + 2] == '.')
-    {
-        return parse_number(s);
-    }
-    if (isdigit((unsigned char)c))
-    {
-        return vint(src_get(s) - 48);
-    }
+//    if (isdigit((unsigned char)c))
+//    {
+//        int i = src_get(s) - 48;
+//        _Bool is_unsigned = src_peek(s) == 'U' || src_peek(s) == 'U';
+//        if (is_unsigned) i = i > 0 ? i : -i;
+//        return is_unsigned ? vuint(i) : vint(i);
+//    }
     // string
     if (c == '"')
         return parse_string(s);
@@ -2072,9 +2059,9 @@ Value *eval_primary(Src *s, Env *env)
 }
 
 // helper to convert numeric types and do arithmetic
-int is_number(Value *v)
+static int is_number(Value *v)
 {
-    return v && (v->type == T_INT || v->type == T_FLOAT);
+    return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
 }
 
 double to_double(Value *v)
@@ -2181,6 +2168,37 @@ Value *binary_op(Value *a, MethodType op, Value *b)
                 return vbool(ra == rb);
             if (op == BMethodNe)
                 return vbool(ra != rb);
+        }
+        // treat both numbers as unsigned.
+        if (a->type == T_UINT || b->type == T_UINT)
+        {
+            unsigned long ia = a->v.ui, ib = b->v.ui;
+            if (op == BMethodAdd)
+                return vuint(ia + ib);
+            if (op == BMethodSub)
+                return vuint(ia - ib);
+            if (op == BMethodMul)
+                return vuint(ia * ib);
+            if (op == BMethodDiv)
+                return vuint(ia / ib);
+            if (op == BMethodLess)
+                return vbool(ia < ib);
+            if (op == BMethodGreat)
+                return vbool(ia > ib);
+            if (op == BMethodLE)
+                return vbool(ia <= ib);
+            if (op == BMethodGE)
+                return vbool(ia >= ib);
+            if (op == BMethodEq)
+                return vbool(ia == ib);
+            if (op == BMethodNe)
+                return vbool(ia != ib);
+            if (op == BMethodLshift)
+                return vuint(ia << ib);
+            if (op == BMethodRshift)
+                return vuint(ia >> ib);
+            if (op == BMethodMod)
+                return vuint(ia % ib);
         }
         else
         {

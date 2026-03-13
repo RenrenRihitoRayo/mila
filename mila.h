@@ -9,6 +9,14 @@
 #define MAX_NUMBER_DIGITS 1000
 #define MAX_PATH_LENGTH 10000
 
+#define GET_STRING(v) (v ? v->v.s : NULL)
+#define GET_INTEGER(v) (v ? v->v.i : 0)
+#define GET_UINTEGER(v) (v ? v->v.ui : 0)
+#define GET_FLOAT(v) (v ? v->v.f : 0.0)
+#define GET_OPAQUE(v) (v ? v->v.opaque : NULL)
+#define GET_FUNCTION(v) (v ? v->v.fn : NULL)
+#define GR_NATIVE(v) (v ? v->v.native : NULL)
+
 #define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 #define MILA_GET_TYPE(v) (v ? v->type : -1 )
 
@@ -58,6 +66,7 @@ typedef enum
 {
     T_NULL,
     T_INT,
+    T_UINT,
     T_FLOAT,
     T_STRING,
     T_BOOL,
@@ -75,6 +84,7 @@ typedef enum
 const char *MILA_TYPE_NAMES[] = {
     "null",
     "int",
+    "uint",
     "float",
     "string",
     "bool",
@@ -168,6 +178,7 @@ struct Value
         double f;
         void *opaque;
         long i;
+        unsigned long ui;
         // function
         FunctionV *fn;
         NativeFunctionV *native;
@@ -229,7 +240,7 @@ Value *vnull();
 Value *vnone();
 Value *verror(char *message, ...);
 Value *vfunction(char **params, char *body_src, Env *closure);
-int is_number(Value *v);
+static int is_number(Value *v);
 double to_double(Value *v);
 char *as_c_string(Value *v);
 Value *to_c_string(Value *v);

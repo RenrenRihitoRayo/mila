@@ -37,22 +37,22 @@ test:
 	@rm test.*
 
 bare: mila.c ml_builtins.c ml_dict.c mila.h
+	gcc -std=c23 -O3 -lm -o mila mila.c -D MILA_USE_SHARED
+
 	# Build mila shared library
-	gcc -std=c23 -lm -fPIC -shared -o libmila.so mila.c -D MILA_USE_SHARED -D ML_LIB
+	gcc -std=c23 -lm -fPIC -shared -o libmila_runtime.so mila.c -D MILA_USE_SHARED -D ML_LIB
 	
 	# Build mila builtins shared library, linking against mila.so
-	gcc -std=c23 -lm -fPIC -shared -o mila_builtins.so ml_builtins.c -L. -lmila
+	gcc -std=c23 -lm -fPIC -shared -o mila_builtins.so ml_builtins.c -L. -lmila_runtime
 	
-	echo "Copying builtins canonical to /lib"
+	@echo "Copying builtins canonical to /lib"
 	sudo cp mila_builtins.so /lib
+	@echo "Copying runtime to /lib"
+	sudo cp libmila_runtime.so /lib
 
 release: mila.c ml_builtins.c ml_dict.c mila.h
 	gcc -std=c23 -lm -O3 -o mila mila.c
 	strip mila
 
 clean:
-	rm mila
-	for file in *.so; do \
-		[ -f "$$f" ] || continue; \
-		rm $${file}; \
-	done
+	rm mila *.so

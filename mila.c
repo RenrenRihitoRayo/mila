@@ -3236,7 +3236,6 @@ int main(int argc, char **argv)
             for (int i = 2; i < argc; i++) {
                 Value* str = vstring_dup(argv[i]);
                 val_release(call_function_str(g, "array.set", val_retain(array), vint(i - 2), str, NULL));
-                // val_release(str);
             }
             env_set_raw(g, "argv", array);
         }

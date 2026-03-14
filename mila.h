@@ -16,7 +16,7 @@
 #define GET_FLOAT(v) (v ? v->v.f : 0.0)
 #define GET_OPAQUE(v) (v ? v->v.opaque : NULL)
 #define GET_FUNCTION(v) (v ? v->v.fn : NULL)
-#define GR_NATIVE(v) (v ? v->v.native : NULL)
+#define GET_NATIVE(v) (v ? v->v.native : NULL)
 
 #define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 #define MILA_GET_TYPE(v) (v ? v->type : -1 )

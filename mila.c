@@ -2792,7 +2792,7 @@ Value *eval_statement(Src *s, Env *env)
                 if (!v)
                 {
                     free(id);
-                    return verror("Iterable is NULL!");
+                    return verror("Iterable is cnull!");
                 }
                 value = v->v.opaque;
                 if (!value)
@@ -3113,8 +3113,8 @@ int main(int argc, char **argv)
                 "Max num digits:\n"
                 "  %i\n",
                 sizeof(Value),
-                sizeof(Value) + sizeof(MethodTable),
-                sizeof(MethodTable),
+                sizeof(Value) + sizeof(MethodTable) * MethodTotalCount,
+                sizeof(MethodTable) * MethodTotalCount,
                 MAX_NUMBER_DIGITS);
             return 0;
         }

@@ -1,3 +1,7 @@
+/*
+    Minimal MiLa library
+*/
+
 #include "mila.c"
 #include <stdio.h>
 

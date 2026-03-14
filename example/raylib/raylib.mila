@@ -35,12 +35,13 @@ SetTargetFPS(fps);
 var new = 0;
 var old = 0;
 
+// 1500 FPS spike is 1700 FPS
 while (not(WindowShouldClose()))
 {
     set old = new ?? 0; // FIX: big delta spike at the start
     set new = get_time();
 
-    var delta = (new - old);
+    var delta = new - old; // We calculate the delta
 
     BeginDrawing();
     ClearBackground(RAYWHITE);
@@ -49,6 +50,7 @@ while (not(WindowShouldClose()))
     DrawText("Hello world!\nBox.", x+10, y+10, 24, WHITE);
 
     DrawRectangle(6, 6, 155, 52, RAYWHITE);
+    // Yes addition and concat is the same.
     DrawText("FPS: " + GetFPS() + "\nSpeed: " + ceil(speed * delta) + "\nDelta: " + delta, 10, 10, 15, BLACK);
 
     if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {

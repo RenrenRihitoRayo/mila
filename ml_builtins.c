@@ -57,7 +57,8 @@ MethodTable *array_meta = NULL;
 MethodTable *range_meta = NULL;
 MethodTable *self_free_meta = NULL;
 
-Value* self_free(Value* self) {
+Value *self_free(Value *self)
+{
     val_release(self);
     return NULL;
 }
@@ -379,21 +380,24 @@ Value *native_input(Env *env, int argc, Value **argv)
     return res ? vstring_take(res) : vnull();
 }
 
-Value *list_to_iter(Value* self)
+Value *list_to_iter(Value *self)
 {
-    Value** iter = ll_to_iter(self->v.opaque);
+    Value **iter = ll_to_iter(self->v.opaque);
     return vopaque(iter);
 }
 
-Value* list_display(Value* self)
+Value *list_display(Value *self)
 {
-    LinkedList* lst = (LinkedList*)self->v.opaque;
-    Value** iter = ll_to_iter(lst);
-    char* buffer = strdup("list(");
-    for (int i = 0; iter[i]; i++) {
-        char* repr = as_c_string_repr(iter[i]);
-        if (i < lst->size-1) our_asprintf(&buffer, "%s, ", repr);
-        else our_asprintf(&buffer, "%s", repr);
+    LinkedList *lst = (LinkedList *)self->v.opaque;
+    Value **iter = ll_to_iter(lst);
+    char *buffer = strdup("list(");
+    for (int i = 0; iter[i]; i++)
+    {
+        char *repr = as_c_string_repr(iter[i]);
+        if (i < lst->size - 1)
+            our_asprintf(&buffer, "%s, ", repr);
+        else
+            our_asprintf(&buffer, "%s", repr);
     }
     our_asprintf(&buffer, ")");
     return vstring_take(buffer);
@@ -402,23 +406,85 @@ Value* list_display(Value* self)
 Value *native_list_new(Env *e, int argc, Value **argv)
 {
     (void)e;
-    LinkedList* list = ll_create();
-    for (int i=0; i < argc; i++) {
-        ll_append(list, argv[i]);
+    LinkedList *list = ll_create();
+    for (int i = 0; i < argc; i++)
+    {
+        ll_append(list, val_retain(argv[i]));
     }
-    Value* res = vopaque_extra(list, NULL, MILA_LPREFIX "list");
+    Value *res = vopaque_extra(list, NULL, MILA_LPREFIX "list");
     val_set_table(res, list_meta);
     return res;
 }
 
-Value* list_free(Value* self)
+Value *native_list_append(Env *e, int argc, Value **argv)
 {
-    Value** iter = ll_to_iter(self->v.opaque);
-    
-    for (int i=0; iter[i]; i++) {
+    (void)e;
+    if (argc != 2)
+        return verror("list.append(l, value): requires two arguments!");
+    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
+    ll_append(ll, val_retain(argv[1]));
+    return vnull();
+}
+
+Value *native_list_len(Env *e, int argc, Value **argv)
+{
+    (void)e;
+    if (argc != 1)
+        return verror("list.len(l): requires one argument!");
+    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
+    return vint(ll->size);
+}
+
+Value *native_list_set(Env *e, int argc, Value **argv)
+{
+    (void)e;
+    if (argc != 3)
+        return verror("list.set(l, index, value): requires 3 arguments!");
+    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
+    ll_set(ll, argv[1]->v.i, val_retain(argv[2]));
+    return vnull();
+}
+
+Value *native_list_get(Env *e, int argc, Value **argv)
+{
+    (void)e;
+    if (argc != 2)
+        return verror("list.get(l, index): requires 2 arguments!");
+    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
+    return val_retain(ll_get(ll, argv[1]->v.i));
+}
+
+Value *set_list(Value *self, Value* index, Value* value)
+{
+    LinkedList *ll = (LinkedList *)self->v.opaque;
+    ll_set(ll, index->v.i, val_retain(value));
+    return vnull();
+}
+
+Value *get_list(Value *self, Value* index)
+{
+    LinkedList *ll = (LinkedList *)self->v.opaque;
+    return val_retain(ll_get(ll, index->v.i));
+}
+
+Value *native_list_pop(Env *e, int argc, Value **argv)
+{
+    (void)e;
+    if (argc != 2)
+        return verror("list.pop(l, index): requires 2 arguments!");
+    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
+    return ll_pop(ll, argv[1]->v.i);
+}
+
+Value *list_free(Value *self)
+{
+    Value **iter = ll_to_iter(self->v.opaque);
+
+    for (int i = 0; iter[i]; i++)
+    {
         val_release(iter[i]);
     }
-    
+
     free(iter);
     ll_free(self->v.opaque);
     self->type = T_NULL;
@@ -426,17 +492,18 @@ Value* list_free(Value* self)
     return vnull();
 }
 
-Value *native_list_free(Env* e, int argc, Value** argv)
+Value *native_list_free(Env *e, int argc, Value **argv)
 {
     (void)e;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
         verror("list.free(lst): List opaque pointer is needed.");
-    Value** iter = ll_to_iter(argv[0]->v.opaque);
-    
-    for (int i=0; iter[i]; i++) {
+    Value **iter = ll_to_iter(argv[0]->v.opaque);
+
+    for (int i = 0; iter[i]; i++)
+    {
         val_release(iter[i]);
     }
-    
+
     free(iter);
     ll_free(argv[0]->v.opaque);
     argv[0]->type = T_NULL;
@@ -856,14 +923,15 @@ Value *range_to_iter(Value *self)
     long index = 0;
     for (long i = 0; i < data->end; i += data->step)
     {
-        Value* n = vint(i);
+        Value *n = vint(i);
         v[index++] = n;
     }
     v[index] = NULL;
     return vopaque(v);
 }
 
-Value* range_free(Value* self) {
+Value *range_free(Value *self)
+{
     free(self->v.opaque);
     return NULL;
 }
@@ -1064,9 +1132,8 @@ Value *native_len_array(Env *env, int argc, Value **argv)
     return vint(arr->size);
 }
 
-Value *get_array(Value* self, Value* index)
+Value *get_array(Value *self, Value *index)
 {
-
     Value *arrv = self;
     Array *arr = (Array *)arrv->v.opaque;
     if (!arr)
@@ -1094,9 +1161,8 @@ Value *get_array(Value* self, Value* index)
     return val;
 }
 
-Value *set_array(Value* self, Value* index, Value* val)
+Value *set_array(Value *self, Value *index, Value *val)
 {
-
     Value *arrv = self;
     Array *arr = (Array *)arrv->v.opaque;
     if (!arr)
@@ -1228,8 +1294,8 @@ Value *native_run(Env *env, int argc, Value **argv)
         {
             return verror("run(filename) did not find the file.");
         }
-        Env* frame = env_new(env);
-        Value* res = run_file_keep_res(path, env);
+        Env *frame = env_new(env);
+        Value *res = run_file_keep_res(path, env);
         {
             return verror("problem running file %s", path);
         }
@@ -1249,10 +1315,11 @@ Value *native_load(Env *env, int argc, Value **argv)
         return verror("invalid number of arguments given or incorrect types.");
     }
 
-    char* new_path = path_list_find(search_path, argv[0]->v.s);
+    char *new_path = path_list_find(search_path, argv[0]->v.s);
     if (!new_path)
         return verror("problem loading file %s\n", argv[0]->v.s);
-    if (load_library(env, new_path)) {
+    if (load_library(env, new_path))
+    {
         free(new_path);
         return verror("problem loading file %s\n", argv[0]->v.s);
     }
@@ -1321,13 +1388,13 @@ Value *native_get_dict(Env *env, int argc, Value **argv)
     return v ? v : vnull();
 }
 
-Value *set_dict(Value* self, Value* name, Value* val)
+Value *set_dict(Value *self, Value *name, Value *val)
 {
     dict_set(self->v.opaque, name, val);
     return vnull();
 }
 
-Value *get_dict(Value* self, Value* name)
+Value *get_dict(Value *self, Value *name)
 {
     Value *v = dict_get(self->v.opaque, name);
     return v;
@@ -1345,7 +1412,7 @@ Value *native_rem_dict(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value* free_dict(Value* self)
+Value *free_dict(Value *self)
 {
     dict_free(self->v.opaque);
     return NULL;
@@ -1510,7 +1577,7 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value* env_free_builtins()
+Value *env_free_builtins()
 {
     free(dict_meta);
     free(array_meta);
@@ -1536,33 +1603,36 @@ void env_register_builtins(Env *g)
     // tell users what implementation it is
     // heres its canon since this is the base implementation.
     env_set_raw(g, "__mila_codename", vstring_dup("canon"));
- 
+
     file_meta = val_make_table();
-    
+
     val_set_method_table(file_meta, UMethodToString, file_printer);
-    
+
     dict_meta = val_make_table();
-    
+
     val_set_method_table(dict_meta, UMethodToString, dict_display);
     val_set_method_table(dict_meta, UMethodFree, free_dict);
     val_set_method_table(dict_meta, BMethodGetItem, get_dict);
     val_set_method_table(dict_meta, TMethodSetItem, set_dict);
-    
+
     list_meta = val_make_table();
 
     val_set_method_table(list_meta, UMethodToString, list_display);
     val_set_method_table(list_meta, UMethodFree, list_free);
-    
+    val_set_method_table(list_meta, UMethodToIter, list_to_iter);
+    val_set_method_table(list_meta, BMethodGetItem, get_list);
+    val_set_method_table(list_meta, TMethodSetItem, set_list);
+
     array_meta = val_make_table();
-    
+
     val_set_method_table(array_meta, UMethodToIter, array_to_iter);
     val_set_method_table(array_meta, UMethodToString, array_to_str);
     val_set_method_table(array_meta, UMethodFree, free_array);
     val_set_method_table(array_meta, BMethodGetItem, get_array);
     val_set_method_table(array_meta, TMethodSetItem, set_array);
-    
+
     range_meta = val_make_table();
-    
+
     val_set_method_table(range_meta, UMethodToIter, range_to_iter);
     val_set_method_table(range_meta, UMethodFree, range_free);
 
@@ -1597,6 +1667,11 @@ void env_register_builtins(Env *g)
     env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
     // === Lists
     env_register_native(g, "list", native_list_new);
+    env_register_native(g, "list.set", native_list_set);
+    env_register_native(g, "list.get", native_list_get);
+    env_register_native(g, "list.pop", native_list_pop);
+    env_register_native(g, "list.len", native_list_len);
+    env_register_native(g, "list.append", native_list_append);
     env_register_native(g, "list.free", native_list_free);
     // === Array
     env_register_native(g, "array", native_new_array);

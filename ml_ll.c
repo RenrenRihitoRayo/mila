@@ -118,7 +118,7 @@ Value** ll_to_iter(LinkedList* list) {
     LLNode* cur = list->head;
     size_t i = 0;
     while (cur) {
-        arr[i++] = cur->value;
+        arr[i++] = val_retain(cur->value);
         cur = cur->next;
     }
     arr[i] = NULL;

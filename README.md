@@ -97,7 +97,7 @@ Such as changing syntax of while loops.
 |    BMethodAdd    |        a +  b       |
 |    BMethodSub    |        a -  b       |
 |    BMethodMul    |        a *  b       |
-|    BMethodAdd    |        a /  b       |
+|    BMethodDiv    |        a /  b       |
 |  BMethodRshift   |        a >> b       |
 |  BMethodLshift   |        a << b       |
 |    BMethodOr     |        a \|\| b       |

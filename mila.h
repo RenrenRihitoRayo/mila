@@ -74,6 +74,7 @@ typedef enum
     T_FUNCTION,
     T_NATIVE,
     T_OPAQUE,
+    T_OWNED_OPAQUE,
     T_RETURN,
     T_NONE,
     T_ERROR,
@@ -82,9 +83,7 @@ typedef enum
     T_ARG_END
 } ValueType;
 
-Value* mila_atexit_functions[MAX_ATEXIT_FUNCTIONS];
-int mila_atexit_functions_count = 0;
-
+// Simple trick
 const char *MILA_TYPE_NAMES[] = {
     "null",
     "int",
@@ -95,6 +94,7 @@ const char *MILA_TYPE_NAMES[] = {
     "function",
     "native",
     "opaque",
+    "owned_opaque",
     "return",
     "none",
     "error",
@@ -232,12 +232,14 @@ void val_unset_method(Value *v, MethodType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
 void val_kill(Value *v);
-Value *vint(long x);
+Value *vint(long i);
+Value *vuint(unsigned long i);
 Value *vfloat(double f);
 Value *vbool(int b);
 Value *vstring_dup(const char *s);
 Value *vstring_take(char *s);
 Value *vopaque(void *p);
+Value *vowned_opaque(void *p);
 Value *vnative(NativeFn fn, const char *name);
 Value *vtruthy(Value *value);
 Value *vnull();
@@ -253,6 +255,7 @@ void print_value(Value *v);
 void print_value_repr(Value *v);
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 
 // == Parsing
 

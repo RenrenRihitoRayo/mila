@@ -24,7 +24,11 @@
 #endif
 
 #define ML_LIB
+#ifndef MILA_USE_C
 #include "mila.h"
+#else
+#include "mila.c"
+#endif
 
 #ifndef ML_ALREADY
 #undef ML_LIB
@@ -490,6 +494,32 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
         f = 0;
     }
     return vfloat(f);
+}
+
+Value *native_cast_int_to_uint(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc == 1 && argv[0]->type == T_INT)
+    {
+        return vuint(argv[0]->v.ui);
+    }
+    else
+    {
+        return verror("cast.i2f(int): Expected 1 argument (int) int.\n");
+    }
+}
+
+Value *native_cast_uint_to_int(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc == 1 && argv[0]->type == T_UINT)
+    {
+        return vint(argv[0]->v.i);
+    }
+    else
+    {
+        return verror("cast.i2f(int): Expected 1 argument (int) int.\n");
+    }
 }
 
 Value *native_cast_int_to_float(Env *env, int argc, Value **argv)
@@ -1267,21 +1297,6 @@ Value *native_new_dict(Env *env, int argc, Value **argv)
     return verror("couldnt make a dict.");
 }
 
-Value *native_register_atexit(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1)
-    {
-        return verror("register_atexit(function): Provide a single argument. Got %i.", argc);
-    }
-
-    print_value(argv[0]); puts("");
-
-    mila_add_atexit(argv[0]);
-
-    return vnull();
-}
-
 Value *native_set_dict(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -1557,7 +1572,6 @@ void env_register_builtins(Env *g)
 
     // === Misc
     env_register_native(g, "range", native_range);
-    env_register_native(g, "register_atexit", native_register_atexit);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
@@ -1602,6 +1616,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "cast.float", native_cast_float);
     env_register_native(g, "cast.string", native_cast_string);
     env_register_native(g, "cast.i2f", native_cast_int_to_float);
+    env_register_native(g, "cast.i2u", native_cast_int_to_uint);
+    env_register_native(g, "cast.u2i", native_cast_uint_to_int);
     env_register_native(g, "cast.f2i", native_cast_float_to_int);
     env_register_native(g, "typeof", native_type_of);
     // === String
@@ -1646,7 +1662,9 @@ void env_register_builtins(Env *g)
     env_register_native(g, "eval", native_eval); // runs string
 }
 
+#ifndef ML_LIB
 void _mila_lib_init(Env *e)
 {
     env_register_builtins(e);
 }
+#endif

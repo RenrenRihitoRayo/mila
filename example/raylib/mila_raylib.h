@@ -1,14 +1,22 @@
 #include <stdio.h>
 
-void InitWindow(int a, int b, char* c);
-bool WindowShouldClose();
-void BeginDrawing();
-void EndDrawing();
-void ClearBackground(long a);
-void DrawRectangle(int a, int b, int c, int d, long e);
-void DrawText(char* a, int b, int c, int d, long e);
+// Color(...) constructor
+typedef struct {
+	unsigned char r;
+	unsigned char b;
+	unsigned char g;
+	unsigned char a;
+} Color;
+
+void InitWindow(int width, int height, char* title);
+bool WindowShouldClose(void);
+void BeginDrawing(void);
+void EndDrawing(void);
+void ClearBackground(Color bg);
+void DrawRectangle(int x, int y, int width, int height, Color color);
+void DrawText(char* text, int x, int y, int font_size, Color color);
 bool IsKeyDown(int key);
 bool IsKeyPressed(int key);
-bool IsKeyPressedRepeat(int key);
-int GetKeyPressed(void);
 void SetTargetFPS(int);
+int GetFPS(void);
+void CloseWindow(void);

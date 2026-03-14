@@ -1,0 +1,5 @@
+println(argv);
+
+var argv[0] = 90;
+
+println(argv);

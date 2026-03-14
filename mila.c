@@ -39,21 +39,6 @@ _Bool mila_is_builtins_dynamic = 1;
 
 #include "mila.h"
 
-void mila_add_atexit(Value* fn)
-{
-    if (MILA_GET_TYPE(fn) != T_FUNCTION)
-    {
-        fprintf(stderr, "Expected a function type but got %s instead.\n", MILA_GET_TYPENAME(fn));
-        exit(1);
-    }
-    if (mila_atexit_functions_count >= MAX_ATEXIT_FUNCTIONS) {
-        fprintf(stderr, "Too many functions registered!\n");
-        exit(1);
-    }
-    mila_atexit_functions[mila_atexit_functions_count] = fn;
-    mila_atexit_functions_count = mila_atexit_functions_count + 1;
-}
-
 static void signal_handle(int sig)
 {
     printf("\n\nGot signal %s\n", strsignal(sig));
@@ -261,10 +246,38 @@ Value *vstring_take(char *s)
     v->v.s = s;
     return v;
 }
+Value *vowned_opaque(void *p)
+{
+    Value *v = val_new(T_OWNED_OPAQUE);
+    v->v.opaque = p;
+    return v;
+}
 Value *vopaque(void *p)
 {
     Value *v = val_new(T_OPAQUE);
     v->v.opaque = p;
+    return v;
+}
+Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type)
+{
+    Value *v = vopaque(p);
+    if (dis && v)
+    {
+        val_allocate_table(v);
+        val_set_method(v, UMethodToString, dis);
+    }
+    v->type_name = strdup(type);
+    return v;
+}
+Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type)
+{
+    Value *v = vowned_opaque(p);
+    if (dis && v)
+    {
+        val_allocate_table(v);
+        val_set_method(v, UMethodToString, dis);
+    }
+    v->type_name = strdup(type);
     return v;
 }
 Value *vnative(NativeFn fn, const char *name)
@@ -327,18 +340,6 @@ int our_asprintf(char **strp, const char *fmt, ...)
     return (int)(old_len + add_size);
 }
 
-Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type)
-{
-    Value *v = vopaque(p);
-    if (dis && v)
-    {
-        val_allocate_table(v);
-        val_set_method(v, UMethodToString, dis);
-    }
-    v->type_name = strdup(type);
-    return v;
-}
-
 char *as_c_string(Value *v)
 {
     char *buffer = NULL;
@@ -398,6 +399,12 @@ char *as_c_string(Value *v)
             our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
         else
             our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
+        break;
+    case T_OWNED_OPAQUE:
+        if (v->type_name)
+            our_asprintf(&buffer, "<owned opaque:%p %s>", v->v.opaque, v->type_name);
+        else
+            our_asprintf(&buffer, "<owned opaque:%p>", v->v.opaque);
         break;
     case T_UINT:
         our_asprintf(&buffer, "%lu", v->v.ui);
@@ -553,6 +560,11 @@ void val_release(Value *v)
             if (v->v.native->name)
                 free(v->v.native->name);
             free(v->v.native);
+        }
+        if (v->type == T_OWNED_OPAQUE)
+        {
+            if (v->v.opaque)
+                free(v->v.opaque);
         }
         if (v->type_name)
             free(v->type_name);
@@ -2108,6 +2120,11 @@ Value *binary_op(Value *a, MethodType op, Value *b)
         if (BMethodNe == op)
             return vbool(a->type != b->type);
     }
+    else if (BMethodOr == op)
+    {
+        int res = is_truthy(a) || is_truthy(b);
+        return vbool(res);
+    }
     else if (is_number(a) && is_number(b))
     {
         if (a->type == T_UINT || b->type == T_UINT)
@@ -2116,8 +2133,13 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             unsigned long ia = a->v.ui, ib = b->v.ui;
             if (op == BMethodAdd)
                 return vuint(ia + ib);
-            if (op == BMethodSub)
+            if (op == BMethodSub) {
+                if (a->type == T_INT) {
+                    long v = a->v.i - b->v.i;
+                    return vuint(v > 0 ? v : -v);
+                }
                 return vuint(ia - ib);
+            }
             if (op == BMethodMul)
                 return vuint(ia * ib);
             if (op == BMethodDiv)
@@ -2222,11 +2244,6 @@ Value *binary_op(Value *a, MethodType op, Value *b)
     else if (BMethodAnd == op)
     {
         int res = is_truthy(a) && is_truthy(b);
-        return vbool(res);
-    }
-    else if (BMethodOr == op)
-    {
-        int res = is_truthy(a) || is_truthy(b);
         return vbool(res);
     }
     // string concatenation for '+'
@@ -2485,8 +2502,8 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
-                val_release(obj);
-                val_release(v);
+                // val_release(obj);
+                // val_release(v);
                 free(id);
                 return res;
             }
@@ -2580,8 +2597,8 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
-                val_release(obj);
-                val_release(v);
+                // val_release(obj);
+                // val_release(v);
                 free(id);
                 return res;
             }
@@ -3053,11 +3070,16 @@ int needs_more(const char *src)
 Env* mila_init(void)
 {
     Env* g = env_new(NULL);
-    env_register_builtins(g);
 
+#ifndef MILA_USE_SHARED
+    env_register_builtins(g);
+#endif
+
+#ifndef MILA_NO_SIGNAL_HANDLER
     if (signal(SIGINT, signal_handle) == SIG_ERR) {perror("signal SIGINT"); exit(1);}
     if (signal(SIGSEGV, signal_handle) == SIG_ERR) {perror("signal SIGSEGV"); exit(1);}
     if (signal(SIGTERM, signal_handle) == SIG_ERR) {perror("signal SIGTERM"); exit(1);}
+#endif
 
     return g;
 }
@@ -3065,13 +3087,7 @@ Env* mila_init(void)
 void mila_deinit(Env* g)
 {
     // we might handle stuff here
-    printf("%i\n", mila_atexit_functions_count);
-    for (int i = 0; i < mila_atexit_functions_count; ++i)
-    {
-        print_value(mila_atexit_functions[i]); puts("");
-        val_release(call_function_with(g, mila_atexit_functions[i], NULL));
-        val_release(mila_atexit_functions[i]);
-    }
+
     env_free(g);
 }
 
@@ -3120,6 +3136,7 @@ int main(int argc, char **argv)
             return 0;
         }
     }
+    Value *array = NULL;
 
     // prepare global env
 #ifndef MILA_USE_SHARED
@@ -3155,7 +3172,7 @@ int main(int argc, char **argv)
     path_list_add(search_path, out_pwd);
     free(cwd);
 
-    if (argc >= 2)
+    if (argc >= 2 && strcmp(argv[1], "--") != 0)
     {
         FILE *f = fopen(argv[1], "rb");
         if (!f)
@@ -3169,7 +3186,6 @@ int main(int argc, char **argv)
 
         // make sure we are using the bundled canonical builtins
         // otherwise set argv as __argv with the type opaque
-        Value *array = NULL;
         if (is_builtins)
         {
             array = call_function_str(g, "array", vint(argc - 1), NULL);
@@ -3207,11 +3223,6 @@ int main(int argc, char **argv)
 
         free(src_text);
 
-        // if (is_builtins)
-        // {
-        //     val_release(call_function_str(g, "array.free", array, NULL));
-        // }
-
         mila_deinit(g);
 #ifndef MILA_USE_SHARED
         env_free_builtins();
@@ -3219,6 +3230,16 @@ int main(int argc, char **argv)
     }
     else
     {
+        if (is_builtins && argc > 1 && strcmp(argv[1], "--") == 0)
+        {
+            array = call_function_str(g, "array", vint(argc - 2), NULL);
+            for (int i = 2; i < argc; i++) {
+                Value* str = vstring_dup(argv[i]);
+                val_release(call_function_str(g, "array.set", val_retain(array), vint(i - 2), str, NULL));
+                // val_release(str);
+            }
+            env_set_raw(g, "argv", array);
+        }
 
         printf("MiLa REPL\n");
         printf("Running MiLa '%s'\n", env_get(g, "__mila_codename") ? env_get(g, "__mila_codename")->v.s : "???");

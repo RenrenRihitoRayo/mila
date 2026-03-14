@@ -1,5 +1,6 @@
 all: mila.c ml_builtins.c ml_dict.c mila.h
-	gcc -std=c23 -lc -lm -O0 -o mila mila.c -fsanitize=address -g
+	gcc -std=c23 -lc -lm -O0 -o mila mila.c -fsanitize=address -g\
+	 -D MILA_NO_SIGNAL_HANDLER
 
 test:
 	gcc -o test.o0.mila -O0 mila.c -lm
@@ -36,9 +37,13 @@ test:
 	@rm test.*
 
 bare: mila.c ml_builtins.c ml_dict.c mila.h
-	gcc -std=c23 -lm -o mila mila.c -D MILA_USE_SHARED
-	gcc -std=c23 -lm -o mila_builtins.so ml_builtins.c -D MILA_USE_MILA_C -fPIC -shared
-	echo "Copying builtins cannonical to /lib"
+	# Build mila shared library
+	gcc -std=c23 -lm -fPIC -shared -o libmila.so mila.c -D MILA_USE_SHARED -D ML_LIB
+	
+	# Build mila builtins shared library, linking against mila.so
+	gcc -std=c23 -lm -fPIC -shared -o mila_builtins.so ml_builtins.c -L. -lmila
+	
+	echo "Copying builtins canonical to /lib"
 	sudo cp mila_builtins.so /lib
 
 release: mila.c ml_builtins.c ml_dict.c mila.h
@@ -48,6 +53,6 @@ release: mila.c ml_builtins.c ml_dict.c mila.h
 clean:
 	rm mila
 	for file in *.so; do \
-		[ -e "$$f" ] || continue; \
+		[ -f "$$f" ] || continue; \
 		rm $${file}; \
 	done

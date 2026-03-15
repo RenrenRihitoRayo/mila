@@ -10,6 +10,7 @@ InitWindow(800, 400, "Raylib in MiLa!");
 var RAYWHITE = Color(245u, 245u, 245u, 255u);
 var WHITE = Color(255u, 255u, 255u, 255u);
 var BLACK = Color(0u, 0u, 0u, 255u);
+var RED = Color(255u, 0u, 0u, 255u);
 
 var x = (screen_w / 2) - 90;
 var y = (screen_h / 2) - 30;
@@ -28,9 +29,10 @@ var KEY_B     = 66;  // Key: B
 var KEY_S     = 83;  // Key: S
 var KEY_D     = 68;  // Key: D
 var KEY_E     = 69;  // Key: E
+var KEY_Q     = 81;  // Key: Q
 
 var speed = 500;
-var fps = 60;
+var fps = 100;
 SetTargetFPS(fps);
 var new = 0;
 var old = 0;
@@ -46,8 +48,9 @@ while (not(WindowShouldClose()))
     BeginDrawing();
     ClearBackground(RAYWHITE);
     DrawRectangle(x, y, 180, 60, BLACK);
-
     DrawText("Hello world!\nBox.", x+10, y+10, 24, WHITE);
+
+    DrawRectangle(start_x+90-5, start_y+30-5, 10, 10, RED);
 
     DrawRectangle(6, 6, 155, 52, RAYWHITE);
     // Yes addition and concat is the same.
@@ -68,6 +71,11 @@ while (not(WindowShouldClose()))
     elif (IsKeyDown(KEY_E)) {
         set x = start_x;
         set y = start_y;
+    }
+    // set reset position
+    elif (IsKeyDown(KEY_Q)) {
+        set start_x = x;
+        set start_y = y;
     }
     // Allow user to change FPS realtime
     elif (IsKeyPressed(KEY_C)) {

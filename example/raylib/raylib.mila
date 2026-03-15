@@ -7,16 +7,35 @@ InitWindow(800, 400, "Raylib in MiLa!");
 
 // yes Color(...) is a constructor for struct Color
 // auto generated!
+var RAYWHITE_TRANSLUCENT = Color(245u, 245u, 245u, 150u);
 var RAYWHITE = Color(245u, 245u, 245u, 255u);
 var WHITE = Color(255u, 255u, 255u, 255u);
 var BLACK = Color(0u, 0u, 0u, 255u);
 var RED = Color(255u, 0u, 0u, 255u);
+var GREEN = Color(0u, 255u, 0u, 255u);
 
-var x = (screen_w / 2) - 90;
-var y = (screen_h / 2) - 30;
+var player = Rectangle(
+    cast.i2f((screen_w / 2) - 90),
+    cast.i2f((screen_h / 2) - 30),
+    180.0,
+    60.0
+);
 
-var start_x = x;
-var start_y = y;
+var food = Rectangle(
+    cast.i2f(screen_w / 2 - 10),
+    10.0,
+    20.0,
+    20.0
+);
+
+
+var random_place = fn(rect) {
+    Rectangle.set_x(rect, cast.i2f(GetRandomValue(10, screen_w-10)));
+    Rectangle.set_y(rect, cast.i2f(GetRandomValue(10, screen_h-10)));
+};
+
+var start_x = cast.f2i(Rectangle.get_x(player));
+var start_y = cast.f2i(Rectangle.get_y(player));
 
 var KEY_RIGHT = 262; // Key: Cursor right
 var KEY_LEFT  = 263; // Key: Cursor left
@@ -31,15 +50,19 @@ var KEY_D     = 68;  // Key: D
 var KEY_E     = 69;  // Key: E
 var KEY_Q     = 81;  // Key: Q
 
-var speed = 500;
 var fps = 100;
 SetTargetFPS(fps);
 var new = 0;
 var old = 0;
 
+var score = 0;
+
 // 1500 FPS spike is 1700 FPS
 while (not(WindowShouldClose()))
 {
+    var speedX = GetScreenWidth() * 0.5;
+    var speedY = GetScreenHeight() * 1;
+
     set old = new ?? 0; // FIX: big delta spike at the start
     set new = get_time();
 
@@ -47,35 +70,53 @@ while (not(WindowShouldClose()))
 
     BeginDrawing();
     ClearBackground(RAYWHITE);
-    DrawRectangle(x, y, 180, 60, BLACK);
-    DrawText("Hello world!\nBox.", x+10, y+10, 24, WHITE);
+    DrawRectangleRec(player, BLACK);
 
-    DrawRectangle(start_x+90-5, start_y+30-5, 10, 10, RED);
+    var color = WHITE;
 
-    DrawRectangle(6, 6, 155, 52, RAYWHITE);
+    if (CheckCollisionRecs(player, food)) {
+        set color = RED;
+        random_place(food);
+        set score = score + 1;
+    }
+
+    DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, color);
+
+    // DrawRectangle(start_x+90-5, start_y+30-5, 10, 10, RED);
+
+    DrawRectangleRec(food, GREEN);
+
     // Yes addition and concat is the same.
-    DrawText("FPS: " + GetFPS() + "\nSpeed: " + ceil(speed * delta) + "\nDelta: " + delta, 10, 10, 15, BLACK);
+    DrawRectangle(6, 6, 155, 90, RAYWHITE_TRANSLUCENT);
+    DrawText(
+           "FPS: " + GetFPS() +
+         "\nSpeed: " + ceil(speed * delta) +
+         "\nDelta: " + delta +
+         "\nPos: " + Rectangle.get_x(player) + " " + Rectangle.get_y(player) + 
+         "\nScore: " + score
+          , 10, 10, 15, BLACK
+    );
 
-    if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
-        set x = x + cast.f2i(ceil(speed * delta));
+    if ( IsKeyDown(KEY_D)) {
+        Rectangle.set_x(player, Rectangle.get_x(player) + ceil(speedX * delta));
     }
-    elif (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
-        set y = y - cast.f2i(ceil(speed * delta));
+    elif ( IsKeyDown(KEY_W)) {
+        Rectangle.set_y(player, Rectangle.get_y(player) - ceil(speedY * delta));
     } 
-    elif (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
-        set x = x - cast.f2i(ceil(speed * delta));
+    elif ( IsKeyDown(KEY_A)) {
+        Rectangle.set_x(player, Rectangle.get_x(player) - ceil(speedX * delta));
     }
-    elif (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
-        set y = y + cast.f2i(ceil(speed * delta));
+    elif ( IsKeyDown(KEY_S)) {
+        Rectangle.set_y(player, Rectangle.get_y(player) + ceil(speedY * delta));
     }
     elif (IsKeyDown(KEY_E)) {
-        set x = start_x;
-        set y = start_y;
+        Rectangle.set_x(player, cast.i2f(start_x));
+        Rectangle.set_y(player, cast.i2f(start_y));
     }
     // set reset position
     elif (IsKeyDown(KEY_Q)) {
-        set start_x = x;
-        set start_y = y;
+        set start_x = cast.f2i(Rectangle.get_x(player));
+        set start_y = cast.f2i(Rectangle.get_y(player));
     }
     // Allow user to change FPS realtime
     elif (IsKeyPressed(KEY_C)) {

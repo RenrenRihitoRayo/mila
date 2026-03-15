@@ -1479,11 +1479,14 @@ Value *eval_block_raw(Src *s, Env *frame)
         if (match_char(s, '}'))
             break;
         Value *st = eval_statement(s, frame);
-
         val_release(last);
         last = st;
 
-        HANDLE_CONTROL_LOOP(st);
+        if (IS_CONTROL(st))
+        {
+            if (st->type == T_RETURN) return st;
+            HANDLE_CONTROL(st);
+        }
     }
     return last;
 }
@@ -1855,6 +1858,9 @@ Value *eval_primary(Src *s, Env *env)
         skip_ws(s);
         match_char(s, '}');
 
+
+        print_value(v); puts("");
+        HANDLE_RETURN(v);
         HANDLE_CONTROL(v);
     }
     if (c == '!' && s->src[s->pos + 1] == '{')
@@ -1986,10 +1992,10 @@ Value *eval_primary(Src *s, Env *env)
                 {
                     Value *a = eval_expr(s, env);
                     if (a && a->type == T_ERROR) {
-                        free(args);
                         free(id);
                         for (int i = 0; i < argc; i++)
                             val_release(args[i]);
+                        free(args);
                         return a;
                     }
                     args = realloc(args, sizeof(Value *) * (argc + 1));
@@ -2113,16 +2119,14 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             return val_retain(a);
         }
     }
-    else if ((a->type == T_NONE || a->type == T_NULL) && (b->type == T_NONE || b->type == T_NULL))
-    {
-        if (BMethodEq == op)
-            return vbool(a->type == b->type);
-        if (BMethodNe == op)
-            return vbool(a->type != b->type);
-    }
     else if (BMethodOr == op)
     {
         int res = is_truthy(a) || is_truthy(b);
+        return vbool(res);
+    }
+    else if (BMethodAnd == op)
+    {
+        int res = is_truthy(a) && is_truthy(b);
         return vbool(res);
     }
     else if (is_number(a) && is_number(b))
@@ -2200,7 +2204,7 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             if (op == BMethodMul)
                 return vint(ia * ib);
             if (op == BMethodDiv)
-                return vint(ia / ib);
+                return vfloat((double)ia / (double)ib);
             if (op == BMethodLess)
                 return vbool(ia < ib);
             if (op == BMethodGreat)
@@ -2239,11 +2243,6 @@ Value *binary_op(Value *a, MethodType op, Value *b)
         Value *eq = binary_op(a, BMethodEq, b);
         int res = (eq->type == T_BOOL && eq->v.b == 0);
         val_release(eq);
-        return vbool(res);
-    }
-    else if (BMethodAnd == op)
-    {
-        int res = is_truthy(a) && is_truthy(b);
         return vbool(res);
     }
     // string concatenation for '+'
@@ -2287,6 +2286,13 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             return vstring_take(buf);
         }
         return vnull();
+    }
+    else if ((a->type == T_NONE || a->type == T_NULL) && (b->type == T_NONE || b->type == T_NULL))
+    {
+        if (BMethodEq == op)
+            return vbool(a->type == b->type);
+        if (BMethodNe == op)
+            return vbool(a->type != b->type);
     }
     return vnull();
 }

@@ -56,22 +56,41 @@ def make_struct_constructor(cursor):
     struct_name = cursor.spelling
 
     if " " in repr(struct_name):
-        return ""
+        return "", []
 
     fields = []
     for child in cursor.get_children():
         if child.kind == cindex.CursorKind.FIELD_DECL:
             fields.append((child.type, child.spelling))
 
+    names = [(struct_name, f"mila_{struct_name}_new")]
+    pre_lines = []
     lines = [f"Value* mila_{struct_name}_new(Env* e, int argc, Value** argv) {{",
              f"    (void)e;",
              f"    if(argc != {len(fields)}) return verror(\"{struct_name}_new: expected {len(fields)} arguments, got %i\", argc);",
              f"    {struct_name} tmp;"]
 
     for i, (ftype, fname) in enumerate(fields):
+        fname_access = f"(({struct_name}*)(argv[0]->v.opaque))->"
+        names.append((f"{struct_name}.get_{fname}", f"mila_{struct_name}_get_{fname}"))
+        names.append((f"{struct_name}.set_{fname}", f"mila_{struct_name}_set_{fname}"))
+        pre_lines.extend([
+            f"Value* mila_{struct_name}_get_{fname}(Env* env, int argc, Value** argv) {{",
+            f"    if (argc != 1) verror(\"{struct_name}.get_{fname}({struct_name} s): Expected 1 argument!\");",
+            f"    return {c_to_mila.get(ftype.spelling, 'vopaque({{value}})').format(value=fname_access+fname)};",
+             "}",
+             ""
+        ])
+        pre_lines.extend([
+            f"Value* mila_{struct_name}_set_{fname}(Env* env, int argc, Value** argv) {{",
+            f"    if (argc != 2) verror(\"{struct_name}.get_{fname}({struct_name} s, {ftype.spelling} {fname}): Expected 2 arguments!\");",
+            f"    {fname_access+fname} = {mila_to_c.get(ftype.spelling, '{value}').format(value='argv[1]')};",
+             "    return vnull();",
+             "}",
+             ""
+        ])
         # Handle arrays
         if ftype.kind == cindex.TypeKind.CONSTANTARRAY:
-            elem_type = ftype.get_array_element_type()
             size = ftype.get_array_size()
             str_ftype = normalize_arrays(ftype).spelling
             str_ftype = mila_to_c.get(str_ftype, f"{{value}}->v.opaque").format(value=f"argv[{i}]")
@@ -93,7 +112,7 @@ def make_struct_constructor(cursor):
     lines.append(f"    return vowned_opaque_extra(ret, NULL, \"struct {struct_name}\");")
     lines.append("}")
     
-    return "\n".join(lines)
+    return "\n".join(pre_lines + lines + [""]), names
 # -------------------
 # TYPE COLLECTION
 # -------------------
@@ -256,10 +275,9 @@ Value* mila_{func_name}(Env* e, int argc, Value** argv) {{
     tu = index.parse(file_path, args=["-I."])
     for cursor in tu.cursor.get_children():
         if cursor.kind == cindex.CursorKind.STRUCT_DECL and cursor.spelling in structs:
-            constructor_code = make_struct_constructor(cursor)
-            if constructor_code:
-                code.append(constructor_code)
-                names.append((f"{cursor.spelling}", f"mila_{cursor.spelling}_new"))
+            constructor_code, export_names = make_struct_constructor(cursor)
+            code.append(constructor_code)
+            names.extend(export_names)
 
     # generate native entries
     res = "\n".join(code)

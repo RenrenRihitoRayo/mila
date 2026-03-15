@@ -572,7 +572,7 @@ Value *native_cast_int_to_uint(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.i2f(int): Expected 1 argument (int) int.\n");
+        return verror("cast.i2u(int): Expected 1 argument (int) int. Got %s\n", MILA_GET_TYPENAME(argv[0]));
     }
 }
 
@@ -585,7 +585,7 @@ Value *native_cast_uint_to_int(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.i2f(int): Expected 1 argument (int) int.\n");
+        return verror("cast.u2i(uint): Expected 1 argument (uint) uint. Got %s\n", MILA_GET_TYPENAME(argv[0]));
     }
 }
 
@@ -598,7 +598,7 @@ Value *native_cast_int_to_float(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.i2f(int): Expected 1 argument (int) int.\n");
+        return verror("cast.i2f(int): Expected 1 argument (int) int. Got %s\n", MILA_GET_TYPENAME(argv[0]));
     }
 }
 
@@ -611,7 +611,7 @@ Value *native_cast_float_to_int(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.f2i(int): Expected 1 argument (float) float.\n");
+        return verror("cast.f2i(float): Expected 1 argument (float) float. Got %s\n", MILA_GET_TYPENAME(argv[0]));
     }
 }
 
@@ -1627,9 +1627,9 @@ void env_register_builtins(Env *g)
 
     val_set_method_table(array_meta, UMethodToIter, array_to_iter);
     val_set_method_table(array_meta, UMethodToString, array_to_str);
-    val_set_method_table(array_meta, UMethodFree, free_array);
     val_set_method_table(array_meta, BMethodGetItem, get_array);
     val_set_method_table(array_meta, TMethodSetItem, set_array);
+    val_set_method_table(array_meta, UMethodFree, free_array);
 
     range_meta = val_make_table();
 

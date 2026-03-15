@@ -1,0 +1,108 @@
+load("./raylib.so");
+
+var screen_w = 800;
+var screen_h = 400;
+
+InitWindow(screen_w, screen_h, "Raylib Raycaster in MiLa");
+
+// Colors
+var RAYWHITE = Color(245u, 245u, 245u, 255u);
+var BLACK = Color(0u, 0u, 0u, 255u);
+var RED = Color(255u, 0u, 0u, 255u);
+
+// Map setup: 1 = wall, 0 = empty
+var map = array.from(
+    array.from(1,1,1,1,1,1,1,1),
+    array.from(1,0,0,0,0,0,0,1),
+    array.from(1,0,0,0,0,0,0,1),
+    array.from(1,0,0,0,0,0,0,1),
+    array.from(1,0,0,0,0,0,0,1),
+    array.from(1,1,1,1,1,1,1,1)
+);
+var map_w = 8;
+var map_h = 6;
+var tile_size = 64;
+
+// Player setup
+var px = 3.5 * tile_size;
+var py = 3.5 * tile_size;
+var p_angle = 0.0;
+var fov = 60.0; // Field of view in degrees
+var move_speed = 100.0;
+var rot_speed = 2.0;
+
+// Keys
+var KEY_W = 87;
+var KEY_A = 65;
+var KEY_S = 83;
+var KEY_D = 68;
+var KEY_LEFT = 263;
+var KEY_RIGHT = 262;
+
+SetTargetFPS(60);
+
+while (not(WindowShouldClose()))
+{
+    var dt = 1.0 / 60.0;
+
+    // Player rotation
+    if (IsKeyDown(KEY_LEFT)) { set p_angle = p_angle - rot_speed * dt; }
+    if (IsKeyDown(KEY_RIGHT)) { set p_angle = p_angle + rot_speed * dt; }
+
+    // Player movement
+    var nx = px + cos(p_angle) * move_speed * dt;
+    var ny = py + sin(p_angle) * move_speed * dt;
+
+    var mx = cast.f2i(nx / tile_size);
+    var my = cast.f2i(ny / tile_size);
+    if ((map[my])[mx] == 0) {
+        set px = nx;
+        set py = ny;
+    }
+
+    // Begin drawing
+    BeginDrawing();
+    ClearBackground(BLACK);
+
+    // Raycasting using while loops
+    var num_rays = 200;
+    var ray_angle = p_angle - fov * 0.5 * 3.14159 / 180.0;
+    var fov_rad = fov * 3.14159 / 180.0;
+
+    var x = 0;
+    while (x < num_rays)
+    {
+        var ray_x = px;
+        var ray_y = py;
+        var ray_dx = cos(ray_angle);
+        var ray_dy = sin(ray_angle);
+
+        var hit = false;
+        var distance = 0.0;
+
+        while (not(hit)asd && distance < 100)
+        {
+            set ray_x = ray_x + ray_dx;
+            set ray_y = ray_y + ray_dy;
+            set distance = sqrt((ray_x - px) * (ray_x - px) + (ray_y - py) * (ray_y - py));
+
+            var mx = cast.f2i(ray_x / tile_size);
+            var my = cast.f2i(ray_y / tile_size);
+
+            if (mx >= 0 && mx < map_w && my >= 0 && my < map_h)
+            {
+                if ((map[my])[mx] != 0) { set hit = true; }
+            }
+        }
+        var line_height = screen_h / (distance / tile_size);
+        DrawLine(x, cast.f2i(screen_h * 0.5 - line_height * 0.5),
+                 x, cast.f2i(screen_h * 0.5 + line_height * 0.5), RAYWHITE);
+
+        set ray_angle = ray_angle + fov_rad / num_rays;
+        set x = x + 1;
+    }
+
+    EndDrawing();
+}
+
+CloseWindow();

@@ -2,6 +2,10 @@ all: mila.c ml_builtins.c ml_dict.c mila.h
 	gcc -std=c23 -lc -lm -O0 -o mila mila.c -fsanitize=address -g\
 	 -D MILA_NO_SIGNAL_HANDLER
 
+# dont include asan, compile with debug logging
+debug: mila.c ml_builtins.c ml_dict.c mila.h
+	gcc -std=c23 -lc -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG
+
 test:
 	gcc -o test.o0.mila -O0 mila.c -lm
 	gcc -o test.o3.mila -O3 mila.c -lm

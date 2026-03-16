@@ -15,14 +15,14 @@ var RED = Color(255u, 0u, 0u, 255u);
 var GREEN = Color(0u, 255u, 0u, 255u);
 
 var player = Rectangle(
-    cast.i2f((screen_w / 2) - 90),
-    cast.i2f((screen_h / 2) - 30),
+    (screen_w / 2) - 90,
+    (screen_h / 2) - 30,
     180.0,
     60.0
 );
 
 var food = Rectangle(
-    cast.i2f(screen_w / 2 - 10),
+    screen_w / 2 - 10,
     10.0,
     20.0,
     20.0
@@ -34,8 +34,8 @@ var random_place = fn(rect) {
     Rectangle.set_y(rect, cast.i2f(GetRandomValue(10, screen_h-10)));
 };
 
-var start_x = cast.f2i(Rectangle.get_x(player));
-var start_y = cast.f2i(Rectangle.get_y(player));
+var start_x = Rectangle.get_x(player);
+var start_y = Rectangle.get_y(player);
 
 var KEY_RIGHT = 262; // Key: Cursor right
 var KEY_LEFT  = 263; // Key: Cursor left
@@ -110,13 +110,13 @@ while (not(WindowShouldClose()))
         Rectangle.set_y(player, Rectangle.get_y(player) + ceil(speedY * delta));
     }
     elif (IsKeyDown(KEY_E)) {
-        Rectangle.set_x(player, cast.i2f(start_x));
-        Rectangle.set_y(player, cast.i2f(start_y));
+        Rectangle.set_x(player, start_x);
+        Rectangle.set_y(player, start_y);
     }
     // set reset position
     elif (IsKeyDown(KEY_Q)) {
-        set start_x = cast.f2i(Rectangle.get_x(player));
-        set start_y = cast.f2i(Rectangle.get_y(player));
+        set start_x = Rectangle.get_x(player);
+        set start_y = Rectangle.get_y(player);
     }
     // Allow user to change FPS realtime
     elif (IsKeyPressed(KEY_C)) {

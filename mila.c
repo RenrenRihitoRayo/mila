@@ -3198,7 +3198,6 @@ int main(int argc, char **argv)
             for (int i = 1; i < argc; i++) {
                 Value* str = vstring_dup(argv[i]);
                 val_release(call_function_str(g, "array.set", val_retain(array), vint(i - 1), str, NULL));
-                // val_release(str);
             }
             env_set_raw(g, "argv", array);
         }
@@ -3268,8 +3267,8 @@ int main(int argc, char **argv)
             printf("Builtins embedded.\n");
         }
 
-        char line[2048];
-        char buffer[8192]; // accumulated snippet
+        char line[256];
+        char buffer[2048]; // accumulated snippet
         buffer[0] = 0;
 
         printf(">>> ");
@@ -3280,12 +3279,54 @@ int main(int argc, char **argv)
             strcat(buffer, line);
             fflush(stdout);
 
-            if (strncmp(buffer, ".mem", 4) == 0)
+            // debugging
+            if (strncmp(buffer, ".mempro", 7) == 0)
+            {
+                FILE *f = fopen("/proc/self/status", "r");
+                char line[256];
+
+                // while (fgets(line, sizeof(line), f)) {
+                //     {
+                //         printf("%s", line);
+                //     }
+                // }
+
+                // fseek(f, 0, SEEK_SET);
+    
+                while (fgets(line, sizeof(line), f)) {
+                    if (strncmp(line, "VmRSS:", 6) == 0 ||
+                        strncmp(line, "VmData:", 7) == 0 ||
+                        strncmp(line, "VmStack:", 8) == 0 ||
+                        strncmp(line, "VmExe:", 6) == 0 ||
+                        strncmp(line, "VmStk:", 6) == 0)
+                    {
+                        printf("%s", line);
+                    }
+                }
+                fclose(f);
+                printf(">>> ");
+                buffer[0] = 0;
+                continue;
+            }
+            else if (strncmp(buffer, ".load", 5) == 0)
+            {
+                *strchr(buffer, '\n') = 0;
+                if (load_library(g, buffer + 6))
+                    printf("Library loading went wrong!\n");
+                printf(">>> ");
+                buffer[0] = 0;
+                continue;
+            }
+            else if (strncmp(buffer, ".mem", 4) == 0)
             {
                 print_memory_usage();
                 buffer[0] = 0;
                 printf(">>> ");
                 continue;
+            }
+            else if (strncmp(buffer, ".quit", 4) == 0)
+            {
+                break;
             }
 
             // check if expression is syntactically complete

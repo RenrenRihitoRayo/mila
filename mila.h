@@ -6,9 +6,8 @@
 #include <stdio.h>
 
 #define MAX_METHODS 100
-#define MAX_NUMBER_DIGITS 1000
-#define MAX_PATH_LENGTH 10000
-#define MAX_ATEXIT_FUNCTIONS 100
+#define MAX_NUMBER_DIGITS 250
+#define MAX_PATH_LENGTH 2048
 
 #define GET_STRING(v) (v ? v->v.s : NULL)
 #define GET_INTEGER(v) (v ? v->v.i : 0)

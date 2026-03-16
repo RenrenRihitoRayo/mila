@@ -5,7 +5,7 @@ import sys
 import os
 
 # If libclang cannot be found automatically, uncomment and set path
-cindex.Config.set_library_file("/usr/lib/libclang.so.21.1.8")
+# cindex.Config.set_library_file("/usr/lib/libclang.so.21.1.8")
 
 typedefs = set()
 enums = set()

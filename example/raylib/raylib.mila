@@ -13,6 +13,8 @@ var WHITE = Color(255u, 255u, 255u, 255u);
 var BLACK = Color(0u, 0u, 0u, 255u);
 var RED = Color(255u, 0u, 0u, 255u);
 var GREEN = Color(0u, 255u, 0u, 255u);
+var BLUE_TRANSLUCENT = Color(0u, 0u, 255u, 150u);
+var NONE = Color(255u, 255u, 255u, 255u);
 
 var player = Rectangle(
     (screen_w / 2) - 90,
@@ -21,13 +23,8 @@ var player = Rectangle(
     60.0
 );
 
-var food = Rectangle(
-    screen_w / 2 - 10,
-    10.0,
-    20.0,
-    20.0
-);
-
+// own tells MiLa it can free this pointer!
+var texture = own(LoadTexture("wall.png"));
 
 var random_place = fn(rect) {
     Rectangle.set_x(rect, cast.i2f(GetRandomValue(10, screen_w-10)));
@@ -37,19 +34,6 @@ var random_place = fn(rect) {
 var start_x = Rectangle.get_x(player);
 var start_y = Rectangle.get_y(player);
 
-var KEY_RIGHT = 262; // Key: Cursor right
-var KEY_LEFT  = 263; // Key: Cursor left
-var KEY_DOWN  = 264; // Key: Cursor down
-var KEY_UP    = 265; // Key: Cursor up
-var KEY_W     = 87;  // Key: W
-var KEY_A     = 65;  // Key: A
-var KEY_C     = 67;  // Key: C
-var KEY_B     = 66;  // Key: B
-var KEY_S     = 83;  // Key: S
-var KEY_D     = 68;  // Key: D
-var KEY_E     = 69;  // Key: E
-var KEY_Q     = 81;  // Key: Q
-
 var fps = 100;
 SetTargetFPS(fps);
 var new = 0;
@@ -57,11 +41,61 @@ var old = 0;
 
 var score = 0;
 
+var Clamp = fn(val, min, max) {
+    if (val < min) {
+        return min;
+    } else if (val > max) {
+        return max;
+    } else {
+        return val;
+    }
+};
+
+var distance = fn(v1, v2) {
+    var dx = Vector2.get_x(v2) - Vector2.get_x(v1);
+    var dy = Vector2.get_y(v2) - Vector2.get_y(v1);
+    var dis = sqrtf(dx*dx + dy*dy);
+    return dis;
+};
+
+var step = fn(v1, v2, speed) {
+    var dx = Vector2.get_x(v2) - Vector2.get_x(v1);
+    var dy = Vector2.get_y(v2) - Vector2.get_y(v1);
+    var dist = distance(v1, v2);
+
+    // Move proportionally along the direction
+    // Randomness makes it impossible to get stuck between two equally far food particles.
+    Vector2.set_x(v1, Vector2.get_x(v1) + (dx / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
+    Vector2.set_y(v1, Vector2.get_y(v1) + (dy / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
+};
+
+var food_num = 50;
+var foods = array(food_num);
+
+foreach i : range(food_num) {
+    set foods[i] = Rectangle(
+        screen_w / 2 - 10,
+        10.0,
+        20.0,
+        20.0
+    );
+}
+
+foreach food : foods {
+    random_place(food);
+}
+
+var peak_fps = fps;
+
+var auto = false;
+
 // 1500 FPS spike is 1700 FPS
 while (not(WindowShouldClose()))
 {
-    var speedX = GetScreenWidth() * 0.5;
-    var speedY = GetScreenHeight() * 1;
+    set screen_w = GetScreenWidth();
+    set screen_h = GetScreenHeight();
+    var speedX = screen_w * 0.5;
+    var speedY = screen_h * 1;
 
     set old = new ?? 0; // FIX: big delta spike at the start
     set new = get_time();
@@ -70,64 +104,106 @@ while (not(WindowShouldClose()))
 
     BeginDrawing();
     ClearBackground(RAYWHITE);
-    DrawRectangleRec(player, BLACK);
+    
+    DrawTextureRec(texture, Rectangle(0.0, 0.0, 180.0, 60.0), Vector2(Rectangle.get_x(player), Rectangle.get_y(player)), NONE);
 
-    var color = WHITE;
-
-    if (CheckCollisionRecs(player, food)) {
-        set color = RED;
-        random_place(food);
-        set score = score + 1;
+    if (auto) {
+        var min = 1000.0;
+        var min_food = none;
+        var player_v = Vector2(Rectangle.get_x(player), Rectangle.get_y(player));
+        foreach food : foods {
+            var food_v = Vector2(Rectangle.get_x(food), Rectangle.get_y(food));
+            var dist = distance(player_v, food_v);
+            if (dist < min) {
+                set min = dist;
+                set min_food = food;
+            }
+        }
+        if (min_food) {
+            step(player_v, Vector2(Rectangle.get_x(min_food), Rectangle.get_y(min_food)), 2000 * delta);
+            Rectangle.set_x(player, Vector2.get_x(player_v));
+            Rectangle.set_y(player, Vector2.get_y(player_v));
+        }
     }
 
-    DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, color);
+    if (IsWindowResized()) {
+        foreach food : foods {
+            random_place(food);
+            DrawRectangleRec(food, GREEN);
+        }
+        random_place(player);
+    }
 
-    // DrawRectangle(start_x+90-5, start_y+30-5, 10, 10, RED);
+    foreach food : foods {
+        DrawRectangleRec(food, GREEN);
+        if (CheckCollisionRecs(player, food)) {
+            random_place(food);
+            set score = score + 1;
+        }
+    }
 
-    DrawRectangleRec(food, GREEN);
+    DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, BLACK);
 
     // Yes addition and concat is the same.
     DrawRectangle(6, 6, 155, 90, RAYWHITE_TRANSLUCENT);
+
+    var current_fps = GetFPS();
+    if (current_fps > peak_fps) {
+        set peak_fps = current_fps;
+    }
+    else if (current_fps < peak_fps - 500) {
+        set peak_fps = current_fps; // reset peak_fps
+    }
+
     DrawText(
            "FPS: " + GetFPS() +
-         "\nSpeed: " + ceil(speed * delta) +
+         "\nPeak FPS: " + peak_fps +
          "\nDelta: " + delta +
-         "\nPos: " + Rectangle.get_x(player) + " " + Rectangle.get_y(player) + 
-         "\nScore: " + score
+         "\nPos: " + Rectangle.get_x(player) + " " + Rectangle.get_y(player)
           , 10, 10, 15, BLACK
     );
 
-    if ( IsKeyDown(KEY_D)) {
-        Rectangle.set_x(player, Rectangle.get_x(player) + ceil(speedX * delta));
+    DrawText(
+        "Score: " + score,
+        cast.f2i(screen_w / 2 - MeasureText("Score: " + score, 30)/ 2),
+        20, 30, 
+        BLUE_TRANSLUCENT
+    );
+
+    if ( IsKeyDown(KeyboardKey.KEY_D)) {
+        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) + ceil(speedX * delta), 0, screen_w-180.0));
     }
-    elif ( IsKeyDown(KEY_W)) {
-        Rectangle.set_y(player, Rectangle.get_y(player) - ceil(speedY * delta));
+    elif ( IsKeyDown(KeyboardKey.KEY_W)) {
+        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) - ceil(speedY * delta), 0, screen_h));
     } 
-    elif ( IsKeyDown(KEY_A)) {
-        Rectangle.set_x(player, Rectangle.get_x(player) - ceil(speedX * delta));
+    elif ( IsKeyDown(KeyboardKey.KEY_A)) {
+        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) - ceil(speedX * delta), 0, screen_w));
     }
-    elif ( IsKeyDown(KEY_S)) {
-        Rectangle.set_y(player, Rectangle.get_y(player) + ceil(speedY * delta));
+    elif ( IsKeyDown(KeyboardKey.KEY_S)) {
+        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) + ceil(speedY * delta), 0, screen_h-60.0));
     }
-    elif (IsKeyDown(KEY_E)) {
+    elif (IsKeyDown(KeyboardKey.KEY_E)) {
         Rectangle.set_x(player, start_x);
         Rectangle.set_y(player, start_y);
     }
     // set reset position
-    elif (IsKeyDown(KEY_Q)) {
+    elif (IsKeyDown(KeyboardKey.KEY_Q)) {
         set start_x = Rectangle.get_x(player);
         set start_y = Rectangle.get_y(player);
     }
     // Allow user to change FPS realtime
-    elif (IsKeyPressed(KEY_C)) {
+    elif (IsKeyPressed(KeyboardKey.KEY_C)) {
         set fps = fps + 10;
         set speed = speed - 1;
         SetTargetFPS(fps);
     }
-    elif (IsKeyPressed(KEY_B)) {
+    elif (IsKeyPressed(KeyboardKey.KEY_B)) {
         set fps = fps - 10;
         set speed = speed + 1;
         SetTargetFPS(fps);
+    }
+    elif (IsKeyPressed(KeyboardKey.KEY_V)) {
+        set auto = not(auto);
     }
 
     EndDrawing();

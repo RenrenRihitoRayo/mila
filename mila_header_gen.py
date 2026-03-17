@@ -77,7 +77,7 @@ def make_struct_constructor(cursor):
         pre_lines.extend([
             f"Value* mila_{struct_name}_get_{fname}(Env* env, int argc, Value** argv) {{",
             f"    if (argc != 1) verror(\"{struct_name}.get_{fname}({struct_name} s): Expected 1 argument!\");",
-            f"    return {c_to_mila.get(ftype.spelling, 'vopaque({{value}})').format(value=fname_access+fname)};",
+            f"    return {c_to_mila.get(ftype.spelling, 'vopaque(' + ('&' if not ftype.spelling.endswith('*') else '' ) + '{value})').format(value=fname_access+fname)};",
              "}",
              ""
         ])

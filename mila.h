@@ -16,6 +16,7 @@
 #define GET_OPAQUE(v) (v ? v->v.opaque : NULL)
 #define GET_FUNCTION(v) (v ? v->v.fn : NULL)
 #define GET_NATIVE(v) (v ? v->v.native : NULL)
+#define OWNED(v) (v->type = T_OWNED_OPAQUE)
 
 #define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 #define MILA_GET_TYPE(v) (v ? v->type : -1 )
@@ -230,6 +231,11 @@ void val_unset_method_table(MethodTable *v, MethodType t);
 void val_unset_method(Value *v, MethodType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
+Value *vstring_slice(const char *src, size_t start, size_t len);
+Value *vstring_index(const char *src, size_t index);
+Value *vstring_replace(const char *src,
+                       const char *needle,
+                       const char *repl);
 void val_kill(Value *v);
 Value *vint(long i);
 Value *vuint(unsigned long i);
@@ -247,9 +253,11 @@ Value *verror(char *message, ...);
 Value *vfunction(char **params, char *body_src, Env *closure);
 static int is_number(Value *v);
 double to_double(Value *v);
-char *as_c_string(Value *v);
 Value *to_c_string(Value *v);
+char *as_c_string(Value *v);
 char *as_c_string_repr(Value *v);
+char *as_c_string_raw(Value *v);
+char *as_c_string_repr_raw(Value *v);
 void print_value(Value *v);
 void print_value_repr(Value *v);
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
@@ -277,6 +285,7 @@ void skip_ws(Src *s);
 char src_peek(Src *s);
 char src_get(Src *s);
 int src_eof(Src *s);
+void src_advance_by(Src* s, size_t amount);
 int is_ident_start(char c);
 uint64_t get_line_pos(Src *src);
 int report(Src *src, FILE *fp, const char *fmt, ...);

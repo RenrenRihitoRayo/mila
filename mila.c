@@ -146,14 +146,6 @@ void val_unset_method_table(MethodTable *v, MethodType t)
     v[t] = NULL;
 }
 
-Value *val_retain(Value *v)
-{
-    if (!v)
-        return NULL;
-    v->refcount++;
-    return v;
-}
-
 // Helpers to create typed values or check their truthiness
 
 int is_truthy(Value *value)
@@ -245,6 +237,91 @@ Value *vstring_take(char *s)
     Value *v = val_new(T_STRING);
     v->v.s = s;
     return v;
+}
+// String
+Value *vstring_slice(const char *src, size_t start, size_t len)
+{
+    size_t n = strlen(src);
+    if (start > n)
+        return verror(""); // empty string
+
+    if (start + len > n)
+        len = n - start;
+
+    char *buf = mila_malloc(len + 1);
+    if (!buf)
+        return vnull();
+
+    memcpy(buf, src + start, len);
+    buf[len] = '\0';
+
+    return vstring_take(buf);
+}
+Value *vstring_index(const char *src, size_t index)
+{
+    size_t n = strlen(src);
+    if (index >= n)
+        return vnull();
+
+    char *buf = mila_malloc(2);
+    if (!buf)
+        return vnull();
+
+    buf[0] = src[index];
+    buf[1] = '\0';
+
+    return vstring_take(buf);
+}
+Value *vstring_replace(const char *src,
+                       const char *needle,
+                       const char *repl)
+{
+    if (!*needle)
+        return vstring_dup(src); // can't match empty substring
+
+    size_t src_len = strlen(src);
+    size_t n_len = strlen(needle);
+    size_t r_len = strlen(repl);
+
+    // Count occurrences
+    size_t count = 0;
+    const char *p = src;
+    while ((p = strstr(p, needle)))
+    {
+        count++;
+        p += n_len;
+    }
+
+    // Allocate output buffer
+    size_t new_len = src_len + count * (r_len - n_len);
+    char *buf = mila_malloc(new_len + 1);
+    if (!buf)
+        return vnull();
+
+    // Build replacement
+    char *out = buf;
+    p = src;
+
+    while (1)
+    {
+        const char *match = strstr(p, needle);
+        if (!match)
+        {
+            strcpy(out, p);
+            break;
+        }
+
+        size_t seg = match - p;
+        memcpy(out, p, seg);
+        out += seg;
+
+        memcpy(out, repl, r_len);
+        out += r_len;
+
+        p = match + n_len;
+    }
+
+    return vstring_take(buf);
 }
 Value *vowned_opaque(void *p)
 {
@@ -423,6 +500,75 @@ char *as_c_string(Value *v)
     return buffer;
 }
 
+char *as_c_string_raw(Value *v)
+{
+    char *buffer = NULL;
+    if (!v)
+    {
+        return strdup("cnull");
+    }
+    switch (v->type)
+    {
+    case T_NULL:
+        our_asprintf(&buffer, "null");
+        break;
+    case T_NONE:
+        our_asprintf(&buffer, "none");
+        break;
+    case T_ERROR:
+        our_asprintf(&buffer, "<error:%s>", v->v.message);
+        break;
+    case T_INT:
+        our_asprintf(&buffer, "%ld", v->v.i);
+        break;
+    case T_FLOAT:
+    {
+        char buf[MAX_NUMBER_DIGITS] = {0};
+        float_to_string(v->v.f, buf, sizeof(buf));
+        our_asprintf(&buffer, "%s", buf);
+        break;
+    }
+    case T_STRING:
+        our_asprintf(&buffer, "%s", v->v.s ? v->v.s : "");
+        break;
+    case T_BOOL:
+        our_asprintf(&buffer, "%s", v->v.b ? "true" : "false");
+        break;
+    case T_FUNCTION:
+        our_asprintf(&buffer, "<function:%s at %p>", v->v.fn->name ? v->v.fn->name : "(lambda)", v);
+        break;
+    case T_NATIVE:
+        our_asprintf(&buffer, "<native:%s at %p>", v->v.native->name ? v->v.native->name : "???", v->v.native->fn);
+        break;
+    case T_OPAQUE:
+        if (v->type_name)
+            our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
+        else
+            our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
+        break;
+    case T_OWNED_OPAQUE:
+        if (v->type_name)
+            our_asprintf(&buffer, "<owned opaque:%p %s>", v->v.opaque, v->type_name);
+        else
+            our_asprintf(&buffer, "<owned opaque:%p>", v->v.opaque);
+        break;
+    case T_UINT:
+        our_asprintf(&buffer, "%lu", v->v.ui);
+        our_asprintf(&buffer, "u");
+        break;
+    case T_RETURN:
+    {
+        char *str = as_c_string_repr_raw(v->v.opaque);
+        our_asprintf(&buffer, "<return:%s>", str);
+        free(str);
+    }
+    break;
+    default:
+        our_asprintf(&buffer, "???");
+    }
+    return buffer;
+}
+
 Value *to_c_string(Value *v)
 {
     char *s = as_c_string(v);
@@ -489,6 +635,52 @@ char *as_c_string_repr(Value *v)
     return buffer;
 }
 
+char *as_c_string_repr_raw(Value *v)
+{
+    char *buffer = NULL;
+    if (!v)
+    {
+        return strdup("cnull");
+    }
+    switch (v->type)
+    {
+    case T_STRING:
+        our_asprintf(&buffer, "\"");
+        char *temp = v->v.s ? v->v.s : "";
+        for (size_t i = 0; i < strlen(temp); ++i)
+        {
+            switch (temp[i])
+            {
+            case 7:
+                our_asprintf(&buffer, "\\a");
+                break;
+            case 9:
+                our_asprintf(&buffer, "\\t");
+                break;
+            case 10:
+                our_asprintf(&buffer, "\\n");
+                break;
+            case 11:
+                our_asprintf(&buffer, "\\v");
+                break;
+            case 12:
+                our_asprintf(&buffer, "\\f");
+                break;
+            default:
+                our_asprintf(&buffer, "%c", temp[i]);
+            }
+        }
+        our_asprintf(&buffer, "\"");
+        break;
+    default: {
+            char* tmp = as_c_string_raw(v);
+            our_asprintf(&buffer, "%s", tmp);
+            free(tmp);
+        }
+    }
+    return buffer;
+}
+
 // print value (for debug / native print)
 void print_value(Value *v)
 {
@@ -514,13 +706,29 @@ void print_value_repr(Value *v)
     free(txt);
 }
 
+Value *val_retain(Value *v)
+{
+#ifdef MILA_DEBUG
+    if (v) {
+        printf("  ?? val_retain:\n     type: %s\n     refcount ++%i -> %i\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount + 1);
+        print_value_repr(v); puts("");
+    } else {
+        printf("  !! val_release:\n     JUST ATTEMPTED TO FREE A NULL VALUE!\n");
+    }
+#endif
+    if (!v)
+        return NULL;
+    v->refcount++;
+    return v;
+}
+
 // release
 void val_release(Value *v)
 {
     if (!v)
         return;
 #ifdef MILA_DEBUG
-    printf("  -- val_relase:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    printf("  -- val_release:\n     type: %s\n     refcount --%i -> %i\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v); puts("");
 #endif
     v->refcount--;
@@ -579,7 +787,7 @@ void val_kill(Value *v)
     if (!v)
         return;
 #ifdef MILA_DEBUG
-    printf("  -- val_kill:\n     type: %s\n     refcount %i:\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    printf("  -- val_kill:\n     type: %s\n     refcount %i -> 0 (forced)\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v); puts("");
 #endif
     if (v->method_table && v->method_table[UMethodKill])
@@ -1343,6 +1551,11 @@ Value *parse_string(Src *s)
     return vstring_take(res);
 }
 
+void src_advance_by(Src* s, size_t amount)
+{
+    s->pos += amount;
+}
+
 // parse function literal: fn(a,b){ ... }
 int is_keyword_at(Src *s, const char *kw)
 {
@@ -1530,6 +1743,13 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
 
     if (fnval->type == T_NATIVE)
     {
+        for (int t=0; t<count; ++t) {
+            if (MILA_GET_TYPE(args[t]) == T_ERROR) {
+                for (int i = 0; i < count; i++)
+                    val_release(args[i]);
+                return args[t];
+            }
+        }
         Value *result = fnval->v.native->fn(env, count, args);
         for (int i = 0; i < count; i++)
             val_release(args[i]);
@@ -1619,6 +1839,13 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
 
     if (fnval->type == T_NATIVE)
     {
+        for (int t=0; t<count; ++t) {
+            if (MILA_GET_TYPE(args[t]) == T_ERROR) {
+                for (int i = 0; i < count; i++)
+                    val_release(args[i]);
+                return args[t];
+            }
+        }
         Value *result = fnval->v.native->fn(env, count, args);
         for (int i = 0; i < count; i++)
             val_release(args[i]);
@@ -1705,6 +1932,9 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         return verror("Function is NULL!");
     if (fnval->type == T_NATIVE)
     {
+        for (int t=0; t<argc; ++t)
+            if (MILA_GET_TYPE(argv[t]) == T_ERROR)
+                return argv[t];
         Value *result = fnval->v.native->fn(env, argc, argv);
         return result;
     }
@@ -1840,7 +2070,7 @@ Value *eval_primary(Src *s, Env *env)
                 Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
                 val_release(index);
                 val_release(obj);
-                return res;
+                return val_retain(res);
             }
             else
             {
@@ -1858,8 +2088,6 @@ Value *eval_primary(Src *s, Env *env)
         skip_ws(s);
         match_char(s, '}');
 
-
-        print_value(v); puts("");
         HANDLE_RETURN(v);
         HANDLE_CONTROL(v);
     }
@@ -2025,9 +2253,9 @@ Value *eval_primary(Src *s, Env *env)
                 free(args);
                 return res;
             }
+            free(id);
             // callp
             Value *res = call_function(callee, env, argc, args);
-            free(id);
             for (int i = 0; i < argc; i++)
                 val_release(args[i]);
             free(args);
@@ -2107,6 +2335,13 @@ Value *binary_op(Value *a, MethodType op, Value *b)
     if (a->method_table && a->method_table[op])
     {
         return ((binary_method)a->method_table[op])(a, b);
+    }
+    else if ((a->type == T_NONE || a->type == T_NULL) && (b->type == T_NONE || b->type == T_NULL))
+    {
+        if (BMethodEq == op)
+            return vbool(a->type == b->type);
+        if (BMethodNe == op)
+            return vbool(a->type != b->type);
     }
     else if (op == BMethodDefault)
     {
@@ -2286,13 +2521,6 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             return vstring_take(buf);
         }
         return vnull();
-    }
-    else if ((a->type == T_NONE || a->type == T_NULL) && (b->type == T_NONE || b->type == T_NULL))
-    {
-        if (BMethodEq == op)
-            return vbool(a->type == b->type);
-        if (BMethodNe == op)
-            return vbool(a->type != b->type);
     }
     return vnull();
 }
@@ -2502,6 +2730,7 @@ Value *eval_statement(Src *s, Env *env)
                 Value *ret = verror("%s cannot be subscripted as it is cnull", id);
                 val_release(v);
                 free(id);
+                // val_release(obj);
                 return ret;
             }
             if (obj->method_table && obj->method_table[TMethodSetItem])
@@ -2509,9 +2738,9 @@ Value *eval_statement(Src *s, Env *env)
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
                 // val_release(obj);
-                // val_release(v);
+                val_release(v);
                 free(id);
-                return res;
+                return val_retain(res);
             }
             else
             {
@@ -2523,7 +2752,6 @@ Value *eval_statement(Src *s, Env *env)
                 return res;
             }
         }
-
 
         if (v && v->type == T_RETURN) 
         {
@@ -2597,6 +2825,7 @@ Value *eval_statement(Src *s, Env *env)
                 Value *ret = verror("%s cannot be subscripted as it is cnull", id);
                 val_release(v);
                 free(id);
+                // val_release(obj);
                 return ret;
             }
             if (obj->method_table && obj->method_table[TMethodSetItem])
@@ -2604,9 +2833,9 @@ Value *eval_statement(Src *s, Env *env)
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
                 // val_release(obj);
-                // val_release(v);
+                val_release(v);
                 free(id);
-                return res;
+                return val_retain(res);
             }
             else
             {
@@ -2631,12 +2860,24 @@ Value *eval_statement(Src *s, Env *env)
         }
         skip_ws(s);
         match_char(s, ';');
-        if (v && v->type != T_STRING)
-            env_set_local(env, id, v);
-        else
-            env_set_local_raw(env, id, val_retain(v));
+        env_set_local(env, id, v);
         free(id);
         return v;
+    }
+    if (is_keyword_at(s, "forget"))
+    {
+        s->pos += strlen("forget");
+        skip_ws(s);
+        char* id = parse_ident(s);
+
+        val_release(env_get(env, id));
+        env_remove(env, id);
+
+        free(id);
+
+        skip_ws(s);
+        match_char(s, ';');
+        return vnull();
     }
     if (is_keyword_at(s, "return"))
     {
@@ -3272,6 +3513,7 @@ int main(int argc, char **argv)
         buffer[0] = 0;
 
         printf(">>> ");
+        fflush(stdout);
 
         while (fgets(line, sizeof(line), stdin))
         {
@@ -3305,6 +3547,7 @@ int main(int argc, char **argv)
                 }
                 fclose(f);
                 printf(">>> ");
+                fflush(stdout);
                 buffer[0] = 0;
                 continue;
             }
@@ -3322,6 +3565,7 @@ int main(int argc, char **argv)
                 print_memory_usage();
                 buffer[0] = 0;
                 printf(">>> ");
+                fflush(stdout);
                 continue;
             }
             else if (strncmp(buffer, ".quit", 4) == 0)
@@ -3354,11 +3598,13 @@ int main(int argc, char **argv)
                 buffer[0] = 0;
 
                 printf(">>> ");
+                fflush(stdout);
             }
             else
             {
                 // prompt for continuation
                 printf("... ");
+                fflush(stdout);
             }
         }
 

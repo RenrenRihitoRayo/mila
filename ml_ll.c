@@ -88,11 +88,14 @@ void ll_set(LinkedList* list, size_t index, Value* val) {
     if (!list || index >= list->size) return;
     LLNode* cur = list->head;
     for (size_t i = 0; i < index; i++) cur = cur->next;
+    val_release(cur->value); // free previous tenant
     cur->value = val;
 }
 
 Value* ll_pop(LinkedList* list, size_t index) {
-    if (!list || index >= list->size) return NULL;
+    if (!list) return verror("ll_pop: list data is null.");
+    if (index >= list->size) return verror("ll_pop: index out of bounds.");
+
     LLNode* cur = list->head;
     LLNode* prev = NULL;
     for (size_t i = 0; i < index; i++) {

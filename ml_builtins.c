@@ -82,95 +82,6 @@ double get_unix_timestamp()
 #endif
 }
 
-// String
-
-Value *vstring_slice(const char *src, size_t start, size_t len)
-{
-    size_t n = strlen(src);
-    if (start > n)
-        return vstring_dup(""); // empty string
-
-    if (start + len > n)
-        len = n - start;
-
-    char *buf = mila_malloc(len + 1);
-    if (!buf)
-        return vnull();
-
-    memcpy(buf, src + start, len);
-    buf[len] = '\0';
-
-    return vstring_take(buf);
-}
-
-Value *vstring_index(const char *src, size_t index)
-{
-    size_t n = strlen(src);
-    if (index >= n)
-        return vnull();
-
-    char *buf = mila_malloc(2);
-    if (!buf)
-        return vnull();
-
-    buf[0] = src[index];
-    buf[1] = '\0';
-
-    return vstring_take(buf);
-}
-
-Value *vstring_replace(const char *src,
-                       const char *needle,
-                       const char *repl)
-{
-    if (!*needle)
-        return vstring_dup(src); // can't match empty substring
-
-    size_t src_len = strlen(src);
-    size_t n_len = strlen(needle);
-    size_t r_len = strlen(repl);
-
-    // Count occurrences
-    size_t count = 0;
-    const char *p = src;
-    while ((p = strstr(p, needle)))
-    {
-        count++;
-        p += n_len;
-    }
-
-    // Allocate output buffer
-    size_t new_len = src_len + count * (r_len - n_len);
-    char *buf = mila_malloc(new_len + 1);
-    if (!buf)
-        return vnull();
-
-    // Build replacement
-    char *out = buf;
-    p = src;
-
-    while (1)
-    {
-        const char *match = strstr(p, needle);
-        if (!match)
-        {
-            strcpy(out, p);
-            break;
-        }
-
-        size_t seg = match - p;
-        memcpy(out, p, seg);
-        out += seg;
-
-        memcpy(out, repl, r_len);
-        out += r_len;
-
-        p = match + n_len;
-    }
-
-    return vstring_take(buf);
-}
-
 char *read_input(void)
 {
     size_t bufsize = 64; // initial buffer size
@@ -398,8 +309,11 @@ Value *list_display(Value *self)
             our_asprintf(&buffer, "%s, ", repr);
         else
             our_asprintf(&buffer, "%s", repr);
+        val_release(iter[i]);
+        free(repr);
     }
     our_asprintf(&buffer, ")");
+    free(iter);
     return vstring_take(buffer);
 }
 
@@ -416,14 +330,15 @@ Value *native_list_new(Env *e, int argc, Value **argv)
     return res;
 }
 
-Value *native_list_append(Env *e, int argc, Value **argv)
+Value* set_list(Value* self, Value* index, Value* value)
 {
-    (void)e;
-    if (argc != 2)
-        return verror("list.append(l, value): requires two arguments!");
-    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
-    ll_append(ll, val_retain(argv[1]));
-    return vnull();
+    ll_set(self->v.opaque, index->v.i, val_retain(value));
+    return NULL;
+}
+
+Value* get_list(Value* self, Value* index)
+{
+    return ll_get(self->v.opaque, index->v.i);
 }
 
 Value *native_list_len(Env *e, int argc, Value **argv)
@@ -435,45 +350,9 @@ Value *native_list_len(Env *e, int argc, Value **argv)
     return vint(ll->size);
 }
 
-Value *native_list_set(Env *e, int argc, Value **argv)
+Value* native_list_pop(Env* e, int argc, Value** argv)
 {
-    (void)e;
-    if (argc != 3)
-        return verror("list.set(l, index, value): requires 3 arguments!");
-    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
-    ll_set(ll, argv[1]->v.i, val_retain(argv[2]));
-    return vnull();
-}
-
-Value *native_list_get(Env *e, int argc, Value **argv)
-{
-    (void)e;
-    if (argc != 2)
-        return verror("list.get(l, index): requires 2 arguments!");
-    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
-    return val_retain(ll_get(ll, argv[1]->v.i));
-}
-
-Value *set_list(Value *self, Value* index, Value* value)
-{
-    LinkedList *ll = (LinkedList *)self->v.opaque;
-    ll_set(ll, index->v.i, val_retain(value));
-    return vnull();
-}
-
-Value *get_list(Value *self, Value* index)
-{
-    LinkedList *ll = (LinkedList *)self->v.opaque;
-    return val_retain(ll_get(ll, index->v.i));
-}
-
-Value *native_list_pop(Env *e, int argc, Value **argv)
-{
-    (void)e;
-    if (argc != 2)
-        return verror("list.pop(l, index): requires 2 arguments!");
-    LinkedList *ll = (LinkedList *)argv[0]->v.opaque;
-    return ll_pop(ll, argv[1]->v.i);
+    return ll_pop(argv[0]->v.opaque, argv[1]->v.i);
 }
 
 Value *list_free(Value *self)
@@ -483,32 +362,14 @@ Value *list_free(Value *self)
     for (int i = 0; iter[i]; i++)
     {
         val_release(iter[i]);
+        val_release(iter[i]);
     }
 
     free(iter);
     ll_free(self->v.opaque);
     self->type = T_NULL;
     self->v.opaque = NULL;
-    return vnull();
-}
-
-Value *native_list_free(Env *e, int argc, Value **argv)
-{
-    (void)e;
-    if (argc != 1 || argv[0]->type != T_OPAQUE)
-        verror("list.free(lst): List opaque pointer is needed.");
-    Value **iter = ll_to_iter(argv[0]->v.opaque);
-
-    for (int i = 0; iter[i]; i++)
-    {
-        val_release(iter[i]);
-    }
-
-    free(iter);
-    ll_free(argv[0]->v.opaque);
-    argv[0]->type = T_NULL;
-    argv[0]->v.opaque = NULL;
-    return vnull();
+    return NULL;
 }
 
 Value *native_cast_int(Env *env, int argc, Value **argv)
@@ -1233,8 +1094,7 @@ Value *free_array(Value *self)
     }
 
     for (int i = 0; i < arr->size; i++)
-        if (arr->array[i])
-            val_release(arr->array[i]);
+        val_release(arr->array[i]);
     free(arr->array);
     free(arr);
 
@@ -1458,12 +1318,21 @@ Value *native_ceil(Env *env, int argc, Value **argv)
     return vfloat(ceil(x));
 }
 
-Value *native_sqrt(Env *env, int argc, Value **argv)
+Value *native_sqrtf(Env *env, int argc, Value **argv)
 {
     (void)env;
     if (argc != 1)
         return verror("sqrt(i): Requires one arguments");
     double x = argv[0]->v.f;
+    return vfloat(sqrtf(x));
+}
+
+Value *native_sqrt(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+        return verror("sqrt(i): Requires one arguments");
+    double x = argv[0]->v.i;
     return vfloat(sqrt(x));
 }
 
@@ -1577,6 +1446,18 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value* native_list_append(Env* env, int argc, Value **argv)
+{
+    ll_append(argv[0]->v.opaque, val_retain(argv[1]));
+    return vnull();
+}
+
+Value* native_raw_repr(Env *env, int argc, Value **argv) {
+    (void)env;
+    if (argc != 1) return verror("raw_repr(value): Expected at least one argument!");
+    return vstring_take(as_c_string_repr_raw(argv[0]));
+}
+
 Value *env_free_builtins()
 {
     free(dict_meta);
@@ -1589,12 +1470,32 @@ Value *env_free_builtins()
     return NULL;
 }
 
+Value* native_own(Env* e, int argc, Value** argv) {
+    (void)e;
+    if (argc == 1 && MILA_GET_TYPE(argv[0]) == T_OPAQUE) {
+        Value* ptr = argv[0];
+        // NOTE: not recomended to directly access value fields!
+        argv[0]->type = T_OWNED_OPAQUE;
+        return val_retain(argv[0]);
+    }
+    return verror("own(ptr): Must have a pointer to convert into owned opaque!");
+}
+
+#ifdef MILA_TRUE_BARE
+    #define MILA_NO_SETUP
+    #define MILA_NO_COLLECTIONS
+    #define MILA_STANDALONE
+    #define MILA_NO_PLATFORM
+    #define MILA_NO_MATH
+#endif
+
 // Minimal MiLa Builtins
 // We do not support normal objects,
 // the dots are namespaces.
 // And yes if you remove this file it wont trash the interpreter.
 void env_register_builtins(Env *g)
 {
+#ifndef MILA_NO_SETUP
     // === Setup
     // canonical builtins reports edition (2026 march)
     env_set_raw(g, "__mila_canonical_builtins", vint(202603L));
@@ -1603,7 +1504,39 @@ void env_register_builtins(Env *g)
     // tell users what implementation it is
     // heres its canon since this is the base implementation.
     env_set_raw(g, "__mila_codename", vstring_dup("canon"));
+#endif
 
+    // === Misc
+    env_register_native(g, "range", native_range);
+    env_register_native(g, "own", native_own);
+    env_register_native(g, "raw_repr", native_raw_repr);
+    // === Text IO
+    env_register_native(g, "print", native_print);
+    env_register_native(g, "printr", native_printr);
+    env_register_native(g, "println", native_println);
+    env_register_native(g, "input", native_input);
+    // === Logic
+    env_register_native(g, "and", native_bitwise_and);
+    env_register_native(g, "or", native_bitwise_or);
+    env_register_native(g, "xor", native_bitwise_xor);
+    env_register_native(g, "not", native_not);
+    // === File IO
+#if (!defined(MILA_NO_FILE_IO)) || (defined(MILA_NO_FILE_IO) && !defined(MILA_EXCLUDE_FILE_IO))
+    env_register_native(g, "open", native_open);
+    env_register_native(g, "fclose", native_fclose);
+    env_register_native(g, "fprint", native_fprint);
+    env_register_native(g, "fread", native_fread);
+    env_register_native(g, "fseek", native_fseek);
+    env_register_native(g, "ftell", native_ftell);
+    env_register_native(g, "fflush", native_fflush);
+    env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
+    env_set_raw(g, "SEEK_END", vint(SEEK_END));
+    env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
+    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
+    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
+#endif
+    // === Lists
+#if (!defined(MILA_NO_COLLECTIONS)) || (defined(MILA_NO_COLLECTIONS) && !defined(MILA_EXCLUDE_COLLECTIONS))
     file_meta = val_make_table();
 
     val_set_method_table(file_meta, UMethodToString, file_printer);
@@ -1640,39 +1573,12 @@ void env_register_builtins(Env *g)
 
     val_set_method_table(self_free_meta, UMethodFree, self_free);
 
-    // === Misc
-    env_register_native(g, "range", native_range);
-    // === Text IO
-    env_register_native(g, "print", native_print);
-    env_register_native(g, "printr", native_printr);
-    env_register_native(g, "println", native_println);
-    env_register_native(g, "input", native_input);
-    // === Logic
-    env_register_native(g, "and", native_bitwise_and);
-    env_register_native(g, "or", native_bitwise_or);
-    env_register_native(g, "xor", native_bitwise_xor);
-    env_register_native(g, "not", native_not);
-    // === File IO
-    env_register_native(g, "open", native_open);
-    env_register_native(g, "fclose", native_fclose);
-    env_register_native(g, "fprint", native_fprint);
-    env_register_native(g, "fread", native_fread);
-    env_register_native(g, "fseek", native_fseek);
-    env_register_native(g, "ftell", native_ftell);
-    env_register_native(g, "fflush", native_fflush);
-    env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
-    env_set_raw(g, "SEEK_END", vint(SEEK_END));
-    env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
-    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
-    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
-    // === Lists
     env_register_native(g, "list", native_list_new);
-    env_register_native(g, "list.set", native_list_set);
-    env_register_native(g, "list.get", native_list_get);
+    // env_register_native(g, "list.set", native_list_set);
+    // env_register_native(g, "list.get", native_list_get);
     env_register_native(g, "list.pop", native_list_pop);
     env_register_native(g, "list.len", native_list_len);
     env_register_native(g, "list.append", native_list_append);
-    env_register_native(g, "list.free", native_list_free);
     // === Array
     env_register_native(g, "array", native_new_array);
     env_register_native(g, "array.from", native_from_array);
@@ -1686,6 +1592,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "dict.get", native_get_dict);
     env_register_native(g, "dict.rem", native_rem_dict);
     env_register_native(g, "dict.free", native_free_dict);
+#endif
     // === Casting
     env_register_native(g, "cast.int", native_cast_int);
     env_register_native(g, "cast.float", native_cast_float);
@@ -1706,14 +1613,17 @@ void env_register_builtins(Env *g)
     env_register_native(g, "ascii.from", native_from_ascii);
     env_register_native(g, "ascii.to", native_to_ascii);
     // === Math
+#if (!defined(MILA_NO_MATH)) || (defined(MILA_NO_MATH) && !defined(MILA_EXCLUDE_NO_MATH))
     env_register_native(g, "floor", native_floor);
     env_register_native(g, "ceil", native_ceil);
     env_register_native(g, "sqrt", native_sqrt);
+    env_register_native(g, "sqrtf", native_sqrtf);
     env_register_native(g, "sin", native_sin);
     env_register_native(g, "cos", native_cos);
     env_register_native(g, "tan", native_tan);
     env_register_native(g, "atan2", native_atan2);
     env_register_native(g, "pow", native_pow);
+#endif
     // === Env
     env_register_native(g, "vars.set", native_vars_set);
     env_register_native(g, "vars.get", native_vars_get);
@@ -1730,11 +1640,15 @@ void env_register_builtins(Env *g)
     // === Time measurement
     env_register_native(g, "get_time", native_get_time);
     // === OS Stuff
+#if (!defined(MILA_NO_PLATFORM)) || (defined(MILA_NO_PLATFORM) && !defined(MILA_EXCLUDE_NO_PLATFORM))
     env_register_native(g, "system", native_system);
+#endif
     // === Modules
+#if (!defined(MILA_STANDALONE)) || (defined(MILA_STANDALONE) && !defined(MILA_NOT_STANDALONE))
     env_register_native(g, "run", native_run);   // runs file
     env_register_native(g, "load", native_load); // loads dlls or so file
     env_register_native(g, "eval", native_eval); // runs string
+#endif
 }
 
 #ifndef ML_LIB

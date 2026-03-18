@@ -56,6 +56,7 @@ MethodTable *list_meta = NULL;
 MethodTable *array_meta = NULL;
 MethodTable *range_meta = NULL;
 MethodTable *self_free_meta = NULL;
+MethodTable *istring_meta = NULL;
 
 Value *self_free(Value *self)
 {
@@ -1481,6 +1482,37 @@ Value* native_own(Env* e, int argc, Value** argv) {
     return verror("own(ptr): Must have a pointer to convert into owned opaque!");
 }
 
+Value* native_istring(Env* e, int argc, Value** argv)
+{
+    if (argc == 1)
+    {
+        char* str = as_c_string(argv[0]);
+        Value* ptr = vowned_opaque(str);
+        ptr->type_name = strdup(MILA_LPREFIX "istring");
+        val_set_table(ptr, istring_meta);
+        return ptr;
+    }
+    return verror("istring(v): Needs at least one argument!");
+}
+
+Value* istring_to_iter(Value* self)
+{
+    char* str = (char*)self->v.opaque;
+    size_t slen = strlen(str);
+    Value** iter = (Value**)malloc(sizeof(Value*) * (slen + 1));
+    for (size_t i=0; i<slen; ++i) {
+        printf("%c\n", str[i]);
+        iter[i] = vstring_dup((char[]){str[i], 0});
+    }
+    iter[slen] = NULL;
+    return vopaque(iter);
+}
+
+Value* istring_to_str(Value* self)
+{
+    return vstring_dup(self->v.opaque);
+}
+
 #ifdef MILA_TRUE_BARE
     #define MILA_NO_SETUP
     #define MILA_NO_COLLECTIONS
@@ -1569,9 +1601,10 @@ void env_register_builtins(Env *g)
     val_set_method_table(range_meta, UMethodToIter, range_to_iter);
     val_set_method_table(range_meta, UMethodFree, range_free);
 
-    self_free_meta = val_make_table();
-
-    val_set_method_table(self_free_meta, UMethodFree, self_free);
+    istring_meta = val_make_table();
+    
+    val_set_method_table(istring_meta, UMethodToIter, istring_to_iter);
+    val_set_method_table(istring_meta, UMethodToString, istring_to_str);
 
     env_register_native(g, "list", native_list_new);
     // env_register_native(g, "list.set", native_list_set);
@@ -1609,6 +1642,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.length", native_str_length);
     env_register_native(g, "str.pop_f", native_pop_start);
     env_register_native(g, "str.pop_b", native_pop_end);
+    env_register_native(g, "istring", native_istring);
     // === ASCII
     env_register_native(g, "ascii.from", native_from_ascii);
     env_register_native(g, "ascii.to", native_to_ascii);

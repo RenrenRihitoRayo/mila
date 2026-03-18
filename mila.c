@@ -626,11 +626,12 @@ char *as_c_string_repr(Value *v)
         }
         our_asprintf(&buffer, "\"");
         break;
-    default: {
-            char* tmp = as_c_string(v);
-            our_asprintf(&buffer, "%s", tmp);
-            free(tmp);
-        }
+    default:
+    {
+        char *tmp = as_c_string(v);
+        our_asprintf(&buffer, "%s", tmp);
+        free(tmp);
+    }
     }
     return buffer;
 }
@@ -672,11 +673,12 @@ char *as_c_string_repr_raw(Value *v)
         }
         our_asprintf(&buffer, "\"");
         break;
-    default: {
-            char* tmp = as_c_string_raw(v);
-            our_asprintf(&buffer, "%s", tmp);
-            free(tmp);
-        }
+    default:
+    {
+        char *tmp = as_c_string_raw(v);
+        our_asprintf(&buffer, "%s", tmp);
+        free(tmp);
+    }
     }
     return buffer;
 }
@@ -709,10 +711,14 @@ void print_value_repr(Value *v)
 Value *val_retain(Value *v)
 {
 #ifdef MILA_DEBUG
-    if (v) {
+    if (v)
+    {
         printf("  ?? val_retain:\n     type: %s\n     refcount ++%i -> %i\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount + 1);
-        print_value_repr(v); puts("");
-    } else {
+        print_value_repr(v);
+        puts("");
+    }
+    else
+    {
         printf("  !! val_release:\n     JUST ATTEMPTED TO FREE A NULL VALUE!\n");
     }
 #endif
@@ -729,7 +735,8 @@ void val_release(Value *v)
         return;
 #ifdef MILA_DEBUG
     printf("  -- val_release:\n     type: %s\n     refcount --%i -> %i\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
-    print_value_repr(v); puts("");
+    print_value_repr(v);
+    puts("");
 #endif
     v->refcount--;
     if (v->refcount <= 0)
@@ -788,7 +795,8 @@ void val_kill(Value *v)
         return;
 #ifdef MILA_DEBUG
     printf("  -- val_kill:\n     type: %s\n     refcount %i -> 0 (forced)\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
-    print_value_repr(v); puts("");
+    print_value_repr(v);
+    puts("");
 #endif
     if (v->method_table && v->method_table[UMethodKill])
     {
@@ -1465,7 +1473,8 @@ Value *parse_number(Src *s)
         Value *r;
         if (seen_dot)
             r = vfloat(atof(buf));
-        else {
+        else
+        {
             long tmp = atol(buf);
             r = is_unsigned ? vuint(tmp > 0 ? tmp : -tmp) : vint(atol(buf));
         }
@@ -1551,7 +1560,7 @@ Value *parse_string(Src *s)
     return vstring_take(res);
 }
 
-void src_advance_by(Src* s, size_t amount)
+void src_advance_by(Src *s, size_t amount)
 {
     s->pos += amount;
 }
@@ -1667,7 +1676,8 @@ Value *eval_block(Src *s, Env *env)
         if (IS_CONTROL(st))
         {
             env_free(frame);
-            if (st->type == T_RETURN) return st;
+            if (st->type == T_RETURN)
+                return st;
             HANDLE_CONTROL(st);
         }
     }
@@ -1697,7 +1707,8 @@ Value *eval_block_raw(Src *s, Env *frame)
 
         if (IS_CONTROL(st))
         {
-            if (st->type == T_RETURN) return st;
+            if (st->type == T_RETURN)
+                return st;
             HANDLE_CONTROL(st);
         }
     }
@@ -1743,8 +1754,10 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
 
     if (fnval->type == T_NATIVE)
     {
-        for (int t=0; t<count; ++t) {
-            if (MILA_GET_TYPE(args[t]) == T_ERROR) {
+        for (int t = 0; t < count; ++t)
+        {
+            if (MILA_GET_TYPE(args[t]) == T_ERROR)
+            {
                 for (int i = 0; i < count; i++)
                     val_release(args[i]);
                 return args[t];
@@ -1839,8 +1852,10 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
 
     if (fnval->type == T_NATIVE)
     {
-        for (int t=0; t<count; ++t) {
-            if (MILA_GET_TYPE(args[t]) == T_ERROR) {
+        for (int t = 0; t < count; ++t)
+        {
+            if (MILA_GET_TYPE(args[t]) == T_ERROR)
+            {
                 for (int i = 0; i < count; i++)
                     val_release(args[i]);
                 return args[t];
@@ -1932,7 +1947,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         return verror("Function is NULL!");
     if (fnval->type == T_NATIVE)
     {
-        for (int t=0; t<argc; ++t)
+        for (int t = 0; t < argc; ++t)
             if (MILA_GET_TYPE(argv[t]) == T_ERROR)
                 return argv[t];
         Value *result = fnval->v.native->fn(env, argc, argv);
@@ -1948,7 +1963,8 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         for (; p && p[i]; ++i)
         {
             // if fewer args provided, bind null
-            if (i < argc && MILA_GET_TYPE(argv[i]) == T_ERROR) {
+            if (i < argc && MILA_GET_TYPE(argv[i]) == T_ERROR)
+            {
                 return argv[i];
             }
             Value *a = (i < argc) ? argv[i] : vnull();
@@ -1985,13 +2001,13 @@ Value *eval_primary(Src *s, Env *env)
     // number
     if (
         isdigit((unsigned char)c) ||
-        ((c == '+' || c == '-') &&  isdigit((unsigned char)s->src[s->pos+1]))
-    )
+        ((c == '+' || c == '-') && isdigit((unsigned char)s->src[s->pos + 1])))
     {
         return parse_number(s);
     }
     // string
-    if (c == '"') {
+    if (c == '"')
+    {
         return parse_string(s);
     }
     // parentheses
@@ -2016,7 +2032,8 @@ Value *eval_primary(Src *s, Env *env)
                 for (;;)
                 {
                     Value *a = eval_expr(s, env);
-                    if (a && a->type == T_ERROR) {
+                    if (a && a->type == T_ERROR)
+                    {
                         free(args);
                         val_release(expr);
                         for (int i = 0; i < argc; i++)
@@ -2030,7 +2047,11 @@ Value *eval_primary(Src *s, Env *env)
                         continue;
                     if (match_char(s, ')'))
                         break;
-                    break;
+                    val_release(expr);
+                    for (int i = 0; i < argc; i++)
+                        val_release(args[i]);
+                    free(args);
+                    return verror("Expected a comma or closing parenthesis!");
                 }
             }
             else
@@ -2044,8 +2065,9 @@ Value *eval_primary(Src *s, Env *env)
                 val_release(args[i]);
             free(args);
             val_release(expr);
-            if (MILA_GET_TYPE(res) == T_RETURN) {
-                Value* tmp = (Value*)res->v.opaque;
+            if (MILA_GET_TYPE(res) == T_RETURN)
+            {
+                Value *tmp = (Value *)res->v.opaque;
                 val_release(res);
                 return tmp;
             }
@@ -2075,7 +2097,7 @@ Value *eval_primary(Src *s, Env *env)
             else
             {
                 val_release(index);
-                Value* res = verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
+                Value *res = verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
                 val_release(obj);
                 return res;
             }
@@ -2219,7 +2241,8 @@ Value *eval_primary(Src *s, Env *env)
                 for (;;)
                 {
                     Value *a = eval_expr(s, env);
-                    if (a && a->type == T_ERROR) {
+                    if (a && a->type == T_ERROR)
+                    {
                         free(id);
                         for (int i = 0; i < argc; i++)
                             val_release(args[i]);
@@ -2228,12 +2251,15 @@ Value *eval_primary(Src *s, Env *env)
                     }
                     args = realloc(args, sizeof(Value *) * (argc + 1));
                     args[argc++] = a;
-                    skip_ws(s);
                     if (match_char(s, ','))
                         continue;
                     if (match_char(s, ')'))
                         break;
-                    break;
+                    free(id);
+                    for (int i = 0; i < argc; i++)
+                        val_release(args[i]);
+                    free(args);
+                    return verror("Expected a comma or closing parenthesis!");
                 }
             }
             else
@@ -2372,8 +2398,10 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             unsigned long ia = a->v.ui, ib = b->v.ui;
             if (op == BMethodAdd)
                 return vuint(ia + ib);
-            if (op == BMethodSub) {
-                if (a->type == T_INT) {
+            if (op == BMethodSub)
+            {
+                if (a->type == T_INT)
+                {
                     long v = a->v.i - b->v.i;
                     return vuint(v > 0 ? v : -v);
                 }
@@ -2525,12 +2553,89 @@ Value *binary_op(Value *a, MethodType op, Value *b)
     return vnull();
 }
 
+Value *binary_op_in_place(Value *a, MethodType op, Value *b)
+{
+    if (is_number(a) && is_number(b))
+    {
+        if (a->type == T_UINT || b->type == T_UINT)
+        // treat both numbers as unsigned.
+        {
+            unsigned long ia = a->v.ui, ib = b->v.ui;
+            a->type = T_UINT;
+            if (op == BMethodAdd)
+                a->v.ui = ia + ib;
+            else if (op == BMethodSub)
+            {
+                if (a->type == T_INT)
+                {
+                    long v = a->v.i - b->v.i;
+                    a->v.ui = v > 0 ? v : -v;
+                }
+                else
+                {
+                    a->v.ui = ia - ib;
+                }
+            }
+            else if (op == BMethodMul)
+                a->v.ui = ia * ib;
+            else if (op == BMethodDiv)
+                a->v.ui = ia / ib;
+            else if (op == BMethodLshift)
+                a->v.ui = ia << ib;
+            else if (op == BMethodRshift)
+                a->v.ui = ia >> ib;
+            else if (op == BMethodMod)
+                a->v.ui = ia % ib;
+            return a;
+        }
+        // numeric arithmetic
+        else if (a->type == T_FLOAT || b->type == T_FLOAT)
+        {
+            double ra = to_double(a), rb = to_double(b);
+            a->type = T_FLOAT;
+            if (op == BMethodAdd)
+                a->v.f = ra + rb;
+            else if (op == BMethodSub)
+                a->v.f = ra - rb;
+            else if (op == BMethodMul)
+                a->v.f = ra * rb;
+            else if (op == BMethodDiv)
+                a->v.f = ra / rb;
+            return a;
+        }
+        else
+        {
+            a->type = T_INT;
+            long ia = a->v.i, ib = b->v.i;
+            if (op == BMethodAdd)
+                a->v.i = ia + ib;
+            else if (op == BMethodSub)
+                a->v.i = ia - ib;
+            else if (op == BMethodMul)
+                a->v.i = ia * ib;
+            else if (op == BMethodDiv)
+            {
+                a->type = T_FLOAT;
+                a->v.f = (double)ia / (double)ib;
+            }
+            else if (op == BMethodLshift)
+                a->v.i = ia << ib;
+            else if (op == BMethodRshift)
+                a->v.i = ia >> ib;
+            else if (op == BMethodMod)
+                a->v.i = ia % ib;
+            return a;
+        }
+    }
+    return verror("Only numeric types can do in place operations!");
+}
+
 // evaluate expression with precedence climbing
 int precedence_of(MethodType op)
 {
-    if (BMethodOr == op)
-        return 1;
     if (BMethodAnd == op)
+        return 1;
+    if (BMethodOr == op)
         return 2;
     if (BMethodDefault == op)
         return 3;
@@ -2551,7 +2656,8 @@ MethodType parse_op(Src *s)
 {
     skip_ws(s);
     char a = src_peek(s);
-    if (a == '\0') return -1;
+    if (a == '\0')
+        return -1;
     char b = s->src[s->pos + 1];
     // two-char ops
     if (a == '|' && b == '|')
@@ -2631,8 +2737,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec)
     {
         int saved_pos = s->pos;
         MethodType op = parse_op(s);
-        if (op < 0)
-            break;
+        if (op == -1) return lhs;
         int prec = precedence_of(op);
         if (prec < min_prec)
         {
@@ -2661,7 +2766,6 @@ void clean_elif_chain(Src *s)
     while (is_keyword_at(s, "elif"))
     {
         s->pos += strlen("elif");
-        skip_ws(s);
         if (match_char(s, '('))
             skip_expr(s);
         match_char(s, ')');
@@ -2670,7 +2774,6 @@ void clean_elif_chain(Src *s)
     if (is_keyword_at(s, "else"))
     {
         s->pos += strlen("else");
-        skip_ws(s);
         skip_block(s);
     }
 }
@@ -2684,7 +2787,6 @@ Value *eval_statement(Src *s, Env *env)
         char *id = parse_ident(s);
         if (!id)
             return verror("Invalid let statement.");
-        skip_ws(s);
         if (match_char(s, ';'))
         {
             // declare none
@@ -2693,9 +2795,50 @@ Value *eval_statement(Src *s, Env *env)
             return vnull();
         }
         Value *v = NULL;
+        MethodType mt = -1;
+        switch (src_peek(s))
+        {
+        case '+':
+            mt = BMethodAdd;
+            break;
+        case '-':
+            mt = BMethodSub;
+            break;
+        case '*':
+            mt = BMethodMul;
+            break;
+        case '/':
+            mt = BMethodDiv;
+            break;
+        case '%':
+            mt = BMethodMod;
+            break;
+        }
+        if (mt != -1)
+            src_advance_by(s, 1);
         if (match_char(s, '='))
         {
             v = eval_expr(s, env);
+            if (mt != -1)
+            {
+                Value *inplace = env_get(env, id);
+                if (!inplace)
+                {
+                    Value *err = verror("Variable %s doesnt exist and yet inplace operator was used!", id);
+                    free(id);
+                    val_release(v);
+                    return err;
+                }
+                skip_ws(s);
+                if (inplace)
+                    binary_op_in_place(inplace, mt, v);
+                // Since we do an inplace operation
+                // We dont really need to set it now
+                free(id);
+                val_release(v);
+                match_char(s, ';');
+                return val_retain(inplace);
+            }
         }
         else if (match_char(s, ':'))
         {
@@ -2705,8 +2848,7 @@ Value *eval_statement(Src *s, Env *env)
         {
             Value *index = parse_subscript(s, env);
             Value *obj = env_get(env, id);
-            
-            skip_ws(s);
+
             if (match_char(s, '='))
             {
                 v = eval_expr(s, env);
@@ -2717,10 +2859,10 @@ Value *eval_statement(Src *s, Env *env)
                 v = eval_statement(s, env);
             }
 
-            if (v && v->type == T_RETURN) 
+            if (v && v->type == T_RETURN)
             {
-                Value* tmp = v;
-                v = (Value*)tmp->v.opaque;
+                Value *tmp = v;
+                v = (Value *)tmp->v.opaque;
                 val_release(tmp);
             }
 
@@ -2747,16 +2889,16 @@ Value *eval_statement(Src *s, Env *env)
                 val_release(index);
                 val_release(v);
                 free(id);
-                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPENAME(obj));
+                Value *res = verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPENAME(obj));
                 val_release(obj);
                 return res;
             }
         }
 
-        if (v && v->type == T_RETURN) 
+        if (v && v->type == T_RETURN)
         {
-            Value* tmp = v;
-            v = (Value*)tmp->v.opaque;
+            Value *tmp = v;
+            v = (Value *)tmp->v.opaque;
             val_release(tmp);
         }
         else if (v && v->type == T_FUNCTION)
@@ -2764,10 +2906,7 @@ Value *eval_statement(Src *s, Env *env)
             v->v.fn->name = strdup(id);
         }
         skip_ws(s);
-        if (v && v->type != T_STRING)
-            env_set(env, id, v);
-        else
-            env_set_raw(env, id, val_retain(v));
+        env_set(env, id, v);
         free(id);
         match_char(s, ';');
         return v;
@@ -2778,7 +2917,6 @@ Value *eval_statement(Src *s, Env *env)
         char *id = parse_ident(s);
         if (!id)
             return verror("Invalid let statement.");
-        skip_ws(s);
         if (match_char(s, ';'))
         {
             // declare none
@@ -2800,8 +2938,7 @@ Value *eval_statement(Src *s, Env *env)
         {
             Value *index = parse_subscript(s, env);
             Value *obj = env_get(env, id);
-            
-            skip_ws(s);
+
             if (match_char(s, '='))
             {
                 v = eval_expr(s, env);
@@ -2812,10 +2949,10 @@ Value *eval_statement(Src *s, Env *env)
                 v = eval_statement(s, env);
             }
 
-            if (v && v->type == T_RETURN) 
+            if (v && v->type == T_RETURN)
             {
-                Value* tmp = v;
-                v = (Value*)tmp->v.opaque;
+                Value *tmp = v;
+                v = (Value *)tmp->v.opaque;
                 val_release(tmp);
             }
 
@@ -2842,23 +2979,22 @@ Value *eval_statement(Src *s, Env *env)
                 val_release(index);
                 val_release(v);
                 free(id);
-                Value* res =  verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPENAME(obj));
+                Value *res = verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPENAME(obj));
                 val_release(obj);
                 return res;
             }
         }
 
-        if (v && v->type == T_RETURN) 
+        if (v && v->type == T_RETURN)
         {
-            Value* tmp = v;
-            v = (Value*)tmp->v.opaque;
+            Value *tmp = v;
+            v = (Value *)tmp->v.opaque;
             val_release(tmp);
         }
         else if (v && v->type == T_FUNCTION)
         {
             v->v.fn->name = strdup(id);
         }
-        skip_ws(s);
         match_char(s, ';');
         env_set_local(env, id, v);
         free(id);
@@ -2868,7 +3004,7 @@ Value *eval_statement(Src *s, Env *env)
     {
         s->pos += strlen("forget");
         skip_ws(s);
-        char* id = parse_ident(s);
+        char *id = parse_ident(s);
 
         val_release(env_get(env, id));
         env_remove(env, id);
@@ -2917,7 +3053,6 @@ Value *eval_statement(Src *s, Env *env)
                 while (is_keyword_at(s, "elif"))
                 {
                     s->pos += strlen("elif");
-                    skip_ws(s);
                     if (match_char(s, '('))
                     {
                         Value *cond = eval_expr(s, env);
@@ -2957,12 +3092,11 @@ Value *eval_statement(Src *s, Env *env)
     if (is_keyword_at(s, "while"))
     {
         s->pos += strlen("while");
-        skip_ws(s);
         if (match_char(s, '('))
         {
             uint64_t cond_start_pos = s->pos;
-            skip_expr(s);
-            match_char(s, ')');
+            if (!match_char(s, ')'))
+                return verror("Expected condition to close with a parenthesis!");
             uint64_t body_start_pos = s->pos;
             skip_block(s);
             uint64_t body_end_pos = s->pos;
@@ -2976,7 +3110,6 @@ Value *eval_statement(Src *s, Env *env)
 
                 // Re-evaluate condition
                 Value *cond = eval_expr(s, env);
-                skip_ws(s);
                 match_char(s, ')');
                 if (MILA_GET_TYPE(cond) == T_ERROR)
                 {
@@ -2986,7 +3119,8 @@ Value *eval_statement(Src *s, Env *env)
                 else if (!is_truthy(cond))
                 {
                     val_release(cond);
-                    if (MILA_GET_TYPE(bod) == T_RETURN) {
+                    if (MILA_GET_TYPE(bod) == T_RETURN)
+                    {
                         return bod;
                     }
                     val_release(bod);
@@ -3020,6 +3154,7 @@ Value *eval_statement(Src *s, Env *env)
             }
             return bod;
         }
+        return verror("While loops condition must be wrapped in parenthesis!");
     }
     if (is_keyword_at(s, "foreach"))
     {
@@ -3028,14 +3163,29 @@ Value *eval_statement(Src *s, Env *env)
         char *id = parse_ident(s);
         if (id)
         {
-            skip_ws(s);
-            match_char(s, ':');
+            if (!match_char(s, ':'))
+            {
+                free(id);
+                return verror("Foreach lacking ':'");
+            }
             Value *iter_obj = eval_expr(s, env);
+
+            if (MILA_GET_TYPE(iter_obj) == T_ERROR)
+            {
+                free(id);
+                return iter_obj;
+            }
+
             Value **value = NULL;
 
             if (iter_obj->method_table && iter_obj->method_table[UMethodToIter])
             {
                 Value *v = ((unary_method)iter_obj->method_table[UMethodToIter])(iter_obj);
+                if (MILA_GET_TYPE(v) == T_ERROR)
+                {
+                    free(id);
+                    return v;
+                }
                 if (!v)
                 {
                     free(id);
@@ -3081,7 +3231,8 @@ Value *eval_statement(Src *s, Env *env)
 
                 env_free(frame);
                 // --- Handle body result ---
-                if (bod) {
+                if (bod)
+                {
                     if (bod->type == T_BREAK)
                     {
                         s->pos = body_end_pos;
@@ -3215,7 +3366,8 @@ Value *eval_source(Src *s, Env *env)
 
         val_release(last);
         last = st;
-        if (last) {
+        if (last)
+        {
             if (last->type == T_ERROR)
             {
                 printf("\n= Error: %s\n", last->v.message);
@@ -3223,7 +3375,7 @@ Value *eval_source(Src *s, Env *env)
             }
             else if (last->type == T_RETURN)
             {
-                Value* res = (Value*)last->v.opaque;
+                Value *res = (Value *)last->v.opaque;
                 val_release(last);
                 return res;
             }
@@ -3264,7 +3416,7 @@ int run_file(char *name, Env *env)
     return 0;
 }
 
-Value* run_file_keep_res(char *name, Env *env)
+Value *run_file_keep_res(char *name, Env *env)
 {
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -3314,24 +3466,36 @@ int needs_more(const char *src)
     return in_string || parens > 0 || braces > 0;
 }
 
-Env* mila_init(void)
+Env *mila_init(void)
 {
-    Env* g = env_new(NULL);
+    Env *g = env_new(NULL);
 
 #ifndef MILA_USE_SHARED
     env_register_builtins(g);
 #endif
 
 #ifndef MILA_NO_SIGNAL_HANDLER
-    if (signal(SIGINT, signal_handle) == SIG_ERR) {perror("signal SIGINT"); exit(1);}
-    if (signal(SIGSEGV, signal_handle) == SIG_ERR) {perror("signal SIGSEGV"); exit(1);}
-    if (signal(SIGTERM, signal_handle) == SIG_ERR) {perror("signal SIGTERM"); exit(1);}
+    if (signal(SIGINT, signal_handle) == SIG_ERR)
+    {
+        perror("signal SIGINT");
+        exit(1);
+    }
+    if (signal(SIGSEGV, signal_handle) == SIG_ERR)
+    {
+        perror("signal SIGSEGV");
+        exit(1);
+    }
+    if (signal(SIGTERM, signal_handle) == SIG_ERR)
+    {
+        perror("signal SIGTERM");
+        exit(1);
+    }
 #endif
 
     return g;
 }
 
-void mila_deinit(Env* g)
+void mila_deinit(Env *g)
 {
     // we might handle stuff here
 
@@ -3388,7 +3552,7 @@ int main(int argc, char **argv)
     // prepare global env
 #ifndef MILA_USE_SHARED
     // register native functions
-    Env* g = mila_init();
+    Env *g = mila_init();
     env_set_raw(g, "__mila_builtins_dynamic", vbool(0));
 #else
     Env *g = env_new(NULL);
@@ -3406,9 +3570,11 @@ int main(int argc, char **argv)
                       builtins_flag->v.i == 202603L;
 
     search_path = path_list_new();
-    char* cwd = path_get_cwd();
-    if (!cwd) fprintf(stderr, "current working directory was not determined.");
-    else path_list_add(search_path, cwd);
+    char *cwd = path_get_cwd();
+    if (!cwd)
+        fprintf(stderr, "current working directory was not determined.");
+    else
+        path_list_add(search_path, cwd);
 
     path_list_add(search_path, "~/.local/lib/mila");
 
@@ -3436,8 +3602,9 @@ int main(int argc, char **argv)
         if (is_builtins)
         {
             array = call_function_str(g, "array", vint(argc - 1), NULL);
-            for (int i = 1; i < argc; i++) {
-                Value* str = vstring_dup(argv[i]);
+            for (int i = 1; i < argc; i++)
+            {
+                Value *str = vstring_dup(argv[i]);
                 val_release(call_function_str(g, "array.set", val_retain(array), vint(i - 1), str, NULL));
             }
             env_set_raw(g, "argv", array);
@@ -3479,8 +3646,9 @@ int main(int argc, char **argv)
         if (is_builtins && argc > 1 && strcmp(argv[1], "--") == 0)
         {
             array = call_function_str(g, "array", vint(argc - 2), NULL);
-            for (int i = 2; i < argc; i++) {
-                Value* str = vstring_dup(argv[i]);
+            for (int i = 2; i < argc; i++)
+            {
+                Value *str = vstring_dup(argv[i]);
                 val_release(call_function_str(g, "array.set", val_retain(array), vint(i - 2), str, NULL));
             }
             env_set_raw(g, "argv", array);
@@ -3534,8 +3702,9 @@ int main(int argc, char **argv)
                 // }
 
                 // fseek(f, 0, SEEK_SET);
-    
-                while (fgets(line, sizeof(line), f)) {
+
+                while (fgets(line, sizeof(line), f))
+                {
                     if (strncmp(line, "VmRSS:", 6) == 0 ||
                         strncmp(line, "VmData:", 7) == 0 ||
                         strncmp(line, "VmStack:", 8) == 0 ||

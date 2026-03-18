@@ -65,7 +65,7 @@ typedef struct
 
 typedef enum
 {
-    T_NULL,
+    T_NULL = 0,
     T_INT,
     T_UINT,
     T_FLOAT,
@@ -109,6 +109,7 @@ const char *MILA_TYPE_NAMES[] = {
 // or simple UMethodToIter
 typedef enum __attribute__((packed))
 {
+    MethodNone = -1,
     // value op value syntax
     BMethodAdd,
     BMethodSub,
@@ -142,7 +143,6 @@ typedef enum __attribute__((packed))
 
     MethodTotalCount
 } MethodType;
-
 
 typedef Value *(*trinary_method)(Value *self, Value *b, Value* c);
 typedef Value *(*binary_method)(Value *self, Value *other);

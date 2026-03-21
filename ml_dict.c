@@ -50,7 +50,7 @@ static unsigned long hash_value(Value* val)
     int c;
     while ((c = *str++))
         hash = ((hash << 5) + hash) + c;
-    free(og);
+    mila_free(og);
     return hash;
 }
 
@@ -59,7 +59,7 @@ static DictEntry *dict_entry_create(const char *key, Value *value)
     DictEntry *entry = (DictEntry *)mila_malloc(sizeof(DictEntry));
     if (!entry)
         return NULL;
-    entry->key = strdup(key);
+    entry->key = mila_strdup(key);
     entry->value = val_retain(value);
     entry->next = NULL;
     return entry;
@@ -69,9 +69,9 @@ static void dict_entry_free(DictEntry *entry)
 {
     if (!entry)
         return;
-    free(entry->key);
+    mila_free(entry->key);
     val_release(entry->value);
-    free(entry);
+    mila_free(entry);
 }
 
 Dict *dict_create()
@@ -81,10 +81,10 @@ Dict *dict_create()
         return NULL;
     dict->capacity = INITIAL_CAPACITY;
     dict->size = 0;
-    dict->buckets = (DictEntry **)calloc(dict->capacity, sizeof(DictEntry *));
+    dict->buckets = (DictEntry **)mila_malloc(dict->capacity * sizeof(DictEntry *));
     if (!dict->buckets)
     {
-        free(dict);
+        mila_free(dict);
         return NULL;
     }
     return dict;
@@ -93,7 +93,7 @@ Dict *dict_create()
 static void dict_resize(Dict *dict)
 {
     size_t new_capacity = dict->capacity * 2;
-    DictEntry **new_buckets = (DictEntry **)calloc(new_capacity, sizeof(DictEntry *));
+    DictEntry **new_buckets = (DictEntry **)mila_malloc(new_capacity * sizeof(DictEntry *));
     if (!new_buckets)
         return;
 
@@ -110,7 +110,7 @@ static void dict_resize(Dict *dict)
         }
     }
 
-    free(dict->buckets);
+    mila_free(dict->buckets);
     dict->buckets = new_buckets;
     dict->capacity = new_capacity;
 }
@@ -136,7 +136,7 @@ int dict_set(Dict *dict, Value *key, Value *value)
         {
             val_release(entry->value);
             entry->value = val_retain(value);
-            free(key_str);
+            mila_free(key_str);
             return 1; // updated existing
         }
         entry = entry->next;
@@ -144,13 +144,13 @@ int dict_set(Dict *dict, Value *key, Value *value)
 
     DictEntry *new_entry = dict_entry_create(key_str, value);
     if (!new_entry) {
-        free(key_str);
+        mila_free(key_str);
         return 0;
     }
     new_entry->next = dict->buckets[index];
     dict->buckets[index] = new_entry;
     dict->size++;
-    free(key_str);
+    mila_free(key_str);
     return 1; // new insertion
 }
 
@@ -164,12 +164,12 @@ Value *dict_get(Dict *dict, Value *key)
     while (entry)
     {
         if (strcmp(entry->key, key_str) == 0) {
-            free(key_str);
+            mila_free(key_str);
             return entry->value;
         }
         entry = entry->next;
     }
-    free(key_str);
+    mila_free(key_str);
     return NULL;
 }
 
@@ -193,13 +193,13 @@ int dict_remove(Dict *dict, Value *key)
                 dict->buckets[index] = entry->next;
             dict_entry_free(entry);
             dict->size--;
-            free(key_str);
+            mila_free(key_str);
             return 1;
         }
         prev = entry;
         entry = entry->next;
     }
-    free(key_str);
+    mila_free(key_str);
     return 0;
 }
 
@@ -217,13 +217,16 @@ void dict_free(Dict *dict)
             entry = next;
         }
     }
-    free(dict->buckets);
-    free(dict);
+    mila_free(dict->buckets);
+    mila_free(dict);
 }
 
 Value *dict_display(Value *self)
 {
     Dict *dict = (Dict *)self->v.opaque;
+
+    if (dict->size > MAX_ITEMS_DISPLAYED) return vstring_fmt("dict(%zu pairs)", dict->size);
+
     if (!dict || !dict->buckets)
         return vstring_dup("dict()");
 
@@ -254,7 +257,7 @@ Value *dict_display(Value *self)
                 KVPair *tmp = realloc(entries, capacity * sizeof(KVPair));
                 if (!tmp)
                 {
-                    free(entries);
+                    mila_free(entries);
                     return NULL;
                 }
                 entries = tmp;
@@ -273,10 +276,10 @@ Value *dict_display(Value *self)
             our_asprintf(&buffer, "%s, %s, ", entries[i - 1].key, val_str);
         else
             our_asprintf(&buffer, "%s, %s", entries[i - 1].key, val_str);
-        free(val_str);
+        mila_free(val_str);
     }
 
     our_asprintf(&buffer, ")");
-    free(entries);
+    mila_free(entries);
     return vstring_take(buffer);
 }

@@ -355,7 +355,7 @@ char *path_list_find(path_list *pl, const char *file) {
     if (file_exists(tfile))
         return tfile;
 
-    for (int i = 0; i < pl->count; i++) {
+    for (int i = pl->count-1; i > 0; --i) {
         const char *root = pl->items[i];
 
         size_t rl = strlen(root);
@@ -377,7 +377,6 @@ char *path_list_find(path_list *pl, const char *file) {
             full[rl] = sep, full[rl+1] = '\0';
 
         strcat(full, tfile);
-        puts(full);
         if (file_exists(full)) {
             mila_free(tfile);
             return full;

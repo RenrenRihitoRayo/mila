@@ -301,7 +301,9 @@ Value *list_to_iter(Value *self)
 Value *list_display(Value *self)
 {
     LinkedList *lst = (LinkedList *)self->v.opaque;
+    if (lst->size > MAX_ITEMS_DISPLAYED) return vstring_fmt("list(%zu items)", lst->size);
     Value **iter = ll_to_iter(lst);
+
     char *buffer = mila_strdup("list(");
     for (int i = 0; iter[i]; i++)
     {
@@ -704,6 +706,8 @@ Value *array_to_str(Value *self)
         return vstring_take(buffer);
     }
 
+    if (arr->size > MAX_ITEMS_DISPLAYED) return vstring_fmt("array(%i items)", arr->size);
+
     our_asprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
     {
@@ -783,10 +787,9 @@ Value *range_to_iter(Value *self)
     Range *data = (Range *)(self->v.opaque);
     Value **v = (Value **)mila_malloc(sizeof(Value *) * (range_len(data->start, data->end, data->step) + 1));
     long index = 0;
-    for (long i = 0; i < data->end; i += data->step)
+    for (long i = data->start; i < data->end; i += data->step)
     {
-        Value *n = vint(i);
-        v[index++] = n;
+        v[index++] = vint(i);
     }
     v[index] = NULL;
     return vopaque(v);
@@ -1046,7 +1049,7 @@ Value *set_array(Value *self, Value *index, Value *val)
     Value *old = arr->array[idx];
     if (old)
         val_release(old);
-    arr->array[idx] = val;
+    arr->array[idx] = val_retain(val);
 
     return vnull();
 }
@@ -1142,7 +1145,6 @@ Value *native_get_time(Env *env, int argc, Value **argv)
 
 Value *native_run(Env *env, int argc, Value **argv)
 {
-    (void)env;
     if (argc != 1 || argv[0]->type != T_STRING)
     {
         return verror("invalid number of arguments given or incorrect types.");
@@ -1156,12 +1158,14 @@ Value *native_run(Env *env, int argc, Value **argv)
             return verror("run(filename) did not find the file.");
         }
         Env *frame = env_new(env);
-        Value *res = run_file_keep_res(path, env);
-        {
-            return verror("problem running file %s", path);
+        Value* by = env_get(env, "__name__");
+        env_set_local(frame, "__importer__", by ? by : vstring_dup("???"));
+        Value *res = run_file_keep_res(path, frame);
+        if (MILA_GET_TYPE(res) == T_ERROR) {
+            return res;
         }
-        val_retain(res);
         mila_free(path);
+        env_free(frame);
         return res;
     }
 
@@ -1220,7 +1224,7 @@ Value *native_new_dict(Env *env, int argc, Value **argv)
     {
         Value *v = vopaque(d);
         val_set_table(v, dict_meta);
-        return val_retain(v);
+        return v;
     }
     return verror("couldnt make a dict.");
 }
@@ -1252,7 +1256,7 @@ Value *native_get_dict(Env *env, int argc, Value **argv)
 Value *set_dict(Value *self, Value *name, Value *val)
 {
     dict_set(self->v.opaque, name, val);
-    return vnull();
+    return NULL;
 }
 
 Value *get_dict(Value *self, Value *name)
@@ -1447,6 +1451,14 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value* native_meep(Env* e, int argc, Value** argv)
+{
+    (void)argc;
+    (void)argv;
+    env_dump(e);
+    return vnull();
+}
+
 Value* native_list_append(Env* env, int argc, Value **argv)
 {
     ll_append(argv[0]->v.opaque, val_retain(argv[1]));
@@ -1512,7 +1524,6 @@ Value* istring_to_iter(Value* self)
     size_t slen = strlen(str);
     Value** iter = (Value**)malloc(sizeof(Value*) * (slen + 1));
     for (size_t i=0; i<slen; ++i) {
-        printf("%c\n", str[i]);
         iter[i] = vstring_dup((char[]){str[i], 0});
     }
     iter[slen] = NULL;
@@ -1522,6 +1533,151 @@ Value* istring_to_iter(Value* self)
 Value* istring_to_str(Value* self)
 {
     return vstring_dup(self->v.opaque);
+}
+
+Value* native_rand(Env* e, int argc, Value** argv)
+{
+    return vfloat(rand());
+}
+
+Value* native_fabs(Env* e, int argc, Value** argv)
+{
+    if (argc != 1 || MILA_GET_TYPE(argv[0]) != T_FLOAT) return verror("fabs(num): argument must be a float!");
+    return vfloat(fabs(GET_FLOAT(argv[0]))); 
+}
+
+Value* native_abs(Env* e, int argc, Value** argv)
+{
+    if (argc != 1 || MILA_GET_TYPE(argv[0]) != T_INT) return verror("abs(num): argument must be an integer!");
+    return vint(abs((int)GET_INTEGER(argv[0]))); 
+}
+
+Value* native_printf(Env* e, int argc, Value** argv)
+{
+    if (argc == 0) return verror("printf(fmt, ...): Requires at least one argument.");
+    if (argc == 1) {print_value(argv[0]); return vnull();}
+    if (argc >= 2) {
+        if (MILA_GET_TYPE(argv[0]) != T_STRING) return verror("printf(fmt, ...): Requires first argument to be a string!");
+        char* fmt = GET_STRING(argv[0]);
+
+        int count = 1;
+
+        while (*fmt) {
+            if ((*fmt) == '%') {
+                fmt++;
+                switch (*fmt)
+                {
+                case 'd':
+                case 'g':
+                case 'f':
+                case 'u':
+                case 'i': {
+                    Value* v = argv[count++];
+                    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                        switch (*fmt) {
+                        case 'f':
+                            printf((const char[]){'%', *fmt, 0}, *(float*)GET_OPAQUE(v)); break;
+                        case 'i':
+                            printf((const char[]){'%', *fmt, 0}, *(int*)GET_OPAQUE(v)); break;
+                        case 'd':
+                            printf((const char[]){'%', *fmt, 0}, *(int*)GET_OPAQUE(v)); break;
+                        case 'g':
+                            printf((const char[]){'%', *fmt, 0}, *(double*)GET_OPAQUE(v)); break;
+                        case 'u':
+                            printf((const char[]){'%', *fmt, 0}, *(unsigned int*)GET_OPAQUE(v)); break;
+                    } else print_value(v);
+                } break;
+                case 'x': {
+                    Value* v = argv[count++];
+                    unsigned int value; // val to be printed
+                    switch (MILA_GET_TYPE(v)) {
+                    case T_INT:
+                        value = (unsigned int)GET_INTEGER(v);
+                        break;
+                    case T_UINT:
+                        value = (unsigned int)GET_UINTEGER(v);
+                        break;
+                    case T_FLOAT:
+                        value = (unsigned int)GET_FLOAT(v);
+                        break;
+                    }
+                    printf("%x", value);
+                } break;
+                case 'X': {
+                    Value* v = argv[count++];
+                    unsigned int value; // val to be printed
+                    switch (MILA_GET_TYPE(v)) {
+                    case T_INT:
+                        value = (unsigned int)GET_INTEGER(v);
+                        break;
+                    case T_UINT:
+                        value = (unsigned int)GET_UINTEGER(v);
+                        break;
+                    case T_FLOAT:
+                        value = (unsigned int)GET_FLOAT(v);
+                        break;
+                    }
+                    printf("%X", value);
+                } break;
+                case 's': {
+                    Value* v = argv[count++];
+                    char* value = "???"; // val to be printed
+                    switch (MILA_GET_TYPE(v)) {
+                    case T_STRING:
+                        value = GET_STRING(v);
+                        break;
+                    case T_OPAQUE:
+                    case T_OWNED_OPAQUE:
+                        value = GET_OPAQUE(v);
+                        break;
+                    default:
+                        return verror("%%s format specifier only supports opaque pointers and strings but got %s!", MILA_GET_TYPENAME(v));
+                    }
+                    printf("%s", value);
+                } break;
+                case 'c': {
+                    Value* v = argv[count++];
+                    char value = '?'; // val to be printed
+                    switch (MILA_GET_TYPE(v)) {
+                    case T_STRING:
+                        value = *GET_STRING(v);
+                        break;
+                    case T_OPAQUE:
+                    case T_OWNED_OPAQUE:
+                        value = *(char*)GET_OPAQUE(v);
+                        break;
+                    default:
+                        return verror("%%s format specifier only supports opaque pointers and strings but got %s!", MILA_GET_TYPENAME(v));
+                    }
+                    printf("%c", value);
+                } break;
+                case 'p': {
+                    Value* v = argv[count++];
+                    void* ptr = NULL;
+                    switch (MILA_GET_TYPE(v)) {
+                    case T_OWNED_OPAQUE:
+                        ptr = GET_OPAQUE(v);
+                        break;
+                    default:
+                        ptr = v;
+                    }
+                    printf("%p", ptr);
+                } break;
+                case '%':
+                    putchar('%'); break;
+                default:
+                    return verror("Invalid format modifier '%%%c'!", *fmt);
+                }
+            } else {
+                putchar(*fmt);
+            }
+            fmt++;
+        }
+
+        return vnull();
+    }
+
+    return vnull();
 }
 
 #ifdef MILA_TRUE_BARE
@@ -1551,11 +1707,13 @@ void env_register_builtins(Env *g)
 
     // === Misc
     env_register_native(g, "range", native_range);
+    env_register_native(g, "dump_vars", native_meep);
     env_register_native(g, "own", native_own);
     env_register_native(g, "unown", native_unown);
     env_register_native(g, "raw_repr", native_raw_repr);
     // === Text IO
     env_register_native(g, "print", native_print);
+    env_register_native(g, "printf", native_printf); // lovely printf function for C programmers
     env_register_native(g, "printr", native_printr);
     env_register_native(g, "println", native_println);
     env_register_native(g, "input", native_input);
@@ -1669,6 +1827,10 @@ void env_register_builtins(Env *g)
     env_register_native(g, "tan", native_tan);
     env_register_native(g, "atan2", native_atan2);
     env_register_native(g, "pow", native_pow);
+    env_register_native(g, "rand", native_rand);
+    env_register_native(g, "fabs", native_fabs);
+    env_register_native(g, "abs", native_abs);
+    env_set_raw(g, "RAND_MAX", vint(RAND_MAX));
 #endif
     // === Env
     env_register_native(g, "vars.set", native_vars_set);

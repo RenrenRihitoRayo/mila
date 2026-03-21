@@ -15,11 +15,6 @@
 #define HEAP_SIZE (SIZE_MB * 1024 * 1024) // 2 MB
 #define ALIGN 4
 
-// typedef struct FreeBlock {
-//     size_t size;
-//     struct FreeBlock* next;
-// } FreeBlock;
-
 typedef struct BlockHeader {
     size_t size;
     struct BlockHeader* next; // only used if block is free

@@ -1,3 +1,7 @@
+#if !(defined(__GNUC__) || defined(__clang__))
+    #error "MiLa only supports GCC and Clang."
+#endif
+
 /*
  * MiLa
  * A modern programming language
@@ -172,6 +176,7 @@ Value *vnull() { return val_new(T_NULL); }
 Value *vnone() { return val_new(T_NONE); }
 Value *vbreak() { return val_new(T_BREAK); }
 Value *vcontinue() { return val_new(T_CONTINUE); }
+__attribute__((format(printf, 1, 2)))
 Value *verror(char *fmt, ...)
 {
     va_list ap;
@@ -201,6 +206,40 @@ Value *verror(char *fmt, ...)
     vsnprintf(buf, len + 1, fmt, ap);
     va_end(ap);
     Value *v = val_new(T_ERROR);
+    v->v.message = buf;
+    return v;
+}
+
+__attribute__((format(printf, 1, 2)))
+Value *vstring_fmt(char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+
+    // First pass: find length
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int len = vsnprintf(NULL, 0, fmt, ap_copy);
+    va_end(ap_copy);
+
+    if (len < 0)
+    {
+        va_end(ap);
+        return NULL;
+    }
+
+    char *buf = mila_malloc(len + 1);
+    if (!buf)
+    {
+        va_end(ap);
+        Value *v = val_new(T_ERROR);
+        v->v.message = mila_strdup("vstring_fmt could not allocate memory!");
+        return v;
+    }
+
+    vsnprintf(buf, len + 1, fmt, ap);
+    va_end(ap);
+    Value *v = val_new(T_STRING);
     v->v.message = buf;
     return v;
 }
@@ -2727,7 +2766,7 @@ MethodType parse_op(Src *s)
         return BMethodGreat;
     }
     s->pos--;
-    return -1;
+    return MethodNone;
 }
 
 Value *eval_expr_prec(Src *s, Env *env, int min_prec)
@@ -2814,7 +2853,7 @@ Value *eval_statement(Src *s, Env *env)
         }
         if (mt != MethodNone)
             s->pos++;
-        if (match_char(s, '='))
+        if (__builtin_expect(!!match_char(s, '='), 1))
         {
             v = eval_expr(s, env);
             if (mt != MethodNone)
@@ -2869,14 +2908,12 @@ Value *eval_statement(Src *s, Env *env)
                 Value *ret = verror("%s cannot be subscripted as it is cnull", id);
                 val_release(v);
                 mila_free(id);
-                // val_release(obj);
                 return ret;
             }
             if (obj->method_table && obj->method_table[TMethodSetItem])
             {
                 Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
                 val_release(index);
-                // val_release(obj);
                 val_release(v);
                 mila_free(id);
                 return val_retain(res);
@@ -2909,7 +2946,6 @@ Value *eval_statement(Src *s, Env *env)
         skip_ws(s);
         env_set(env, id, v);
         mila_free(id);
-        match_char(s, ';');
         return v;
     }
     if (is_keyword_at(s, "var"))
@@ -2950,8 +2986,48 @@ Value *eval_statement(Src *s, Env *env)
         {
             v->v.fn->name = mila_strdup(id);
         }
-        match_char(s, ';');
         env_set_local(env, id, v);
+        mila_free(id);
+        return v;
+    }
+    if (is_keyword_at(s, "export"))
+    {
+        s->pos += strlen("export");
+        char *id = parse_ident(s);
+        if (!id)
+            return verror("Invalid export statement.");
+        Value *v = NULL;
+        if (match_char(s, '='))
+        {
+            v = eval_expr(s, env);
+            match_char(s, ';');
+        }
+        else if (match_char(s, ':'))
+        {
+            v = eval_statement(s, env);
+        }
+        else
+        {
+            return verror("Expected a proper export statement!");
+        }
+
+        if (v && v->type == T_RETURN)
+        {
+            Value *tmp = v;
+            v = (Value *)tmp->v.opaque;
+            val_release(tmp);
+        }
+        else if (v && v->type == T_FUNCTION)
+        {
+            v->v.fn->name = mila_strdup(id);
+        }
+        if (env->parent) {
+            env_set(env->parent, id, v);
+            env_set_local(env, id, v);
+        } else {
+            env_set_local(env, id, v);
+            fprintf(stderr, "= Warning: %s not binded to an outer scope!\n", id);
+        }
         mila_free(id);
         return v;
     }
@@ -3099,7 +3175,6 @@ Value *eval_statement(Src *s, Env *env)
                 }
                 else if (bod->type == T_CONTINUE)
                 {
-                    val_release(bod);
                     s->pos = cond_start_pos;
                     continue;
                 }
@@ -3205,6 +3280,11 @@ Value *eval_statement(Src *s, Env *env)
                             val_release(bod);
                         continue;
                     }
+                    else if (bod->type == T_ERROR)
+                    {
+                        s->pos = body_end_pos;
+                        return bod;
+                    }
                     else if (bod->type == T_RETURN)
                     {
                         s->pos = body_end_pos;
@@ -3268,6 +3348,66 @@ Value *eval_statement(Src *s, Env *env)
         }
         return res;
     }
+    if (is_keyword_at(s, "fn"))
+    {
+        // consume keyword
+        s->pos += strlen("fn");
+        char* name = parse_ident(s);
+        if (!name)
+            return verror("Function needs a name!");
+        char **params = parse_param_list(s);
+        skip_ws(s);
+        // body is block; extract substring from '{' to matching '}'
+        if (src_peek(s) != '{')
+        {
+            free(name);
+            // error: expected body
+            return verror("Body wasnt found.");
+        }
+        // find matching brace (we will copy out body)
+        int depth = 0;
+        int start = s->pos;
+        int i = s->pos;
+        for (; i < s->len; ++i)
+        {
+            char ch = s->src[i];
+            if (ch == '{')
+                depth++;
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    i++;
+                    break;
+                }
+            }
+            else if (ch == '"')
+            {
+                // skip string literal
+                i++;
+                while (i < s->len && s->src[i] != '"')
+                {
+                    if (s->src[i] == '\\' && i + 1 < s->len)
+                        i += 2;
+                    else
+                        i++;
+                }
+            }
+        }
+        if (i > s->len)
+            i = s->len;
+        int blen = i - start;
+        char *body = mila_malloc(blen + 1);
+        memcpy(body, s->src + start, blen);
+        body[blen] = 0;
+        s->pos = i;
+        // create function value with closure get_line_pos(s) current env
+        Value *fn = vfunction(params, body, env);
+        env_set_local(env, name, fn);
+        free(name);
+        return fn;
+    }
     skip_ws(s);
     // block
     if (src_peek(s) == '{')
@@ -3316,7 +3456,6 @@ Value *eval_source(Src *s, Env *env)
     Value *last = vnull();
     while (!src_eof(s))
     {
-        skip_ws(s);
         if (src_eof(s))
             break;
         Value *st = eval_statement(s, env);
@@ -3351,6 +3490,13 @@ Value *eval_str(char *src, Env *env)
 
 int run_file(char *name, Env *env)
 {
+    char out_pwd[MAX_PATH_LENGTH] = {0};
+    char out[MAX_PATH_LENGTH] = {0};
+    path_dirname(name, out, sizeof(out));
+    path_list_add(search_path, out);
+
+    char basename[MAX_PATH_LENGTH] = {0};
+    path_basename(name, basename, sizeof(basename));
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
     if (!f)
@@ -3358,6 +3504,7 @@ int run_file(char *name, Env *env)
         fprintf(stderr, "Cannot open %s\n", name);
         return 1;
     }
+    env_set_local_raw(env, "__name__", vstring_dup(basename));
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -3375,12 +3522,20 @@ int run_file(char *name, Env *env)
 
 Value *run_file_keep_res(char *name, Env *env)
 {
+    char out_pwd[MAX_PATH_LENGTH] = {0};
+    char out[MAX_PATH_LENGTH] = {0};
+    path_dirname(name, out, sizeof(out));
+    path_list_add(search_path, out);
+
+    char basename[MAX_PATH_LENGTH] = {0};
+    path_basename(name, basename, sizeof(basename));
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
     if (!f)
     {
         return verror("Cannot open %s\n", name);
     }
+    env_set_local_raw(env, "__name__", vstring_dup(basename));
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -3572,6 +3727,8 @@ int main(int argc, char **argv)
             env_set_raw(g, "__argv", vopaque(argv));
             env_set_raw(g, "argv", vnone());
         }
+
+        env_set_local_raw(g, "__name__", vstring_dup("__main__"));
 
         // read file
         fseek(f, 0, SEEK_END);

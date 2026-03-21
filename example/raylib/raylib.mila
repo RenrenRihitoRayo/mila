@@ -72,7 +72,7 @@ var step = fn(v1, v2, speed) {
     Vector2.set_y(v1, Vector2.get_y(v1) + (dy / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
 };
 
-var food_num = 50;
+var food_num = 1000;
 var foods = list();
 
 foreach i : range(food_num) {

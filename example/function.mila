@@ -3,6 +3,12 @@ var greet = fn(name) {
 	println("Hello " + name + "!");
 };
 
+// Or also
+
+fn greet(name) {
+	println("Hello " + name + "!");
+}
+
 greet("Darren");
 (fn(name) {println("Hello " + name + "!");})("Darren");
 

@@ -1,7 +1,7 @@
 cc ?= gcc
 std ?= c11
 files = mila.c ml_builtins.c ml_dict.c mila.h ml_alloc.c ml_ll.c
-cflags = -O3 -lm -lc -std=$(std)
+cflags = -O3 -lm -lc -std=$(std) -ffast-math
 
 all: $(files)
 	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -fsanitize=address -g\

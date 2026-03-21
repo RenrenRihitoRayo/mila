@@ -7,16 +7,21 @@
 
 #define MAX_METHODS 100
 #define MAX_NUMBER_DIGITS 250
-#define MAX_PATH_LENGTH 2048
+#define MAX_PATH_LENGTH 1028
 
-#define GET_STRING(v) (v ? v->v.s : NULL)
-#define GET_INTEGER(v) (v ? v->v.i : 0)
-#define GET_UINTEGER(v) (v ? v->v.ui : 0)
-#define GET_FLOAT(v) (v ? v->v.f : 0.0)
-#define GET_OPAQUE(v) (v ? v->v.opaque : NULL)
-#define GET_FUNCTION(v) (v ? v->v.fn : NULL)
-#define GET_NATIVE(v) (v ? v->v.native : NULL)
-#define OWNED(v) (v->type = T_OWNED_OPAQUE)
+// MiLa produces an alternative string representation
+// when collections' item amounts exceed this number
+#define MAX_ITEMS_DISPLAYED 1000
+
+#define GET_STRING(val) (val ? val->v.s : NULL)
+#define GET_INTEGER(val) (val ? val->v.i : 0)
+#define GET_UINTEGER(val) (val ? val->v.ui : 0)
+#define GET_FLOAT(val) (val ? val->v.f : 0.0)
+#define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
+#define GET_FUNCTION(val) (val ? val->v.fn : NULL)
+#define GET_NATIVE(val) (val ? val->v.native : NULL)
+#define OWNED(val) (val->type = T_OWNED_OPAQUE)
+#define UNOWNED(val) (val->type = T_OPAQUE)
 
 #define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 #define MILA_GET_TYPE(v) (v ? v->type : -1 )
@@ -205,6 +210,7 @@ struct Env
 };
 
 Env *env_new(Env *parent);
+void env_dump(Env *e);
 void env_free(Env *e);
 void env_kill(Env *e);
 Value *env_get(Env *e, const char *name);
@@ -232,6 +238,8 @@ void val_unset_method_table(MethodTable *v, MethodType t);
 void val_unset_method(Value *v, MethodType t);
 Value *val_retain(Value *v);
 void val_release(Value *v);
+__attribute__((format(printf, 1, 2)))
+Value *vstring_fmt(char *fmt, ...);
 Value *vstring_slice(const char *src, size_t start, size_t len);
 Value *vstring_index(const char *src, size_t index);
 Value *vstring_replace(const char *src,
@@ -250,6 +258,7 @@ Value *vnative(NativeFn fn, const char *name);
 Value *vtruthy(Value *value);
 Value *vnull();
 Value *vnone();
+__attribute__((format(printf, 1, 2)))
 Value *verror(char *message, ...);
 Value *vfunction(char **params, char *body_src, Env *closure);
 static int is_number(Value *v);

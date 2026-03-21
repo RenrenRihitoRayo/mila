@@ -1,0 +1,11 @@
+var fact = fn(n) {
+	var s = 1;
+	while (n > 1)
+	{
+		set s *= n;
+		set n -= 1;
+	}
+	return s;
+}
+
+println(fact(5));

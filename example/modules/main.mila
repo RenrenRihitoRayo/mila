@@ -1,0 +1,3 @@
+println(run("test.mila"));
+
+println(test.add(2, 3));

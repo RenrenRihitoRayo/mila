@@ -1,13 +1,19 @@
-var start = get_time();
+set a = list();
 
-var i = 1000000u;
-
-while (i > 0u) {
-    set tmp = i * i * i;
-    // this is a test comment
-    set i = i - 1u;
+var fact = fn(n) {
+    var s = 1u;
+    while (n > 1)
+    {
+        set s *= n;
+        set n -= 1u;
+    }
+    return s;
 }
 
-var end = get_time() - start;
-println("Time: " + end + "s");
+foreach item : range(1, 1001) {
+    list.append(a, fact(cast.i2u(item)));
+}
 
+printf("%s", "yes");
+
+println(a);

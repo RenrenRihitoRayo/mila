@@ -28,10 +28,10 @@ void ll_free(LinkedList* list) {
     LLNode* node = list->head;
     while (node) {
         LLNode* next = node->next;
-        free(node);
+        mila_free(node);
         node = next;
     }
-    free(list);
+    mila_free(list);
 }
 
 void ll_append(LinkedList* list, Value* val) {
@@ -109,7 +109,7 @@ Value* ll_pop(LinkedList* list, size_t index) {
     if (cur == list->tail) list->tail = prev;
 
     Value* val = cur->value;
-    free(cur);
+    mila_free(cur);
     list->size--;
     return val;
 }

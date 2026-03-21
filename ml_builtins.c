@@ -106,7 +106,7 @@ char *read_input(void)
             char *newbuf = realloc(buffer, bufsize);
             if (!newbuf)
             {
-                free(buffer);
+                mila_free(buffer);
                 fprintf(stderr, "Reallocation failed.\n");
                 return NULL;
             }
@@ -127,9 +127,9 @@ Value *native_pop_start(Env *env, int argc, Value **argv)
     char *raw_string = argv[0]->v.s;
     char ch = *raw_string; // get first char
 
-    char *copy = strdup(raw_string + 1);
+    char *copy = mila_strdup(raw_string + 1);
 
-    free(argv[0]->v.s);
+    mila_free(argv[0]->v.s);
     argv[0]->v.s = copy;
 
     return vstring_dup((char[]){ch, 0});
@@ -148,7 +148,7 @@ Value *native_pop_end(Env *env, int argc, Value **argv)
     char *copy = (char *)mila_malloc(sizeof(char) * size);
     memcpy(copy, raw_string, size);
 
-    free(argv[0]->v.s);
+    mila_free(argv[0]->v.s);
     argv[0]->v.s = copy;
 
     return vstring_dup((char[]){ch, 0});
@@ -302,7 +302,7 @@ Value *list_display(Value *self)
 {
     LinkedList *lst = (LinkedList *)self->v.opaque;
     Value **iter = ll_to_iter(lst);
-    char *buffer = strdup("list(");
+    char *buffer = mila_strdup("list(");
     for (int i = 0; iter[i]; i++)
     {
         char *repr = as_c_string_repr(iter[i]);
@@ -311,10 +311,10 @@ Value *list_display(Value *self)
         else
             our_asprintf(&buffer, "%s", repr);
         val_release(iter[i]);
-        free(repr);
+        mila_free(repr);
     }
     our_asprintf(&buffer, ")");
-    free(iter);
+    mila_free(iter);
     return vstring_take(buffer);
 }
 
@@ -366,7 +366,7 @@ Value *list_free(Value *self)
         val_release(iter[i]);
     }
 
-    free(iter);
+    mila_free(iter);
     ll_free(self->v.opaque);
     self->type = T_NULL;
     self->v.opaque = NULL;
@@ -387,7 +387,7 @@ Value *native_cast_int(Env *env, int argc, Value **argv)
             char *buffer = NULL;
             our_asprintf(&buffer, "cast.int(str): Got bad part \"%s\"...", end);
             return verror("%s\n", buffer);
-            free(buffer);
+            mila_free(buffer);
             i = 0;
         }
     }
@@ -413,7 +413,7 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
             char *buffer = NULL;
             our_asprintf(&buffer, "cast.float(str): Got bad part \"%s\"...", end);
             return verror("%s\n", buffer);
-            free(buffer);
+            mila_free(buffer);
             f = 0;
         }
     }
@@ -547,13 +547,13 @@ Value *native_open(Env *env, int argc, Value **argv)
     if (!f)
     {
         if (res)
-            free(res);
+            mila_free(res);
         perror(NULL);
         return vnull();
     }
 
     if (res)
-        free(res);
+        mila_free(res);
     Value *v = vopaque(f);
     val_set_table(v, file_meta);
     return v;
@@ -716,7 +716,7 @@ Value *array_to_str(Value *self)
         {
             char *s = as_c_string_repr(slot);
             our_asprintf(&buffer, "%s", s);
-            free(s);
+            mila_free(s);
         }
         if (i < arr->size - 1)
             our_asprintf(&buffer, ", ");
@@ -794,7 +794,7 @@ Value *range_to_iter(Value *self)
 
 Value *range_free(Value *self)
 {
-    free(self->v.opaque);
+    mila_free(self->v.opaque);
     return NULL;
 }
 
@@ -863,7 +863,7 @@ Value *native_new_array(Env *env, int argc, Value **argv)
     }
 
     res->v.opaque = array;
-    res->type_name = strdup(MILA_LPREFIX "array");
+    res->type_name = mila_strdup(MILA_LPREFIX "array");
     val_set_table(res, array_meta);
     return res;
 }
@@ -885,7 +885,7 @@ Value *native_from_array(Env *env, int argc, Value **argv)
     }
 
     res->v.opaque = array;
-    res->type_name = strdup(MILA_LPREFIX "array");
+    res->type_name = mila_strdup(MILA_LPREFIX "array");
     val_set_table(res, array_meta);
     return res;
 }
@@ -1074,8 +1074,8 @@ Value *native_free_array(Env *env, int argc, Value **argv)
     for (int i = 0; i < arr->size; i++)
         if (arr->array[i])
             val_release(arr->array[i]);
-    free(arr->array);
-    free(arr);
+    mila_free(arr->array);
+    mila_free(arr);
 
     return vnull();
 }
@@ -1096,8 +1096,8 @@ Value *free_array(Value *self)
 
     for (int i = 0; i < arr->size; i++)
         val_release(arr->array[i]);
-    free(arr->array);
-    free(arr);
+    mila_free(arr->array);
+    mila_free(arr);
 
     return NULL;
 }
@@ -1161,7 +1161,7 @@ Value *native_run(Env *env, int argc, Value **argv)
             return verror("problem running file %s", path);
         }
         val_retain(res);
-        free(path);
+        mila_free(path);
         return res;
     }
 
@@ -1181,10 +1181,10 @@ Value *native_load(Env *env, int argc, Value **argv)
         return verror("problem loading file %s\n", argv[0]->v.s);
     if (load_library(env, new_path))
     {
-        free(new_path);
+        mila_free(new_path);
         return verror("problem loading file %s\n", argv[0]->v.s);
     }
-    free(new_path);
+    mila_free(new_path);
     return vnull();
 }
 
@@ -1461,12 +1461,12 @@ Value* native_raw_repr(Env *env, int argc, Value **argv) {
 
 Value *env_free_builtins()
 {
-    free(dict_meta);
-    free(array_meta);
-    free(self_free_meta);
-    free(list_meta);
-    free(file_meta);
-    free(range_meta);
+    mila_free(dict_meta);
+    mila_free(array_meta);
+    mila_free(self_free_meta);
+    mila_free(list_meta);
+    mila_free(file_meta);
+    mila_free(range_meta);
 
     return NULL;
 }
@@ -1482,13 +1482,24 @@ Value* native_own(Env* e, int argc, Value** argv) {
     return verror("own(ptr): Must have a pointer to convert into owned opaque!");
 }
 
+Value* native_unown(Env* e, int argc, Value** argv) {
+    (void)e;
+    if (argc == 1 && MILA_GET_TYPE(argv[0]) == T_OWNED_OPAQUE) {
+        Value* ptr = argv[0];
+        // NOTE: not recomended to directly access value fields!
+        argv[0]->type = T_OPAQUE;
+        return val_retain(argv[0]);
+    }
+    return verror("unown(ptr): Must have an owned pointer to convert into unowned opaque!");
+}
+
 Value* native_istring(Env* e, int argc, Value** argv)
 {
     if (argc == 1)
     {
         char* str = as_c_string(argv[0]);
         Value* ptr = vowned_opaque(str);
-        ptr->type_name = strdup(MILA_LPREFIX "istring");
+        ptr->type_name = mila_strdup(MILA_LPREFIX "istring");
         val_set_table(ptr, istring_meta);
         return ptr;
     }
@@ -1541,6 +1552,7 @@ void env_register_builtins(Env *g)
     // === Misc
     env_register_native(g, "range", native_range);
     env_register_native(g, "own", native_own);
+    env_register_native(g, "unown", native_unown);
     env_register_native(g, "raw_repr", native_raw_repr);
     // === Text IO
     env_register_native(g, "print", native_print);

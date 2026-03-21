@@ -30,6 +30,8 @@
 
 #include "ml_paths.c"
 
+#include "ml_string.c"
+
 #ifndef MILA_USE_SHARED
 #include "ml_builtins.c"
 _Bool mila_is_builtins_dynamic = 0;
@@ -192,7 +194,7 @@ Value *verror(char *fmt, ...)
     {
         va_end(ap);
         Value *v = val_new(T_ERROR);
-        v->v.message = strdup("verror could not allocate memory!");
+        v->v.message = mila_strdup("verror could not allocate memory!");
         return v;
     }
 
@@ -229,7 +231,7 @@ Value *vbool(int b)
 Value *vstring_dup(const char *s)
 {
     Value *v = val_new(T_STRING);
-    v->v.s = strdup(s ? s : "");
+    v->v.s = mila_strdup(s ? s : "");
     return v;
 }
 Value *vstring_take(char *s)
@@ -335,7 +337,7 @@ Value *vopaque(void *p)
     v->v.opaque = p;
     return v;
 }
-Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type)
+Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type_name)
 {
     Value *v = vopaque(p);
     if (dis && v)
@@ -343,10 +345,10 @@ Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type)
         val_allocate_table(v);
         val_set_method(v, UMethodToString, dis);
     }
-    v->type_name = strdup(type);
+    v->type_name = mila_strdup(type_name);
     return v;
 }
-Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type)
+Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type_name)
 {
     Value *v = vowned_opaque(p);
     if (dis && v)
@@ -354,7 +356,7 @@ Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type)
         val_allocate_table(v);
         val_set_method(v, UMethodToString, dis);
     }
-    v->type_name = strdup(type);
+    v->type_name = mila_strdup(type_name);
     return v;
 }
 Value *vnative(NativeFn fn, const char *name)
@@ -363,7 +365,7 @@ Value *vnative(NativeFn fn, const char *name)
     v->v.native = (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
     v->v.native->fn = fn;
     v->v.native->userdata = NULL;
-    v->v.native->name = name ? strdup(name) : NULL;
+    v->v.native->name = name ? mila_strdup(name) : NULL;
     return v;
 }
 Value *vtruthy(Value *value)
@@ -422,19 +424,19 @@ char *as_c_string(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        return strdup("cnull");
+        return mila_strdup("cnull");
     }
     if (v->method_table && v->method_table[UMethodToString])
     {
         Value *str = ((unary_method)v->method_table[UMethodToString])(v);
-        char *res = strdup(str->v.s);
+        char *res = mila_strdup(str->v.s);
         val_kill(str);
         return res;
     }
     if (v->method_table && v->method_table[UMethodToRepr])
     {
         Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
-        char *res = strdup(str->v.s);
+        char *res = mila_strdup(str->v.s);
         val_kill(str);
         return res;
     }
@@ -505,7 +507,7 @@ char *as_c_string_raw(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        return strdup("cnull");
+        return mila_strdup("cnull");
     }
     switch (v->type)
     {
@@ -580,19 +582,19 @@ char *as_c_string_repr(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        return strdup("cnull");
+        return mila_strdup("cnull");
     }
     if (v->method_table && v->method_table[UMethodToRepr])
     {
         Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
-        char *res = strdup(str->v.s);
+        char *res = mila_strdup(str->v.s);
         val_kill(str);
         return res;
     }
     if (v->method_table && v->method_table[UMethodToString])
     {
         Value *str = ((unary_method)v->method_table[UMethodToString])(v);
-        char *res = strdup(str->v.s);
+        char *res = mila_strdup(str->v.s);
         val_kill(str);
         return res;
     }
@@ -641,7 +643,7 @@ char *as_c_string_repr_raw(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        return strdup("cnull");
+        return mila_strdup("cnull");
     }
     switch (v->type)
     {
@@ -947,10 +949,10 @@ void env_set_local(Env *e, const char *name, Value *val)
     /* try to set the name variable, makes debugging easier */
     if (val->type == T_FUNCTION && val->v.fn->name == NULL)
     {
-        val->v.fn->name = strdup(name);
+        val->v.fn->name = mila_strdup(name);
     }
     Var *nv = mila_malloc(sizeof(Var));
-    nv->name = strdup(name);
+    nv->name = mila_strdup(name);
     nv->value = val_retain(val);
     nv->next = e->vars;
     e->vars = nv;
@@ -962,7 +964,7 @@ int env_set(Env *e, const char *name, Value *val)
     /* try to set the name variable, makes debugging easier */
     if (val->type == T_FUNCTION && val->v.fn->name == NULL)
     {
-        val->v.fn->name = strdup(name);
+        val->v.fn->name = mila_strdup(name);
     }
     for (Env *cur = e; cur; cur = cur->parent)
     {
@@ -996,10 +998,10 @@ void env_set_local_raw(Env *e, const char *name, Value *val)
     /* try to set the name variable, makes debugging easier */
     if (val && val->type == T_FUNCTION && val->v.fn->name == NULL)
     {
-        val->v.fn->name = strdup(name);
+        val->v.fn->name = mila_strdup(name);
     }
     Var *nv = mila_malloc(sizeof(Var));
-    nv->name = strdup(name);
+    nv->name = mila_strdup(name);
     nv->value = val;
     nv->next = e->vars;
     e->vars = nv;
@@ -1011,7 +1013,7 @@ int env_set_raw(Env *e, const char *name, Value *val)
     /* try to set the name variable, makes debugging easier */
     if (val != NULL && val->type == T_FUNCTION && val->v.fn->name == NULL)
     {
-        val->v.fn->name = strdup(name);
+        val->v.fn->name = mila_strdup(name);
     }
     for (Env *cur = e; cur; cur = cur->parent)
     {
@@ -1189,7 +1191,7 @@ Src *src_new(const char *s)
 {
     Src *S = mila_malloc(sizeof(Src));
     S->len = strlen(s);
-    S->src = strdup(s);
+    S->src = mila_strdup(s);
     S->pos = 0;
     S->line = 0;
     return S;
@@ -1406,7 +1408,7 @@ char *parse_ident(Src *s)
 
     if (res[0] == '.' && mila_name_space != NULL)
     {
-        char *r = strdup(mila_name_space);
+        char *r = mila_strdup(mila_name_space);
         our_asprintf(&r, ".%s", res + 1);
         mila_free(res);
         return r;
@@ -2902,7 +2904,7 @@ Value *eval_statement(Src *s, Env *env)
         }
         else if (v && v->type == T_FUNCTION)
         {
-            v->v.fn->name = strdup(id);
+            v->v.fn->name = mila_strdup(id);
         }
         skip_ws(s);
         env_set(env, id, v);
@@ -2946,7 +2948,7 @@ Value *eval_statement(Src *s, Env *env)
         }
         else if (v && v->type == T_FUNCTION)
         {
-            v->v.fn->name = strdup(id);
+            v->v.fn->name = mila_strdup(id);
         }
         match_char(s, ';');
         env_set_local(env, id, v);
@@ -3048,8 +3050,10 @@ Value *eval_statement(Src *s, Env *env)
         if (match_char(s, '('))
         {
             uint64_t cond_start_pos = s->pos;
+            skip_expr(s);
+            s->pos--; // skip_expr consumes the closing parenthesis
             if (!match_char(s, ')'))
-                return verror("Expected condition to close with a parenthesis!");
+                return verror("while: Expected condition to close with a parenthesis!");
             uint64_t body_start_pos = s->pos;
             skip_block(s);
             uint64_t body_end_pos = s->pos;
@@ -3536,7 +3540,7 @@ int main(int argc, char **argv)
     path_dirname(argv[1], out, sizeof(out));
     path_join(out_pwd, sizeof(out_pwd), 2, cwd, out);
     path_list_add(search_path, out_pwd);
-    mila_free(cwd);
+    free(cwd);
 
     if (argc >= 2 && strcmp(argv[1], "--") != 0)
     {

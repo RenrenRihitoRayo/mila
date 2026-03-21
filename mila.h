@@ -50,6 +50,7 @@
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
 
+typedef struct path_list path_list;
 path_list *search_path = NULL;
 
 typedef struct Value Value;
@@ -324,7 +325,7 @@ void mila_add_atexit(Value* fn);
 Env* mila_init(void);
 void mila_deinit(Env* env);
 
-#ifndef MILA_USE_ML_ALLOC
+#ifndef MILA_CUSTOM
 void* mila_malloc(size_t size) {
     void* ptr = malloc(size);
     memset(ptr, 0, size);
@@ -337,5 +338,5 @@ void mila_free(void* ptr) {
     free(ptr);
 }
 #else
-
+#include "ml_alloc.c"
 #endif

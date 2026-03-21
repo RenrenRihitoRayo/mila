@@ -1,5 +1,6 @@
 #pragma once
-#include <stdlib.h>
+#include "mila.h"
+#include "ml_string.c"
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -21,22 +22,16 @@
 #define PATH_GETCWD getcwd
 #endif
 
-typedef struct {
+typedef struct path_list path_list;
+struct path_list {
     char **items;
     int count;
     int capacity;
-} path_list;
+};
 
 // =========================================================
 // internal: simple helpers
 // =========================================================
-
-static char *str_dup(const char *s) {
-    size_t n = strlen(s) + 1;
-    char *out = malloc(n);
-    if (out) memcpy(out, s, n);
-    return out;
-}
 
 static int file_exists(const char *p) {
     struct stat st;
@@ -87,7 +82,7 @@ static const char *get_env(const char *name, size_t len) {
 static void expand_env(char **bufptr) {
     char *in = *bufptr;
     size_t outcap = strlen(in) * 2 + 64; // generous
-    char *out = malloc(outcap);
+    char *out = mila_malloc(outcap);
     size_t o = 0;
 
     for (size_t i = 0; in[i]; ) {
@@ -125,7 +120,7 @@ static void expand_env(char **bufptr) {
     }
     out[o] = '\0';
 
-    free(in);
+    mila_free(in);
     *bufptr = out;
 }
 
@@ -189,11 +184,11 @@ static void expand_home(char **bufptr) {
     size_t hl = strlen(home);
     size_t rl = strlen(in);
 
-    char *out = malloc(hl + rl + 1);
+    char *out = mila_malloc(hl + rl + 1);
     strcpy(out, home);
     strcat(out, in + 1);
 
-    free(in);
+    mila_free(in);
     *bufptr = out;
 }
 
@@ -201,7 +196,7 @@ static void expand_home(char **bufptr) {
 char *transform_path(const char *input) {
     if (!input) return NULL;
 
-    char *buf = str_dup(input);
+    char *buf = mila_strdup(input);
 
     expand_home(&buf);
     expand_env(&buf);
@@ -215,13 +210,13 @@ char *transform_path(const char *input) {
 // =========================================================
 
 path_list *path_list_new(void) {
-    path_list *p = malloc(sizeof(path_list));
+    path_list *p = mila_malloc(sizeof(path_list));
     if (!p) return NULL;
     p->count = 0;
     p->capacity = 4;
-    p->items = malloc(sizeof(char*) * p->capacity);
+    p->items = mila_malloc(sizeof(char*) * p->capacity);
     if (!p->items) {
-        free(p);
+        mila_free(p);
         return NULL;
     }
     return p;
@@ -306,9 +301,9 @@ void path_basename(const char *path, char *out, size_t outsize) {
 void path_list_free(path_list *pl) {
     if (!pl) return;
     for (int i = 0; i < pl->count; i++)
-        free(pl->items[i]);
-    free(pl->items);
-    free(pl);
+        mila_free(pl->items[i]);
+    mila_free(pl->items);
+    mila_free(pl);
 }
 
 int path_list_add(path_list *pl, const char *path) {
@@ -316,7 +311,7 @@ int path_list_add(path_list *pl, const char *path) {
 
     if (pl->count == pl->capacity) {
         pl->capacity *= 2;
-        char **ni = realloc(pl->items, sizeof(char*) * pl->capacity);
+        char **ni = mila_realloc(pl->items, sizeof(char*) * pl->capacity);
         if (!ni) return 0;
         pl->items = ni;
     }
@@ -336,16 +331,16 @@ int path_list_remove(path_list *pl, const char *path) {
 
     for (int i = 0; i < pl->count; i++) {
         if (strcmp(pl->items[i], t) == 0) {
-            free(pl->items[i]);
+            mila_free(pl->items[i]);
             for (int j = i; j < pl->count - 1; j++)
                 pl->items[j] = pl->items[j+1];
             pl->count--;
-            free(t);
+            mila_free(t);
             return 1;
         }
     }
 
-    free(t);
+    mila_free(t);
     return 0;
 }
 
@@ -367,7 +362,7 @@ char *path_list_find(path_list *pl, const char *file) {
         size_t fl = strlen(tfile);
         size_t need = rl + 1 + fl + 1;
 
-        char *full = malloc(need);
+        char *full = mila_malloc(need);
         strcpy(full, root);
 
         // add separator if missing
@@ -384,19 +379,19 @@ char *path_list_find(path_list *pl, const char *file) {
         strcat(full, tfile);
         puts(full);
         if (file_exists(full)) {
-            free(tfile);
+            mila_free(tfile);
             return full;
         }
-        free(full);
+        mila_free(full);
     }
-    free(tfile);
+    mila_free(tfile);
     return NULL;
 }
 
 // other
 
 
-// Return malloc'd absolute path of current working directory. Caller must free.
+// Return malloc'd absolute path of current working directory. Caller must mila_free.
 char* path_get_cwd(void) {
     char *cwd = PATH_GETCWD(NULL, 0); // allocate buffer
     if (!cwd) return NULL;

@@ -23,12 +23,15 @@ var player = Rectangle(
     60.0
 );
 
+var food_size = 20.0;
+
 // own tells MiLa it can free this pointer!
 var texture = own(LoadTexture("wall.png"));
 
 var random_place = fn(rect) {
-    Rectangle.set_x(rect, cast.i2f(GetRandomValue(10, screen_w-10)));
-    Rectangle.set_y(rect, cast.i2f(GetRandomValue(10, screen_h-10)));
+
+    Rectangle.set_x(rect, cast.i2f(GetRandomValue(0, screen_w-cast.f2i(food_size))));
+    Rectangle.set_y(rect, cast.i2f(GetRandomValue(0, screen_h-cast.f2i(food_size))));
 };
 
 var start_x = Rectangle.get_x(player);
@@ -70,18 +73,16 @@ var step = fn(v1, v2, speed) {
 };
 
 var food_num = 50;
-var foods = array(food_num);
+var foods = list();
 
 foreach i : range(food_num) {
-    set foods[i] = Rectangle(
+    var food = Rectangle(
         screen_w / 2 - 10,
         10.0,
         20.0,
         20.0
     );
-}
-
-foreach food : foods {
+    list.append(foods, food);
     random_place(food);
 }
 

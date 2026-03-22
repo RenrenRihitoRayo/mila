@@ -376,6 +376,12 @@ Value *vopaque(void *p)
     v->v.opaque = p;
     return v;
 }
+Value *vweak_opaque(void *p)
+{
+    Value *v = val_new(T_WEAK_OPAQUE);
+    v->v.opaque = p;
+    return v;
+}
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type_name)
 {
     Value *v = vopaque(p);
@@ -517,6 +523,12 @@ char *as_c_string(Value *v)
             our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
         else
             our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
+        break;
+    case T_WEAK_OPAQUE:
+        if (v->type_name)
+            our_asprintf(&buffer, "<weak opaque:%p %s>", v->v.opaque, v->type_name);
+        else
+            our_asprintf(&buffer, "<weak opaque:%p>", v->v.opaque);
         break;
     case T_OWNED_OPAQUE:
         if (v->type_name)
@@ -765,6 +777,7 @@ Value *val_retain(Value *v)
 #endif
     if (!v)
         return NULL;
+    if (MILA_GET_TYPE(v) == T_WEAK_OPAQUE) return v;
     v->refcount++;
     return v;
 }
@@ -774,6 +787,7 @@ void val_release(Value *v)
 {
     if (!v)
         return;
+    if (MILA_GET_TYPE(v) == T_WEAK_OPAQUE) return;
 #ifdef MILA_DEBUG
     printf("  -- val_release:\n     type: %s\n     refcount --%i -> %i\n     %s\n     value: ", MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1, v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v);
@@ -1570,6 +1584,18 @@ Value *parse_string(Src *s)
             case '\\':
                 c = '\\';
                 break;
+            case 'N': { // \Nxx (decimal) escape codes
+                char code[3] = {src_get(s), src_get(s), 0};
+                c = (char)atoi(code);
+            } break;
+            case 'x': { // \xhh (hex) escape codes
+                char code[3] = {src_get(s), src_get(s), 0};
+                c = (char)strtol(code, NULL, 16);
+            } break;
+            case '0': { // \0oo (octal) escape codes
+                char code[3] = {src_get(s), src_get(s), 0};
+                c = (char)strtol(code, NULL, 8);
+            } break;
             default:
                 c = n;
                 break;

@@ -22,6 +22,7 @@
 #define GET_NATIVE(val) (val ? val->v.native : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
+#define WEAK(val) (val->type = T_WEAK_OPAQUE)
 
 #define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 #define MILA_GET_TYPE(v) (v ? v->type : -1 )
@@ -81,6 +82,7 @@ typedef enum
     T_NATIVE,
     T_OPAQUE,
     T_OWNED_OPAQUE,
+    T_WEAK_OPAQUE,
     T_RETURN,
     T_NONE,
     T_ERROR,
@@ -101,6 +103,7 @@ const char *MILA_TYPE_NAMES[] = {
     "native",
     "opaque",
     "owned_opaque",
+    "weak_opaque",
     "return",
     "none",
     "error",
@@ -253,6 +256,7 @@ Value *vbool(int b);
 Value *vstring_dup(const char *s);
 Value *vstring_take(char *s);
 Value *vopaque(void *p);
+Value *vweak_opaque(void *p);
 Value *vowned_opaque(void *p);
 Value *vnative(NativeFn fn, const char *name);
 Value *vtruthy(Value *value);

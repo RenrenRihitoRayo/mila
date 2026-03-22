@@ -1,1 +1,5 @@
 printf("Hello, world!\n");
+
+var string = "Hello, world!";
+
+printf("%s\n", string);

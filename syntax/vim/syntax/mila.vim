@@ -2,22 +2,22 @@
 " Save as ~/.vim/syntax/mila.vim
 
 " Keywords
-syntax keyword milaKeyword if elif else while fn let 
+syntax keyword milaKeyword if elif else while fn set var export return break continue
 
 syntax keyword keyword_indent "{"
 syntax keyword keyword_dedent "}"
 
 " Builtins
 syntax keyword milaBuiltins xor and or not
-syntax keyword milaBuiltins println printr print input
+syntax keyword milaBuiltins println printr print input printf
 syntax keyword milaBuiltins array dict typeof _typeof
-syntax match milaBuiltins "cast\\.(int\\|float\\|string)"
-syntax match milaBuiltins "array\\.(get\|set\\|len\\|free)"
-syntax match milaBuiltins "dict\\.(get\\|set\\|rem\\|free)"
+syntax match milaBuiltins "cast.\(int\|float\|string\|i2f\|f2i\|u2i\|i2u\)"
+syntax match milaBuiltins "array.\(get\|set\|len\)"
+syntax match milaBuiltins "dict.\(get\|set\|rem\)"
 syntax keyword milaBuiltins open fread fprint ftell fseek
-syntax keyword milaBuiltins floor ceil pow tan cos sin atan2 sqrt
-syntax match milaBuiltins "str\\.(slice\\|index\\|patch\\|length\\|pop_f\\|pop_b)"
-syntax match milaBuiltins "ascii\\.(to\\|from)"
+syntax keyword milaBuiltins floor ceil pow tan cos sin atan2 sqrt fabs abs
+syntax match milaBuiltins "str.\(slice\|index\|patch\|length\|pop_f\|pop_b\)"
+syntax match milaBuiltins "ascii.\(to\|from\)"
 
 " Constants
 syntax keyword milaConstant true false null none
@@ -27,7 +27,8 @@ syntax keyword milaConstant stderr stdout SEEK_SET SEEK_END SEEK_CUR
 syntax match milaNumber "\v<\d+(\.\d+)?>"
 
 " Operators
-syntax match milaOperator "[-+*/=<>!:]=\?"
+syntax match milaOperator "[-+*/=<>!:%]=\?"
+syntax match milaOperator "??"
 
 " Strings
 
@@ -36,8 +37,9 @@ syntax match milaEscape "\\[nrt\"'\\]" contained
 
 " Comments
 syntax keyword milaTodo TODO FIXME contained
-syntax match milaComment "//.*$" contains=milaTodo containedin=ALL
-syntax region milaMLComment start="/\\*" end="\\*/" contains=milaTodo
+syntax region milaMLComment start="//" end="$" contains=milaTodo
+" syntax match milaComment "//.*\$" contains=milaTodo containedin=ALL
+syntax region milaMLComment start="/\*" end="\*/" contains=milaTodo
 
 
 " Define Highlighting

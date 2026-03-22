@@ -82,15 +82,13 @@ Such as changing syntax of while loops.
 * while
 * break
 * continue
-* cnull
 * true
 * false
 * null
 * none
+* export
 
-## Examples
-
-* Operators
+## Operators
 
 |      Method      | Operation/Statement |
 |-----------------:|:-------------------:|
@@ -104,8 +102,24 @@ Such as changing syntax of while loops.
 |    BMethodAnd    |        a && b       |
 |  BMethodDefault  |        a ?? b       |
 |  BMethodGetItem  |         a[b]        |
-|  BMethodSetItem  |   var a[b] = c;     |
 |  BMethodSetItem  |   set a[b] = c;     |
+
+## Escape Sequences
+
+| Character | C Equivalent |
+|----------:|:-------------|
+|    \\n    |     \\n      |
+|    \\f    |     \\f      |
+|    \\v    |     \\v      |
+|    \\t    |     \\t      |
+|    \\b    |     \\b      |
+|    \\r    |     \\r      |
+|    \\a    |     \\a      |
+|    \\xhh    |     \\xhh      |
+|    \\0oo    |     \\0oo      |
+|    \\Ndd    |     \\Ndd (accepts decimal digits) |
+
+## Examples
 
 * Assignment
 
@@ -121,12 +135,19 @@ var name = value;
     set name = value;
 }
 ```
-...
 
-* Functions (all lambdas)
+* Functions
 
 ```Plaintext
 let greet = fn(name) {
+    println("Hello " + name "!");
+};
+
+greet("Name");
+
+// or
+
+fn greet(name) {
     println("Hello " + name "!");
 }
 
@@ -144,11 +165,11 @@ while (i < 10) {
 }
 
 var l = array(5);
-array.set(l, 0, "where");
-array.set(l, 1, "what");
-array.set(l, 2, "when");
-array.set(l, 3, "who");
-array.set(l, 4, "why");
+set l[0]= "where";
+set l[1] = "what";
+set l[2] = "when";
+set l[3] = "who";
+set l[4] = "why";
 
 foreach item : l {
     println(item);
@@ -174,7 +195,7 @@ let res = fn{
 };
 ```
 
-* Block let statements
+* Block var/set statements
 
 ```Plaintext
 // notice we use a colon, not an equal sign
@@ -193,13 +214,6 @@ if (cond) {
 } else {
     ...
 }
-
-// below is also valid
-if (cond)
-   ...;
-elif (cond)
-   ...;
-else ...;
 ```
 
 * Subscripting
@@ -217,6 +231,10 @@ var d = dict(
         1, "city 2"
     )
 );
+
+// no support for nested subscription when setting (yet)
+set tmp = d["addresses"];
+set tmp[2] = "city 3";
 
 println(d["name"], d["age"]);
 println((d["addresses"])[0]);
@@ -316,11 +334,11 @@ const NativeEntry lib_function_entries[] = {
 
 #### char*
 
-* vstring_take(char*)
+* vstring\_take(char*)
 
 If the pointer is already owned
 
-* vstrinf_dup(const char*)
+* vstring\_dup(const char*)
 
 Used with const char* also duplicating strings.
 
@@ -360,15 +378,15 @@ MiLa uses a refcount system for managing memory.
 Particularly the functions `val_retain`, `val_release`, and
 `val_kill`.
 
-* val_retain
+* val\_retain
 
 Increament ref count.
 
-* val_release
+* val\_release
 
 Decreament ref count and free if zero.
 
-* val_kill
+* val\_kill
 
 Free memory no matter if ref count isnt zero.
 
@@ -514,16 +532,16 @@ str.index("hello", 1) == "e"
 
 str.patch("hello", "e", "wow") == "hwowllo"
 
-* pop_f(str!) -> str
+* pop\_f(str!) -> str
 
 let str = "hello";
-str.pop_f(str) == "h"
+str.pop\_f(str) == "h"
 str == "ello"
 
-* pop_b(str!) -> str
+* pop\_b(str!) -> str
 
 let str = "hello";
-str.pop_b(str) == "o"
+str.pop\_b(str) == "o"
 str == "hell"
 
 * length(str) -> int
@@ -567,7 +585,7 @@ Evaluates the given string.
 
 Runs the file given via its path.
 
-* load(abs_path) -> null
+* load(abs\_path) -> null
 
 Loads the given .so or .dll file given via
 its path.

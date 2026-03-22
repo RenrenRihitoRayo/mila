@@ -80,6 +80,134 @@ void print_memory_usage()
 
 // ---------- Value representation ----------
 
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+
+static void insert_commas(char *buf, size_t bufsize)
+{
+    char temp[128];
+    strncpy(temp, buf, sizeof(temp));
+    temp[sizeof(temp) - 1] = '\0';
+
+    char *dot = strchr(temp, '.');
+    int int_len = dot ? (dot - temp) : (int)strlen(temp);
+
+    int commas = (int_len - 1) / 3;
+    int new_len = strlen(temp) + commas;
+
+    if ((size_t)new_len + 1 > bufsize)
+        return;
+
+    int i = int_len - 1;
+    int j = new_len - 1;
+
+    // copy fractional part first
+    if (dot) {
+        strcpy(buf + (new_len - strlen(dot)), dot);
+        j = new_len - strlen(dot) - 1;
+    } else {
+        buf[new_len] = '\0';
+    }
+
+    int count = 0;
+
+    while (i >= 0) {
+        buf[j--] = temp[i--];
+        if (++count == 3 && i >= 0) {
+            buf[j--] = ',';
+            count = 0;
+        }
+    }
+}
+
+void float_to_string_fancy(float f, char *buf, size_t bufsize)
+{
+    // Step 1: format without locale tricks
+    snprintf(buf, bufsize, "%.10g", f);
+
+    // Step 2: ensure .0 if integer-like
+    if (strchr(buf, '.') == NULL &&
+        strchr(buf, 'e') == NULL &&
+        strchr(buf, 'E') == NULL)
+    {
+        size_t len = strlen(buf);
+        if (len + 2 < bufsize) {
+            buf[len] = '.';
+            buf[len + 1] = '0';
+            buf[len + 2] = '\0';
+        }
+    }
+
+    // Step 3: insert commas into integer part
+    insert_commas(buf, bufsize);
+}
+
+void long_to_string_fancy(long value, char *buf, size_t bufsize)
+{
+    char temp[64];
+    snprintf(temp, sizeof(temp), "%ld", value);
+
+    bool negative = temp[0] == '-';
+    char *num = negative ? temp + 1 : temp;
+
+    int len = strlen(num);
+    int commas = (len - 1) / 3;
+    int new_len = len + commas + (negative ? 1 : 0);
+
+    if ((size_t)new_len + 1 > bufsize) {
+        if (bufsize > 0) buf[0] = '\0';
+        return;
+    }
+
+    int i = len - 1;
+    int j = new_len - 1;
+    int count = 0;
+
+    buf[new_len] = '\0';
+
+    while (i >= 0) {
+        buf[j--] = num[i--];
+        if (++count == 3 && i >= 0) {
+            buf[j--] = ',';
+            count = 0;
+        }
+    }
+
+    if (negative) {
+        buf[0] = '-';
+    }
+}
+
+void ulong_to_string_fancy(unsigned long value, char *buf, size_t bufsize)
+{
+    char temp[64];
+    snprintf(temp, sizeof(temp), "%lu", value);
+
+    int len = strlen(temp);
+    int commas = (len - 1) / 3;
+    int new_len = len + commas;
+
+    if ((size_t)new_len + 1 > bufsize) {
+        if (bufsize > 0) buf[0] = '\0';
+        return;
+    }
+
+    int i = len - 1;
+    int j = new_len - 1;
+    int count = 0;
+
+    buf[new_len] = '\0';
+
+    while (i >= 0) {
+        buf[j--] = temp[i--];
+        if (++count == 3 && i >= 0) {
+            buf[j--] = ',';
+            count = 0;
+        }
+    }
+}
+
 void float_to_string(float f, char *buf, size_t bufsize)
 {
     // Step 1: try %g with max precision
@@ -628,6 +756,57 @@ Value *to_c_string(Value *v)
     return vstring_take(s);
 }
 
+char *as_c_string_fancy(Value *v)
+{
+    char *buffer = NULL;
+    if (!v)
+    {
+        return mila_strdup("cnull");
+    }
+    if (v->method_table && v->method_table[UMethodToRepr])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        return res;
+    }
+    if (v->method_table && v->method_table[UMethodToString])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        return res;
+    }
+    switch (v->type)
+    {
+    case T_UINT:
+    {
+        char out[MAX_NUMBER_DIGITS] = {0};
+        ulong_to_string_fancy(v->v.ui, out, sizeof(out));
+        our_asprintf(&buffer, "%s", out);
+    } break;
+    case T_INT:
+    {
+        char out[MAX_NUMBER_DIGITS] = {0};
+        long_to_string_fancy(v->v.i, out, sizeof(out));
+        our_asprintf(&buffer, "%s", out);
+    } break;
+    case T_FLOAT:
+    {
+        char out[MAX_NUMBER_DIGITS] = {0};
+        float_to_string_fancy(v->v.f, out, sizeof(out));
+        our_asprintf(&buffer, "%s", out);
+    } break;
+    default:
+    {
+        char *tmp = as_c_string(v);
+        our_asprintf(&buffer, "%s", tmp);
+        mila_free(tmp);
+    }
+    }
+    return buffer;
+}
+
 char *as_c_string_repr(Value *v)
 {
     char *buffer = NULL;
@@ -691,6 +870,7 @@ char *as_c_string_repr(Value *v)
 
 char *as_c_string_repr_raw(Value *v)
 {
+    char hex_buf[5];
     char *buffer = NULL;
     if (!v)
     {
@@ -720,6 +900,15 @@ char *as_c_string_repr_raw(Value *v)
             case 12:
                 our_asprintf(&buffer, "\\f");
                 break;
+            case '\x01': case '\x02': case '\x03': case '\x04':
+            case '\x05': case '\x06': case '\x0E': case '\x0F':
+            case '\x10': case '\x11': case '\x12': case '\x13':
+            case '\x14': case '\x15': case '\x16': case '\x17':
+            case '\x18': case '\x19': case '\x1A': case '\x1C':
+            case '\x1D': case '\x1E': case '\x1F':
+                snprintf(hex_buf, sizeof(hex_buf), "\\x%02X", (unsigned char)temp[i]);
+                our_asprintf(&buffer, "%s", hex_buf);
+                break;
             default:
                 our_asprintf(&buffer, "%c", temp[i]);
             }
@@ -745,6 +934,19 @@ void print_value(Value *v)
         return;
     }
     char *txt = as_c_string(v);
+    printf("%s", txt);
+    mila_free(txt);
+}
+
+void print_value_fancy(Value *v)
+{
+    printf("FANCY!\n");
+    if (!v)
+    {
+        printf("cnull");
+        return;
+    }
+    char *txt = as_c_string_fancy(v);
     printf("%s", txt);
     mila_free(txt);
 }
@@ -1477,27 +1679,46 @@ Value *parse_number(Src *s)
     int st = s->pos;
     _Bool seen_dot = 0;
     _Bool is_unsigned = 0;
+    _Bool is_percent = 0;
+    _Bool is_hex = 0;
     if (src_peek(s) == '-')
     {
         src_get(s);
     }
-    while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.')
+    // either normal number or hex
+    while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.' || src_peek(s) == 'x' || src_peek(s) == 'X' || isxdigit((unsigned char)src_peek(s)))
     {
         if (src_peek(s) == '.')
         {
-            if (seen_dot)
+            if (seen_dot || is_hex) // cant have hex literal have decimal points (that would be cool though)
             {
                 break;
             }
             seen_dot = 1;
         }
+        else if (src_peek(s) == 'x' || src_peek(s) == 'X')
+        {
+            if (is_hex || seen_dot)
+            {
+                break;
+            }
+            is_hex = 1;
+        }
         src_get(s);
     }
+
     if (src_peek(s) == 'u' || src_peek(s) == 'U')
     {
         is_unsigned = 1;
         src_get(s);
     }
+    if (src_peek(s) == '%')
+    {
+        is_percent = 1;
+        src_get(s);
+    }
+
+
     int en = s->pos;
     char tmp[MAX_NUMBER_DIGITS];
     int len = en - st;
@@ -1511,12 +1732,14 @@ Value *parse_number(Src *s)
         if (seen_dot)
         {
             double f = atof(tmp);
+            if (is_percent) f /= 100.0;
             return vfloat(f);
         }
         else
         {
-            long i = atol(tmp);
-            return is_unsigned ? vuint(i > 0 ? i : -i) : vint(atol(tmp));
+            long i = strtol(tmp, NULL, is_hex ? 16 : 10);
+            if (is_percent) return vfloat((double)i/100.0);
+            return is_unsigned ? vuint(i > 0 ? i : -i) : vint(i);
         }
     }
     else
@@ -1526,12 +1749,16 @@ Value *parse_number(Src *s)
         memcpy(buf, s->src + st, len);
         buf[len] = 0;
         Value *r;
-        if (seen_dot)
-            r = vfloat(atof(buf));
+        if (seen_dot) {
+            double f = atof(buf);
+            if (is_percent) f /= 100.0;
+            r = vfloat(f);
+        }
         else
         {
-            long tmp = atol(buf);
-            r = is_unsigned ? vuint(tmp > 0 ? tmp : -tmp) : vint(atol(buf));
+            long tmp = strtol(buf, NULL, is_hex ? 16 : 10);
+            if (is_percent) return vfloat((double)tmp/100.0);
+            r = is_unsigned ? vuint(tmp > 0 ? tmp : -tmp) : vint(tmp);
         }
         mila_free(buf);
         return r;
@@ -2068,7 +2295,9 @@ Value *eval_primary(Src *s, Env *env)
     // number
     if (
         isdigit((unsigned char)c) ||
-        ((c == '+' || c == '-') && isdigit((unsigned char)s->src[s->pos + 1])))
+        ((c == '+' || c == '-') && isdigit((unsigned char)s->src[s->pos + 1])) ||
+        (c == '0' && (s->src[s->pos + 1] == 'x' || s->src[s->pos + 1] == 'X') && isxdigit((unsigned char)s->src[s->pos + 2]))
+    )
     {
         return parse_number(s);
     }
@@ -2260,11 +2489,6 @@ Value *eval_primary(Src *s, Env *env)
         {
             mila_free(id);
             return vnull();
-        }
-        if (strcmp(id, "cnull") == 0)
-        {
-            mila_free(id);
-            return NULL;
         }
         if (strcmp(id, "none") == 0)
         {

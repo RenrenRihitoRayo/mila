@@ -273,6 +273,7 @@ char *as_c_string_repr(Value *v);
 char *as_c_string_raw(Value *v);
 char *as_c_string_repr_raw(Value *v);
 void print_value(Value *v);
+void print_value_fancy(Value *v);
 void print_value_repr(Value *v);
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);

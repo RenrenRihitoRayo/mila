@@ -15,6 +15,7 @@
 #pragma once
 
 #include <math.h>
+#include <string.h>
 
 #include "ml_dict.c"
 #include "ml_ll.c"
@@ -131,6 +132,7 @@ Value *native_pop_start(Env *env, int argc, Value **argv)
 
     mila_free(argv[0]->v.s);
     argv[0]->v.s = copy;
+
 
     return vstring_dup((char[]){ch, 0});
 }
@@ -1465,7 +1467,7 @@ Value* native_list_append(Env* env, int argc, Value **argv)
     return vnull();
 }
 
-Value* native_raw_repr(Env *env, int argc, Value **argv) {
+Value* native_repr(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc != 1) return verror("raw_repr(value): Expected at least one argument!");
     return vstring_take(as_c_string_repr_raw(argv[0]));
@@ -1552,6 +1554,44 @@ Value* native_abs(Env* e, int argc, Value** argv)
     return vint(abs((int)GET_INTEGER(argv[0]))); 
 }
 
+Value* native_as_opaque(Env* e, int argc, Value** argv) {
+    (void)e;
+    if (argc != 1) return verror("as_opaque(v): Must have one argument!");
+    switch (MILA_GET_TYPE(argv[0]))
+    {
+    case T_INT: {
+        long* ptr = NULL;
+        ptr = (long*)mila_malloc(sizeof(long));
+        *ptr = GET_INTEGER(argv[0]);
+        return vowned_opaque(ptr);
+    } break;
+    case T_UINT: {
+        unsigned long* ptr = NULL;
+        ptr = (unsigned long*)mila_malloc(sizeof(unsigned long));
+        *ptr = GET_UINTEGER(argv[0]);
+        return vowned_opaque(ptr);
+    } break;
+    case T_FLOAT: {
+        double* ptr = NULL;
+        ptr = (double*)mila_malloc(sizeof(double));
+        *ptr = GET_FLOAT(argv[0]);
+        return vowned_opaque(ptr);
+    } break;
+    case T_STRING: {
+        char* ptr = NULL;
+        ptr = (char*)mila_malloc(sizeof(char));
+        strncpy(ptr, GET_STRING(argv[0]), strlen(GET_STRING(argv[0])));
+        return vowned_opaque(ptr);
+    } break;
+    case T_OWNED_OPAQUE:
+    case T_OPAQUE: {
+        return vopaque(GET_OPAQUE(argv[0]));
+    } break;
+    }
+    return verror("Unsupported type %s!", MILA_GET_TYPENAME(argv[0]));
+}
+
+// supports all C format specifiers (well at faking it well)
 Value* native_printf(Env* e, int argc, Value** argv)
 {
     if (argc == 0) return verror("printf(fmt, ...): Requires at least one argument.");
@@ -1559,112 +1599,219 @@ Value* native_printf(Env* e, int argc, Value** argv)
     if (argc >= 2) {
         if (MILA_GET_TYPE(argv[0]) != T_STRING) return verror("printf(fmt, ...): Requires first argument to be a string!");
         char* fmt = GET_STRING(argv[0]);
+        _Bool is_comma = 0;
 
         int count = 1;
 
         while (*fmt) {
             if ((*fmt) == '%') {
                 fmt++;
+
+                // skip over any flags like -, +, space, #, 0
+                while (*fmt == '-' || *fmt == '+' || *fmt == ' ' || *fmt == '#' || *fmt == '0')
+                    fmt++;
+
+                // skip over a numeric width if present, skip * and coresponding argument
+                if (*fmt == '.') fmt++;
+                if (*fmt == '*') {
+                    count++;
+                    fmt++;
+                } else {
+                    while (*fmt >= '0' && *fmt <= '9')
+                        fmt++;
+                }
+
+                // check for our custom ' comma-separator extension
+                _Bool local_comma = is_comma;
+                is_comma = 0;
+                if (*fmt == '\'') { local_comma = 1; fmt++; }
+
+                // figure out the length modifier so we know how wide to read
+                // from an opaque pointer. 0=none 1=h 2=hh 3=l 4=ll 5=z 6=t 7=j
+                int length = 0;
+                if (*fmt == 'h') {
+                    fmt++;
+                    if (*fmt == 'h') { length = 2; fmt++; } // hh - signed/unsigned char
+                    else              length = 1;            // h  - short
+                } else if (*fmt == 'l') {
+                    fmt++;
+                    if (*fmt == 'l') { length = 4; fmt++; } // ll - long long
+                    else              length = 3;            // l  - long / double
+                } else if (*fmt == 'z') { length = 5; fmt++; } // size_t
+                else if (*fmt == 't') { length = 6; fmt++; } // ptrdiff_t
+                else if (*fmt == 'j') { length = 7; fmt++; } // intmax_t
+
                 switch (*fmt)
                 {
-                case 'd':
-                case 'g':
-                case 'f':
-                case 'u':
-                case 'i': {
+                case '\'':
+                    // comma modifier showed up after the length modifier, handle it
+                    local_comma = 1;
+                    fmt++;
+                    goto reparse_specifier;
+
+                reparse_specifier:;
+
+                case 'd': case 'i': case 'u': case 'f': case 'g': case 'e':
+                case 'E': case 'G': case 'o': {
                     Value* v = argv[count++];
-                    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+
+                    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
+                        void* p = GET_OPAQUE(v);
                         switch (*fmt) {
-                        case 'f':
-                            printf((const char[]){'%', *fmt, 0}, *(float*)GET_OPAQUE(v)); break;
-                        case 'i':
-                            printf((const char[]){'%', *fmt, 0}, *(int*)GET_OPAQUE(v)); break;
-                        case 'd':
-                            printf((const char[]){'%', *fmt, 0}, *(int*)GET_OPAQUE(v)); break;
-                        case 'g':
-                            printf((const char[]){'%', *fmt, 0}, *(double*)GET_OPAQUE(v)); break;
+                        case 'f': case 'e': case 'E':
+                            if      (length == 3) printf("%lf",  *(double*)p);
+                            else if (length == 4) printf("%Lf",  *(long double*)p);
+                            else                  printf("%f",   *(float*)p);
+                            break;
+                        case 'g': case 'G':
+                            if      (length == 3) printf("%lg",  *(double*)p);
+                            else if (length == 4) printf("%Lg",  *(long double*)p);
+                            else                  printf("%g",   *(float*)p);
+                            break;
+                        case 'd': case 'i':
+                            switch (length) {
+                            case 0:  printf("%d",   *(int*)p);          break;
+                            case 1:  printf("%d",   *(short*)p);        break;
+                            case 2:  printf("%d",   *(signed char*)p);  break;
+                            case 3:  printf("%ld",  *(long*)p);         break;
+                            case 4:  printf("%lld", *(long long*)p);    break;
+                            case 5:  printf("%zd",  *(ssize_t*)p);      break;
+                            case 6:  printf("%td",  *(ptrdiff_t*)p);    break;
+                            case 7:  printf("%jd",  *(intmax_t*)p);     break;
+                            }
+                            break;
                         case 'u':
-                            printf((const char[]){'%', *fmt, 0}, *(unsigned int*)GET_OPAQUE(v)); break;
-                    } else print_value(v);
+                            switch (length) {
+                            case 0:  printf("%u",   *(unsigned int*)p);        break;
+                            case 1:  printf("%u",   *(unsigned short*)p);      break;
+                            case 2:  printf("%u",   *(unsigned char*)p);       break;
+                            case 3:  printf("%lu",  *(unsigned long*)p);       break;
+                            case 4:  printf("%llu", *(unsigned long long*)p);  break;
+                            case 5:  printf("%zu",  *(size_t*)p);              break;
+                            case 6:  printf("%tu",  *(ptrdiff_t*)p);           break;
+                            case 7:  printf("%ju",  *(uintmax_t*)p);           break;
+                            }
+                            break;
+                        case 'o':
+                            switch (length) {
+                            case 0:  printf("%o",   *(unsigned int*)p);        break;
+                            case 1:  printf("%o",   *(unsigned short*)p);      break;
+                            case 2:  printf("%o",   *(unsigned char*)p);       break;
+                            case 3:  printf("%lo",  *(unsigned long*)p);       break;
+                            case 4:  printf("%llo", *(unsigned long long*)p);  break;
+                            case 5:  printf("%zo",  *(size_t*)p);              break;
+                            case 7:  printf("%jo",  *(uintmax_t*)p);           break;
+                            }
+                            break;
+                        }
+                    } else {
+                        // not an opaque pointer, just let our value printer handle it
+                        if (__builtin_expect(local_comma, 0)) print_value_fancy(v);
+                        else print_value(v);
+                    }
                 } break;
+
                 case 'x': {
                     Value* v = argv[count++];
-                    unsigned int value; // val to be printed
-                    switch (MILA_GET_TYPE(v)) {
-                    case T_INT:
-                        value = (unsigned int)GET_INTEGER(v);
-                        break;
-                    case T_UINT:
-                        value = (unsigned int)GET_UINTEGER(v);
-                        break;
-                    case T_FLOAT:
-                        value = (unsigned int)GET_FLOAT(v);
-                        break;
+                    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
+                        void* p = GET_OPAQUE(v);
+                        switch (length) {
+                        case 0:  printf("%x",   *(unsigned int*)p);        break;
+                        case 1:  printf("%x",   *(unsigned short*)p);      break;
+                        case 2:  printf("%x",   *(unsigned char*)p);       break;
+                        case 3:  printf("%lx",  *(unsigned long*)p);       break;
+                        case 4:  printf("%llx", *(unsigned long long*)p);  break;
+                        case 5:  printf("%zx",  *(size_t*)p);              break;
+                        case 7:  printf("%jx",  *(uintmax_t*)p);           break;
+                        }
+                    } else {
+                        // non-opaque, just cast whatever numeric type we got
+                        unsigned int value = 0;
+                        switch (MILA_GET_TYPE(v)) {
+                        case T_INT:   value = (unsigned int)GET_INTEGER(v);  break;
+                        case T_UINT:  value = (unsigned int)GET_UINTEGER(v); break;
+                        case T_FLOAT: value = (unsigned int)GET_FLOAT(v);    break;
+                        }
+                        printf("%x", value);
                     }
-                    printf("%x", value);
                 } break;
+
                 case 'X': {
                     Value* v = argv[count++];
-                    unsigned int value; // val to be printed
-                    switch (MILA_GET_TYPE(v)) {
-                    case T_INT:
-                        value = (unsigned int)GET_INTEGER(v);
-                        break;
-                    case T_UINT:
-                        value = (unsigned int)GET_UINTEGER(v);
-                        break;
-                    case T_FLOAT:
-                        value = (unsigned int)GET_FLOAT(v);
-                        break;
+                    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
+                        void* p = GET_OPAQUE(v);
+                        switch (length) {
+                        case 0:  printf("%X",   *(unsigned int*)p);        break;
+                        case 1:  printf("%X",   *(unsigned short*)p);      break;
+                        case 2:  printf("%X",   *(unsigned char*)p);       break;
+                        case 3:  printf("%lX",  *(unsigned long*)p);       break;
+                        case 4:  printf("%llX", *(unsigned long long*)p);  break;
+                        case 5:  printf("%zX",  *(size_t*)p);              break;
+                        case 7:  printf("%jX",  *(uintmax_t*)p);           break;
+                        }
+                    } else {
+                        // same as %x but uppercase, same casting logic
+                        unsigned int value = 0;
+                        switch (MILA_GET_TYPE(v)) {
+                        case T_INT:   value = (unsigned int)GET_INTEGER(v);  break;
+                        case T_UINT:  value = (unsigned int)GET_UINTEGER(v); break;
+                        case T_FLOAT: value = (unsigned int)GET_FLOAT(v);    break;
+                        }
+                        printf("%X", value);
                     }
-                    printf("%X", value);
                 } break;
+
                 case 's': {
                     Value* v = argv[count++];
-                    char* value = "???"; // val to be printed
+                    char* value = "???";
                     switch (MILA_GET_TYPE(v)) {
-                    case T_STRING:
-                        value = GET_STRING(v);
-                        break;
+                    case T_STRING:       value = GET_STRING(v);  break;
                     case T_OPAQUE:
-                    case T_OWNED_OPAQUE:
-                        value = GET_OPAQUE(v);
-                        break;
+                    case T_OWNED_OPAQUE: value = GET_OPAQUE(v);  break; // treat the pointer as a char*
                     default:
                         return verror("%%s format specifier only supports opaque pointers and strings but got %s!", MILA_GET_TYPENAME(v));
                     }
                     printf("%s", value);
                 } break;
+
                 case 'c': {
                     Value* v = argv[count++];
-                    char value = '?'; // val to be printed
+                    char value = '?';
                     switch (MILA_GET_TYPE(v)) {
-                    case T_STRING:
-                        value = *GET_STRING(v);
-                        break;
+                    case T_STRING:       value = *GET_STRING(v);           break; // just grab the first character
                     case T_OPAQUE:
-                    case T_OWNED_OPAQUE:
-                        value = *(char*)GET_OPAQUE(v);
-                        break;
+                    case T_OWNED_OPAQUE: value = *(char*)GET_OPAQUE(v);    break;
                     default:
-                        return verror("%%s format specifier only supports opaque pointers and strings but got %s!", MILA_GET_TYPENAME(v));
+                        return verror("%%c format specifier only supports opaque pointers and strings but got %s!", MILA_GET_TYPENAME(v));
                     }
                     printf("%c", value);
                 } break;
+
                 case 'p': {
                     Value* v = argv[count++];
                     void* ptr = NULL;
                     switch (MILA_GET_TYPE(v)) {
-                    case T_OWNED_OPAQUE:
-                        ptr = GET_OPAQUE(v);
-                        break;
-                    default:
-                        ptr = v;
+                    case T_OWNED_OPAQUE: ptr = GET_OPAQUE(v); break;
+                    default:             ptr = v; break; // print the Value* itself as an address
                     }
                     printf("%p", ptr);
                 } break;
+
+                case 'n': {
+                    // write back the number of characters printed so far,
+                    // only works if the caller passed an opaque int*
+                    Value* v = argv[count++];
+                    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                        printf("%n", (int*)GET_OPAQUE(v));
+                } break;
+
+                case '?':
+                    // printcas normal value
+                    print_value(argv[count++]); break;
+
                 case '%':
                     putchar('%'); break;
+
                 default:
                     return verror("Invalid format modifier '%%%c'!", *fmt);
                 }
@@ -1707,10 +1854,11 @@ void env_register_builtins(Env *g)
 
     // === Misc
     env_register_native(g, "range", native_range);
+    env_register_native(g, "as_opaque", native_as_opaque);
     env_register_native(g, "dump_vars", native_meep);
     env_register_native(g, "own", native_own);
     env_register_native(g, "unown", native_unown);
-    env_register_native(g, "raw_repr", native_raw_repr);
+    env_register_native(g, "repr", native_repr);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printf", native_printf); // lovely printf function for C programmers

@@ -1,5 +1,5 @@
-set a = list();
-
+var start_time = get_time();
+var a = list();
 var fact = fn(n) {
     var s = 1u;
     while (n > 1)
@@ -9,11 +9,9 @@ var fact = fn(n) {
     }
     return s;
 }
-
-foreach item : range(1, 1001) {
+foreach item : range(1, 2001) {
     list.append(a, fact(cast.i2u(item)));
 }
+var end_time = get_time() - start_time;
 
-printf("%s", "yes");
-
-println(a);
+println("Time: " + end_time + "s");

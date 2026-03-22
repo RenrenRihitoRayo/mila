@@ -3,3 +3,54 @@ printf("Hello, world!\n");
 var string = "Hello, world!";
 
 printf("%s\n", string);
+
+
+// "'" flag Doesnt rely on locales btw
+// this is a huge flex over standard C printf
+printf("%'ld \n", 1000);
+
+// For MiLa primitives using any printf format specifiers are okay
+// However for opaque pointers this is not the case
+// if you do printf("%p\n", ptr);
+// it will print the boxed pointers address (not the box it self
+// which is the case for other primitives)
+// if you do printf("%i\n", ptr); it will try to dereference
+// the pointer as an integer, this will be true for any numeric
+// format specifiers
+
+// doing %? prints the value as its representation regardless
+// of type.
+
+// integers are C longs
+var ptr = as_opaque(0x138D5);
+
+printf("%ld\n", ptr);
+
+// floats are C doubles (lf)
+var ptr = as_opaque(139.34);
+
+printf("%lf\n", ptr);
+
+/*
+	Bellow are supported C format specifiers
+	These do change representation:
+	f, i, d, u, x, X, p, o, s
+
+	Format specifiers that dont actually need arguments:
+	n
+
+	Supported flags:
+	'
+
+	Ignored:
+	` `, -, +, #, as well as length specfier for justifying
+
+	Size specifier (works on opaque pointers,
+	they are dereferenced and treated as the sizes bellow):
+	hh, h, l, ll, z, t, j
+*/
+
+// length is ignored!
+printf("%.*s\n", 90, "this");
+
+printf("%?");

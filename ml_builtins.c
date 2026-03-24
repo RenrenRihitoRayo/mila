@@ -16,6 +16,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <uchar.h>
 
 #include "ml_dict.c"
 #include "ml_ll.c"
@@ -156,16 +157,16 @@ Value *native_pop_end(Env *env, int argc, Value **argv)
     return vstring_dup((char[]){ch, 0});
 }
 
-Value *native_to_ascii(Env *env, int argc, Value **argv)
+Value *native_ascii_from_int(Env *env, int argc, Value **argv)
 {
     (void)env;
     (void)argc;
     if (!match_types(argv, T_INT, T_ARG_END))
         return vnull();
-    return vstring_dup((char[]){argv[0]->v.i, '\0'});
+    return vstring_dup((char[]){(char)argv[0]->v.i, '\0'});
 }
 
-Value *native_from_ascii(Env *env, int argc, Value **argv)
+Value *native_ascii_from_string(Env *env, int argc, Value **argv)
 {
     (void)env;
     (void)argc;
@@ -181,6 +182,15 @@ Value *native_str_slice(Env *env, int argc, Value **argv)
     if (!match_types(argv, T_STRING, T_INT, T_INT, T_ARG_END))
         return vnull();
     return vstring_slice(argv[0]->v.s, argv[1]->v.i, argv[2]->v.i);
+}
+
+Value *native_str_copy(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    (void)argc;
+    if (!match_types(argv, T_STRING))
+        return vnull();
+    return vstring_dup(argv[0]->v.s);
 }
 
 Value *native_str_index(Env *env, int argc, Value **argv)
@@ -201,7 +211,7 @@ Value *native_str_patch(Env *env, int argc, Value **argv)
     return vstring_replace(argv[0]->v.s, argv[1]->v.s, argv[2]->v.s);
 }
 
-Value *native_str_length(Env *env, int argc, Value **argv)
+Value *native_str_len(Env *env, int argc, Value **argv)
 {
     (void)env;
     (void)argc;
@@ -334,6 +344,20 @@ Value *native_list_new(Env *e, int argc, Value **argv)
     val_set_table(res, list_meta);
     return res;
 }
+
+Value* native_list_set(Env* e, int argc, Value** argv)
+{
+    (void)e; (void)argc;
+    ll_set(GET_OPAQUE(argv[0]), GET_INTEGER(argv[1]), val_retain(argv[2]));
+    return NULL;
+}
+
+Value* native_list_get(Env* e, int argc, Value** argv)
+{
+    (void)e; (void)argc;
+    return ll_get(GET_OPAQUE(argv[0]), GET_INTEGER(argv[1]));
+}
+
 
 Value* set_list(Value* self, Value* index, Value* value)
 {
@@ -1116,7 +1140,19 @@ Value *native_report(Env *env, int argc, Value **argv)
         return verror("report(message) - No details given.");
     else
         return verror("report(message): Invalid number of arguments given.");
-    return vnull();
+}
+
+Value *native_report_tagged(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc == 2) {
+        return vtagged_error((ErrorType)GET_INTEGER(argv[0]), "report_tagged(tag, message): %s", GET_STRING(argv[1]));
+    }
+    else if (argc == 1) {
+        return vtagged_error((ErrorType)GET_INTEGER(argv[0]), "report_tagged(tag, message) - No details given.");
+    }
+    else
+        return verror("report(message): Invalid number of arguments given.");
 }
 
 Value *native_exit(Env *env, int argc, Value **argv)
@@ -1579,8 +1615,9 @@ Value* native_as_opaque(Env* e, int argc, Value** argv) {
     } break;
     case T_STRING: {
         char* ptr = NULL;
-        ptr = (char*)mila_malloc(sizeof(char));
+        ptr = (char*)mila_malloc(sizeof(char) * (strlen(GET_STRING(argv[0])) + 1));
         strncpy(ptr, GET_STRING(argv[0]), strlen(GET_STRING(argv[0])));
+        ptr[strlen(GET_STRING(argv[0]))] = 0;
         return vowned_opaque(ptr);
     } break;
     case T_OWNED_OPAQUE:
@@ -1594,14 +1631,17 @@ Value* native_as_opaque(Env* e, int argc, Value** argv) {
 // supports all C format specifiers (well at faking it well)
 Value* native_printf(Env* e, int argc, Value** argv)
 {
-    if (argc == 0) return verror("printf(fmt, ...): Requires at least one argument.");
+    if (argc == 0) return verror("char_count += printf(fmt, ...): Requires at least one argument.");
     if (argc == 1) {print_value(argv[0]); return vnull();}
     if (argc >= 2) {
-        if (MILA_GET_TYPE(argv[0]) != T_STRING) return verror("printf(fmt, ...): Requires first argument to be a string!");
+        if (MILA_GET_TYPE(argv[0]) != T_STRING) return verror("char_count += printf(fmt, ...): Requires first argument to be a string!");
         char* fmt = GET_STRING(argv[0]);
         _Bool is_comma = 0;
 
         int count = 1;
+        unsigned long char_count = 0;
+        int precision = -1;
+        char tmp[20] = {0};
 
         while (*fmt) {
             if ((*fmt) == '%') {
@@ -1612,13 +1652,22 @@ Value* native_printf(Env* e, int argc, Value** argv)
                     fmt++;
 
                 // skip over a numeric width if present, skip * and coresponding argument
-                if (*fmt == '.') fmt++;
-                if (*fmt == '*') {
-                    count++;
+                if (*fmt == '.')
+                {
                     fmt++;
-                } else {
-                    while (*fmt >= '0' && *fmt <= '9')
+                    if (*fmt == '*') {
+                        Value* v = argv[count++];
+                        precision = (int)GET_INTEGER(v);
                         fmt++;
+                    } else {
+                        char* start = fmt;
+                        while (*fmt >= '0' && *fmt <= '9')
+                            fmt++;
+                        int len = fmt-start;
+                        sprintf(tmp, "%.*s", len, start);
+                        precision = atoi(tmp);
+                        tmp[0] = '\0'; // reset buffer
+                    }
                 }
 
                 // check for our custom ' comma-separator extension
@@ -1659,55 +1708,55 @@ Value* native_printf(Env* e, int argc, Value** argv)
                         void* p = GET_OPAQUE(v);
                         switch (*fmt) {
                         case 'f': case 'e': case 'E':
-                            if      (length == 3) printf("%lf",  *(double*)p);
-                            else if (length == 4) printf("%Lf",  *(long double*)p);
-                            else                  printf("%f",   *(float*)p);
+                            if      (length == 3) char_count += printf("%.*lf", precision,  *(double*)p);
+                            else if (length == 4) char_count += printf("%.*Lf", precision,  *(long double*)p);
+                            else                  char_count += printf("%.*f", precision,   *(float*)p);
                             break;
                         case 'g': case 'G':
-                            if      (length == 3) printf("%lg",  *(double*)p);
-                            else if (length == 4) printf("%Lg",  *(long double*)p);
-                            else                  printf("%g",   *(float*)p);
+                            if      (length == 3) char_count += printf("%.*lg", precision,  *(double*)p);
+                            else if (length == 4) char_count += printf("%.*Lg", precision,  *(long double*)p);
+                            else                  char_count += printf("%.*g", precision,   *(float*)p);
                             break;
                         case 'd': case 'i':
                             switch (length) {
-                            case 0:  printf("%d",   *(int*)p);          break;
-                            case 1:  printf("%d",   *(short*)p);        break;
-                            case 2:  printf("%d",   *(signed char*)p);  break;
-                            case 3:  printf("%ld",  *(long*)p);         break;
-                            case 4:  printf("%lld", *(long long*)p);    break;
-                            case 5:  printf("%zd",  *(ssize_t*)p);      break;
-                            case 6:  printf("%td",  *(ptrdiff_t*)p);    break;
-                            case 7:  printf("%jd",  *(intmax_t*)p);     break;
+                            case 0:  char_count += printf("%.*d", precision,   *(int*)p);          break;
+                            case 1:  char_count += printf("%.*d", precision,   *(short*)p);        break;
+                            case 2:  char_count += printf("%.*d", precision,   *(signed char*)p);  break;
+                            case 3:  char_count += printf("%.*ld", precision,  *(long*)p);         break;
+                            case 4:  char_count += printf("%.*lld", precision, *(long long*)p);    break;
+                            case 5:  char_count += printf("%.*zd", precision,  *(ssize_t*)p);      break;
+                            case 6:  char_count += printf("%.*td", precision,  *(ptrdiff_t*)p);    break;
+                            case 7:  char_count += printf("%.*jd", precision,  *(intmax_t*)p);     break;
                             }
                             break;
                         case 'u':
                             switch (length) {
-                            case 0:  printf("%u",   *(unsigned int*)p);        break;
-                            case 1:  printf("%u",   *(unsigned short*)p);      break;
-                            case 2:  printf("%u",   *(unsigned char*)p);       break;
-                            case 3:  printf("%lu",  *(unsigned long*)p);       break;
-                            case 4:  printf("%llu", *(unsigned long long*)p);  break;
-                            case 5:  printf("%zu",  *(size_t*)p);              break;
-                            case 6:  printf("%tu",  *(ptrdiff_t*)p);           break;
-                            case 7:  printf("%ju",  *(uintmax_t*)p);           break;
+                            case 0:  char_count += printf("%.*u", precision,   *(unsigned int*)p);        break;
+                            case 1:  char_count += printf("%.*u", precision,   *(unsigned short*)p);      break;
+                            case 2:  char_count += printf("%.*u", precision,   *(unsigned char*)p);       break;
+                            case 3:  char_count += printf("%.*lu", precision,  *(unsigned long*)p);       break;
+                            case 4:  char_count += printf("%.*llu", precision, *(unsigned long long*)p);  break;
+                            case 5:  char_count += printf("%.*zu", precision,  *(size_t*)p);              break;
+                            case 6:  char_count += printf("%.*tu", precision,  *(ptrdiff_t*)p);           break;
+                            case 7:  char_count += printf("%.*ju", precision,  *(uintmax_t*)p);           break;
                             }
                             break;
                         case 'o':
                             switch (length) {
-                            case 0:  printf("%o",   *(unsigned int*)p);        break;
-                            case 1:  printf("%o",   *(unsigned short*)p);      break;
-                            case 2:  printf("%o",   *(unsigned char*)p);       break;
-                            case 3:  printf("%lo",  *(unsigned long*)p);       break;
-                            case 4:  printf("%llo", *(unsigned long long*)p);  break;
-                            case 5:  printf("%zo",  *(size_t*)p);              break;
-                            case 7:  printf("%jo",  *(uintmax_t*)p);           break;
+                            case 0:  char_count += printf("%.*o", precision,   *(unsigned int*)p);        break;
+                            case 1:  char_count += printf("%.*o", precision,   *(unsigned short*)p);      break;
+                            case 2:  char_count += printf("%.*o", precision,   *(unsigned char*)p);       break;
+                            case 3:  char_count += printf("%.*lo", precision,  *(unsigned long*)p);       break;
+                            case 4:  char_count += printf("%.*llo", precision, *(unsigned long long*)p);  break;
+                            case 5:  char_count += printf("%.*zo", precision,  *(size_t*)p);              break;
+                            case 7:  char_count += printf("%.*jo", precision,  *(uintmax_t*)p);           break;
                             }
                             break;
                         }
                     } else {
                         // not an opaque pointer, just let our value printer handle it
-                        if (__builtin_expect(local_comma, 0)) print_value_fancy(v);
-                        else print_value(v);
+                        if (__builtin_expect(local_comma, 0)) char_count += print_value_fancy(v);
+                        else char_count += print_value(v);
                     }
                 } break;
 
@@ -1716,13 +1765,13 @@ Value* native_printf(Env* e, int argc, Value** argv)
                     if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
                         void* p = GET_OPAQUE(v);
                         switch (length) {
-                        case 0:  printf("%x",   *(unsigned int*)p);        break;
-                        case 1:  printf("%x",   *(unsigned short*)p);      break;
-                        case 2:  printf("%x",   *(unsigned char*)p);       break;
-                        case 3:  printf("%lx",  *(unsigned long*)p);       break;
-                        case 4:  printf("%llx", *(unsigned long long*)p);  break;
-                        case 5:  printf("%zx",  *(size_t*)p);              break;
-                        case 7:  printf("%jx",  *(uintmax_t*)p);           break;
+                        case 0:  char_count += printf("%.*x", precision,   *(unsigned int*)p);        break;
+                        case 1:  char_count += printf("%.*x", precision,   *(unsigned short*)p);      break;
+                        case 2:  char_count += printf("%.*x", precision,   *(unsigned char*)p);       break;
+                        case 3:  char_count += printf("%.*lx", precision,  *(unsigned long*)p);       break;
+                        case 4:  char_count += printf("%.*llx", precision, *(unsigned long long*)p);  break;
+                        case 5:  char_count += printf("%.*zx", precision,  *(size_t*)p);              break;
+                        case 7:  char_count += printf("%.*jx", precision,  *(uintmax_t*)p);           break;
                         }
                     } else {
                         // non-opaque, just cast whatever numeric type we got
@@ -1732,7 +1781,7 @@ Value* native_printf(Env* e, int argc, Value** argv)
                         case T_UINT:  value = (unsigned int)GET_UINTEGER(v); break;
                         case T_FLOAT: value = (unsigned int)GET_FLOAT(v);    break;
                         }
-                        printf("%x", value);
+                        char_count += printf("%.*x", precision, value);
                     }
                 } break;
 
@@ -1741,13 +1790,13 @@ Value* native_printf(Env* e, int argc, Value** argv)
                     if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
                         void* p = GET_OPAQUE(v);
                         switch (length) {
-                        case 0:  printf("%X",   *(unsigned int*)p);        break;
-                        case 1:  printf("%X",   *(unsigned short*)p);      break;
-                        case 2:  printf("%X",   *(unsigned char*)p);       break;
-                        case 3:  printf("%lX",  *(unsigned long*)p);       break;
-                        case 4:  printf("%llX", *(unsigned long long*)p);  break;
-                        case 5:  printf("%zX",  *(size_t*)p);              break;
-                        case 7:  printf("%jX",  *(uintmax_t*)p);           break;
+                        case 0:  char_count += printf("%.*X", precision,   *(unsigned int*)p);        break;
+                        case 1:  char_count += printf("%.*X", precision,   *(unsigned short*)p);      break;
+                        case 2:  char_count += printf("%.*X", precision,   *(unsigned char*)p);       break;
+                        case 3:  char_count += printf("%.*lX", precision,  *(unsigned long*)p);       break;
+                        case 4:  char_count += printf("%.*llX", precision, *(unsigned long long*)p);  break;
+                        case 5:  char_count += printf("%.*zX", precision,  *(size_t*)p);              break;
+                        case 7:  char_count += printf("%.*jX", precision,  *(uintmax_t*)p);           break;
                         }
                     } else {
                         // same as %x but uppercase, same casting logic
@@ -1757,21 +1806,24 @@ Value* native_printf(Env* e, int argc, Value** argv)
                         case T_UINT:  value = (unsigned int)GET_UINTEGER(v); break;
                         case T_FLOAT: value = (unsigned int)GET_FLOAT(v);    break;
                         }
-                        printf("%X", value);
+                        char_count += printf("%.*X", precision, value);
                     }
                 } break;
 
                 case 's': {
                     Value* v = argv[count++];
-                    char* value = "???";
                     switch (MILA_GET_TYPE(v)) {
-                    case T_STRING:       value = GET_STRING(v);  break;
+                    case T_STRING:
+                        char_count += printf("%.*s", precision, GET_STRING(v)); break;
                     case T_OPAQUE:
-                    case T_OWNED_OPAQUE: value = GET_OPAQUE(v);  break; // treat the pointer as a char*
+                    case T_OWNED_OPAQUE:
+                        char_count += printf("%.*s", precision, (char*)GET_OPAQUE(v));
+                        break;
                     default:
-                        return verror("%%s format specifier only supports opaque pointers and strings but got %s!", MILA_GET_TYPENAME(v));
+                        if (__builtin_expect(local_comma, 0)) char_count += print_value_fancy(v);
+                        else char_count += print_value(v);
+                        break;
                     }
-                    printf("%s", value);
                 } break;
 
                 case 'c': {
@@ -1784,7 +1836,7 @@ Value* native_printf(Env* e, int argc, Value** argv)
                     default:
                         return verror("%%c format specifier only supports opaque pointers and strings but got %s!", MILA_GET_TYPENAME(v));
                     }
-                    printf("%c", value);
+                    char_count += printf("%c", value);
                 } break;
 
                 case 'p': {
@@ -1794,29 +1846,42 @@ Value* native_printf(Env* e, int argc, Value** argv)
                     case T_OWNED_OPAQUE: ptr = GET_OPAQUE(v); break;
                     default:             ptr = v; break; // print the Value* itself as an address
                     }
-                    printf("%p", ptr);
+                    char_count += printf("%p", ptr);
                 } break;
 
                 case 'n': {
                     // write back the number of characters printed so far,
-                    // only works if the caller passed an opaque int*
                     Value* v = argv[count++];
-                    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
-                        printf("%n", (int*)GET_OPAQUE(v));
+                    if (MILA_GET_TYPE(v) == T_INT) {
+                        v->type = T_UINT;
+                        v->v.ui = char_count;
+                    } else if (MILA_GET_TYPE(v) == T_UINT) {
+                        v->v.i = char_count;
+                    } else if (MILA_GET_TYPE(v) == T_OPAQUE) {
+                        v->type = T_UINT;
+                        v->v.ui = char_count;
+                    } else if (MILA_GET_TYPE(v) == T_NONE) {
+                        v->type = T_UINT;
+                        v->v.ui = char_count;
+                    } else if (MILA_GET_TYPE(v) == T_NULL) {
+                        v->type = T_UINT;
+                        v->v.ui = char_count;
+                    }
                 } break;
 
                 case '?':
                     // printcas normal value
-                    print_value(argv[count++]); break;
+                    char_count += print_value(argv[count++]); break;
 
                 case '%':
-                    putchar('%'); break;
+                    putchar('%'); char_count++; break;
 
                 default:
                     return verror("Invalid format modifier '%%%c'!", *fmt);
                 }
             } else {
                 putchar(*fmt);
+                char_count++;
             }
             fmt++;
         }
@@ -1884,6 +1949,7 @@ void env_register_builtins(Env *g)
     env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
     env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
     env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
+    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin fd'"));
 #endif
     // === Lists
 #if (!defined(MILA_NO_COLLECTIONS)) || (defined(MILA_NO_COLLECTIONS) && !defined(MILA_EXCLUDE_COLLECTIONS))
@@ -1925,8 +1991,8 @@ void env_register_builtins(Env *g)
     val_set_method_table(istring_meta, UMethodToString, istring_to_str);
 
     env_register_native(g, "list", native_list_new);
-    // env_register_native(g, "list.set", native_list_set);
-    // env_register_native(g, "list.get", native_list_get);
+    env_register_native(g, "list.set", native_list_set);
+    env_register_native(g, "list.get", native_list_get);
     env_register_native(g, "list.pop", native_list_pop);
     env_register_native(g, "list.len", native_list_len);
     env_register_native(g, "list.append", native_list_append);
@@ -1957,13 +2023,14 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.slice", native_str_slice);
     env_register_native(g, "str.index", native_str_index);
     env_register_native(g, "str.patch", native_str_patch);
-    env_register_native(g, "str.length", native_str_length);
+    env_register_native(g, "str.copy", native_str_copy);
+    env_register_native(g, "str.len", native_str_len);
     env_register_native(g, "str.pop_f", native_pop_start);
     env_register_native(g, "str.pop_b", native_pop_end);
     env_register_native(g, "istring", native_istring);
     // === ASCII
-    env_register_native(g, "ascii.from", native_from_ascii);
-    env_register_native(g, "ascii.to", native_to_ascii);
+    env_register_native(g, "ascii.from_int", native_ascii_from_int);
+    env_register_native(g, "ascii.from_string", native_ascii_from_string);
     // === Math
 #if (!defined(MILA_NO_MATH)) || (defined(MILA_NO_MATH) && !defined(MILA_EXCLUDE_NO_MATH))
     env_register_native(g, "floor", native_floor);
@@ -1992,6 +2059,12 @@ void env_register_builtins(Env *g)
      */
     // === Error handling
     env_register_native(g, "report", native_report);
+    env_register_native(g, "report_tagged", native_report_tagged);
+    env_set_local(g, "E_PRE_RUNTIME", vint(E_PRE_RUNTIME));
+    env_set_local(g, "E_RUNTIME", vint(E_RUNTIME));
+    env_set_local(g, "E_TYPE_ERROR", vint(E_TYPE_ERROR));
+    env_set_local(g, "E_FATAL", vint(E_FATAL));
+    env_set_local(g, "E_GENERIC", vint(E_GENERIC));
     env_register_native(g, "exit", native_exit);
     // === Time measurement
     env_register_native(g, "get_time", native_get_time);

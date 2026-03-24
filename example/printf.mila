@@ -4,10 +4,9 @@ var string = "Hello, world!";
 
 printf("%s\n", string);
 
-
-// "'" flag Doesnt rely on locales btw
+// "'" flag Doesnt rely on locales btw (but only for primitives)
 // this is a huge flex over standard C printf
-printf("%'ld \n", 1000);
+printf("%'s\n", 1000);
 
 // For MiLa primitives using any printf format specifiers are okay
 // However for opaque pointers this is not the case
@@ -31,26 +30,41 @@ var ptr = as_opaque(139.34);
 
 printf("%lf\n", ptr);
 
+// P.S.: as_opaque returns an owned opaque type, meaning
+// you dont need to free it automatically
+
 /*
 	Bellow are supported C format specifiers
 	These do change representation:
 	f, i, d, u, x, X, p, o, s
 
-	Format specifiers that dont actually need arguments:
-	n
+	Weird supported specifiers
+	n (returns how many characters was printed so far)
 
 	Supported flags:
 	'
 
 	Ignored:
-	` `, -, +, #, as well as length specfier for justifying
+	` `, -, +, #
 
 	Size specifier (works on opaque pointers,
 	they are dereferenced and treated as the sizes bellow):
 	hh, h, l, ll, z, t, j
+
+	Misc:
+	* (for precision or length),
+	hardcoded precision / length specifier,
+	? ignores all flags, falls back to MiLas representation
+	for that boxed value meaning no auto deref and is safe,
+	ignores arg$ syntax, because why? C printf is messed up
 */
 
-// length is ignored!
-printf("%.*s\n", 90, "this");
+// As C spec, over specifying on null terminated strings
+// are still protected (on unterminated buffers however...)
+printf("%.4000s\n", "Should actually be length!");
 
-printf("%?");
+var test = as_opaque("test");
+
+// <owned opaque:address>: test
+printf("%?: %s\n", test, test);
+

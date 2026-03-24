@@ -304,6 +304,41 @@ Value *vnull() { return val_new(T_NULL); }
 Value *vnone() { return val_new(T_NONE); }
 Value *vbreak() { return val_new(T_BREAK); }
 Value *vcontinue() { return val_new(T_CONTINUE); }
+__attribute__((format(printf, 2, 3)))
+Value *vtagged_error(ErrorType err, char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+
+    // First pass: find length
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int len = vsnprintf(NULL, 0, fmt, ap_copy);
+    va_end(ap_copy);
+
+    if (len < 0)
+    {
+        va_end(ap);
+        return NULL;
+    }
+
+    char *buf = mila_malloc(len + 1);
+    if (!buf)
+    {
+        va_end(ap);
+        Value *v = val_new(T_ERROR);
+        v->v.message = mila_strdup("verror could not allocate memory!");
+        return v;
+    }
+
+    vsnprintf(buf, len + 1, fmt, ap);
+    va_end(ap);
+    Value *v = val_new(T_TAGGED_ERROR);
+    v->v.tagged_error.message = buf;
+    v->v.tagged_error.type = err;
+    return v;
+}
+
 __attribute__((format(printf, 1, 2)))
 Value *verror(char *fmt, ...)
 {
@@ -624,6 +659,9 @@ char *as_c_string(Value *v)
     case T_ERROR:
         our_asprintf(&buffer, "<error:%s>", v->v.message);
         break;
+    case T_TAGGED_ERROR:
+        our_asprintf(&buffer, "<error[%s]:%s>", MILA_GET_ERRORNAME(v), GET_ERROR(v));
+        break;
     case T_INT:
         our_asprintf(&buffer, "%ld", v->v.i);
         break;
@@ -926,41 +964,40 @@ char *as_c_string_repr_raw(Value *v)
 }
 
 // print value (for debug / native print)
-void print_value(Value *v)
+int print_value(Value *v)
 {
     if (!v)
     {
-        printf("cnull");
-        return;
+        return printf("cnull");
     }
     char *txt = as_c_string(v);
-    printf("%s", txt);
+    int i = printf("%s", txt);
     mila_free(txt);
+    return i;
 }
 
-void print_value_fancy(Value *v)
+int print_value_fancy(Value *v)
 {
-    printf("FANCY!\n");
     if (!v)
     {
-        printf("cnull");
-        return;
+        return printf("cnull");
     }
     char *txt = as_c_string_fancy(v);
-    printf("%s", txt);
+    int i = printf("%s", txt);
     mila_free(txt);
+    return i;
 }
 
-void print_value_repr(Value *v)
+int print_value_repr(Value *v)
 {
     if (!v)
     {
-        printf("cnull");
-        return;
+        return printf("cnull");
     }
     char *txt = as_c_string_repr(v);
-    printf("%s", txt);
+    int i = printf("%s", txt);
     mila_free(txt);
+    return i;
 }
 
 Value *val_retain(Value *v)
@@ -2050,7 +2087,7 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
     {
         for (int t = 0; t < count; ++t)
         {
-            if (MILA_GET_TYPE(args[t]) == T_ERROR)
+            if (IS_ERROR(args[t]))
             {
                 for (int i = 0; i < count; i++)
                     val_release(args[i]);
@@ -2148,7 +2185,7 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
     {
         for (int t = 0; t < count; ++t)
         {
-            if (MILA_GET_TYPE(args[t]) == T_ERROR)
+            if (IS_ERROR(args[t]))
             {
                 for (int i = 0; i < count; i++)
                     val_release(args[i]);
@@ -2328,7 +2365,7 @@ Value *eval_primary(Src *s, Env *env)
                 for (;;)
                 {
                     Value *a = eval_expr(s, env);
-                    if (a && a->type == T_ERROR)
+                    if (IS_ERROR(a))
                     {
                         mila_free(args);
                         val_release(expr);
@@ -2368,6 +2405,7 @@ Value *eval_primary(Src *s, Env *env)
                 return tmp;
             }
             HANDLE_CONTROL(res);
+            return res;
         }
 
         else if (src_peek(s) == '[')
@@ -2407,7 +2445,7 @@ Value *eval_primary(Src *s, Env *env)
         match_char(s, '}');
 
         HANDLE_RETURN(v);
-        HANDLE_CONTROL(v);
+        return v;
     }
     if (c == '!' && s->src[s->pos + 1] == '{')
     {
@@ -2532,7 +2570,7 @@ Value *eval_primary(Src *s, Env *env)
                 for (;;)
                 {
                     Value *a = eval_expr(s, env);
-                    if (a && a->type == T_ERROR)
+                    if (IS_ERROR(a))
                     {
                         mila_free(id);
                         for (int i = 0; i < argc; i++)
@@ -2578,7 +2616,7 @@ Value *eval_primary(Src *s, Env *env)
             mila_free(args);
 
             HANDLE_RETURN(res);
-            HANDLE_CONTROL(res);
+            return res;
         }
         else if (src_peek(s) == '[')
         {
@@ -3394,7 +3432,7 @@ Value *eval_statement(Src *s, Env *env)
                 // Re-evaluate condition
                 Value *cond = eval_expr(s, env);
                 match_char(s, ')');
-                if (MILA_GET_TYPE(cond) == T_ERROR)
+                if (IS_ERROR(cond))
                 {
                     val_release(bod);
                     return cond;
@@ -3452,7 +3490,7 @@ Value *eval_statement(Src *s, Env *env)
             }
             Value *iter_obj = eval_expr(s, env);
 
-            if (MILA_GET_TYPE(iter_obj) == T_ERROR)
+            if (IS_ERROR(iter_obj))
             {
                 mila_free(id);
                 return iter_obj;
@@ -3463,7 +3501,7 @@ Value *eval_statement(Src *s, Env *env)
             if (iter_obj->method_table && iter_obj->method_table[UMethodToIter])
             {
                 Value *v = ((unary_method)iter_obj->method_table[UMethodToIter])(iter_obj);
-                if (MILA_GET_TYPE(v) == T_ERROR)
+                if (IS_ERROR(v))
                 {
                     mila_free(id);
                     return v;
@@ -3530,7 +3568,7 @@ Value *eval_statement(Src *s, Env *env)
                             val_release(bod);
                         continue;
                     }
-                    else if (bod->type == T_ERROR)
+                    else if (IS_ERROR(bod))
                     {
                         s->pos = body_end_pos;
                         return bod;
@@ -3559,7 +3597,7 @@ Value *eval_statement(Src *s, Env *env)
             return verror("Block needs a name!");
         skip_ws(s);
         Value *res = eval_block(s, env);
-        if (res->type == T_ERROR)
+        if (IS_ERROR(res))
         {
             Value *new_res = verror("Block %s reported an error: %s", name, res->v.message);
             val_release(res);
@@ -3589,12 +3627,24 @@ Value *eval_statement(Src *s, Env *env)
     if (is_keyword_at(s, "catch"))
     {
         s->pos += strlen("catch");
-        skip_ws(s);
+        char* id = parse_ident(s);
         Value *res = eval_block(s, env);
-        if (res->type == T_ERROR)
+        if (IS_ERROR(res) && !IS_FATAL(res))
         {
-            val_release(res);
+            if (id) {
+                res->v.s = res->v.message;
+                res->type = T_STRING;
+                env_set_local_raw(env, id, res);
+                free(id);
+            }
+            else val_release(res);
             return vnull();
+        }
+        if (IS_FATAL(res))
+        {
+            fprintf(stderr, "\n\nTried to catch fatal error.\n");
+            fprintf(stderr, "FATAL ERROR[%s]: %s\n", MILA_GET_ERRORNAME(res), GET_ERROR_TAGGED(res));
+            abort();
         }
         return res;
     }
@@ -3717,6 +3767,11 @@ Value *eval_source(Src *s, Env *env)
             if (last->type == T_ERROR)
             {
                 printf("\n= Error: %s\n", last->v.message);
+                return last;
+            }
+            if (last->type == T_TAGGED_ERROR)
+            {
+                printf("\n= Error[%s]: %s\n", MILA_GET_ERRORNAME(last), last->v.tagged_error.message);
                 return last;
             }
             else if (last->type == T_RETURN)
@@ -4113,16 +4168,9 @@ int main(int argc, char **argv)
                 Src *S = src_new(buffer);
                 Value *res = eval_source(S, g);
 
-                if (res && res->type != T_NULL)
-                {
-                    printf("  : ");
-                    print_value_repr(res);
-                    putchar('\n');
-                }
-                else if (!res)
-                {
-                    printf("  : cnull\n");
-                }
+                printf("  : ");
+                print_value_repr(res);
+                putchar('\n');
 
                 val_release(res);
                 src_free(S);

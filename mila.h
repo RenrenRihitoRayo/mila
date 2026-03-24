@@ -13,6 +13,8 @@
 // when collections' item amounts exceed this number
 #define MAX_ITEMS_DISPLAYED 1000
 
+#define IS_ERROR(v) (MILA_GET_TYPE(v) == T_ERROR || MILA_GET_TYPE(v) == T_TAGGED_ERROR)
+#define IS_FATAL(v) (IS_ERROR(v) && MILA_GET_ERROR(v) == E_FATAL)
 #define GET_STRING(val) (val ? val->v.s : NULL)
 #define GET_INTEGER(val) (val ? val->v.i : 0)
 #define GET_UINTEGER(val) (val ? val->v.ui : 0)
@@ -20,11 +22,15 @@
 #define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
 #define GET_FUNCTION(val) (val ? val->v.fn : NULL)
 #define GET_NATIVE(val) (val ? val->v.native : NULL)
+#define GET_ERROR(val) (val ? val->v.message : NULL)
+#define GET_ERROR_TAGGED(val) (val ? val->v.tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 #define WEAK(val) (val->type = T_WEAK_OPAQUE)
 
+#define MILA_GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
 #define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
+#define MILA_GET_ERROR(val) (IS_ERROR(val) ? val->v.tagged_error.type : E_GENERIC)
 #define MILA_GET_TYPE(v) (v ? v->type : -1 )
 
 #define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
@@ -72,6 +78,23 @@ typedef struct
 
 typedef enum
 {
+    E_PRE_RUNTIME, // Must always be fatal!
+    E_RUNTIME,     // Errors such as undefined variables
+    E_TYPE_ERROR,  // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
+    E_FATAL,       // Errors that should be fatal, like syntax errors
+    E_GENERIC      // Errors that cannot be classified as ones above
+} ErrorType;
+
+const char *MILA_ERROR_NAMES[] = {
+    "PreRuntime",
+    "Runtime",
+    "TypeError",
+    "Fatal",
+    "Generic"
+};
+
+typedef enum
+{
     T_NULL = 0,
     T_INT,
     T_UINT,
@@ -88,6 +111,7 @@ typedef enum
     T_ERROR,
     T_BREAK,
     T_CONTINUE,
+    T_TAGGED_ERROR,
     T_ARG_END
 } ValueType;
 
@@ -109,6 +133,7 @@ const char *MILA_TYPE_NAMES[] = {
     "error",
     "break",
     "continue",
+    "tagged_error",
     "arg_end",
 };
 
@@ -195,6 +220,10 @@ struct Value
         // function
         FunctionV *fn;
         NativeFunctionV *native;
+        struct {
+            char* message;
+            ErrorType type;
+        } tagged_error;
     } v; // around 8 bytes
 };
 
@@ -264,6 +293,7 @@ Value *vnull();
 Value *vnone();
 __attribute__((format(printf, 1, 2)))
 Value *verror(char *message, ...);
+Value *vtagged_error(ErrorType type, char *message, ...);
 Value *vfunction(char **params, char *body_src, Env *closure);
 static int is_number(Value *v);
 double to_double(Value *v);
@@ -272,9 +302,9 @@ char *as_c_string(Value *v);
 char *as_c_string_repr(Value *v);
 char *as_c_string_raw(Value *v);
 char *as_c_string_repr_raw(Value *v);
-void print_value(Value *v);
-void print_value_fancy(Value *v);
-void print_value_repr(Value *v);
+int print_value(Value *v);
+int print_value_fancy(Value *v);
+int print_value_repr(Value *v);
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);

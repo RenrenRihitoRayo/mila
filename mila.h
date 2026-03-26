@@ -14,7 +14,8 @@
 #define MAX_ITEMS_DISPLAYED 1000
 
 #define IS_ERROR(v) (MILA_GET_TYPE(v) == T_ERROR || MILA_GET_TYPE(v) == T_TAGGED_ERROR)
-#define IS_FATAL(v) (IS_ERROR(v) && MILA_GET_ERROR(v) == E_FATAL)
+#define IS_ERROR_TAGGED(v) (MILA_GET_TYPE(v) == T_TAGGED_ERROR)
+#define IS_FATAL(v) ((MILA_GET_ERROR(v) == E_FATAL || MILA_GET_ERROR(v) == E_SYNTAX_ERROR))
 #define GET_STRING(val) (val ? val->v.s : NULL)
 #define GET_INTEGER(val) (val ? val->v.i : 0)
 #define GET_UINTEGER(val) (val ? val->v.ui : 0)
@@ -30,7 +31,7 @@
 
 #define MILA_GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
 #define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
-#define MILA_GET_ERROR(val) (IS_ERROR(val) ? val->v.tagged_error.type : E_GENERIC)
+#define MILA_GET_ERROR(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
 #define MILA_GET_TYPE(v) (v ? v->type : -1 )
 
 #define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
@@ -78,14 +79,16 @@ typedef struct
 
 typedef enum
 {
-    E_PRE_RUNTIME, // Must always be fatal!
-    E_RUNTIME,     // Errors such as undefined variables
-    E_TYPE_ERROR,  // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
-    E_FATAL,       // Errors that should be fatal, like syntax errors
-    E_GENERIC      // Errors that cannot be classified as ones above
+    E_SYNTAX_ERROR, // Self explanatory
+    E_PRE_RUNTIME,  // Must always be fatal!
+    E_RUNTIME,      // Errors such as undefined variables
+    E_TYPE_ERROR,   // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
+    E_FATAL,        // Errors that should be fatal, like syntax errors
+    E_GENERIC       // Errors that cannot be classified as ones above
 } ErrorType;
 
 const char *MILA_ERROR_NAMES[] = {
+    "SyntaxError",
     "PreRuntime",
     "Runtime",
     "TypeError",
@@ -175,6 +178,7 @@ typedef enum __attribute__((packed))
     UMethodFree,
     UMethodKill,
 
+    BMethodGlob,
     MethodTotalCount
 } MethodType;
 
@@ -241,16 +245,27 @@ struct Env
     Env *parent;
 };
 
+// Make an environment
 Env *env_new(Env *parent);
+// Print environment info
 void env_dump(Env *e);
+// Free an environment and disown variables
 void env_free(Env *e);
+// Free an environment and ensure vriables are freed
 void env_kill(Env *e);
+// Get a variable
 Value *env_get(Env *e, const char *name);
+// Set a variable in the local scope (and own it)
 void env_set_local(Env *e, const char *name, Value *val);
+// Set a variable, if no outer bindings are found, set it in the local scope (and own it)
 int env_set(Env *e, const char *name, Value *val);
+// Like env_set_local but doesnt let env own the variable
 void env_set_local_raw(Env *e, const char *name, Value *val);
+// Like env_set but doesnt let env own the variable
 int env_set_raw(Env *e, const char *name, Value *val);
+// Register a native
 void env_register_native(Env *env, const char *name, NativeFn fn);
+// Register built ins
 void env_register_builtins(Env *g);
 
 // == Value Related
@@ -259,54 +274,98 @@ void env_register_builtins(Env *g);
 // these functions might be the only
 // part of mila youll ever touch.
 
+// Return an int if a MiLa value is truthy
 int is_truthy(Value *value);
+// Make a new value with a type
 Value *val_new(ValueType t);
+// Allocate a method table for a value
 void val_allocate_table(Value *v);
+// Make a standalone method table
 MethodTable *val_make_table(void);
+// Set a values method table
 void val_set_table(Value *v, MethodTable *t);
+// Set the method of a value
 void val_set_method(Value *v, MethodType t, void* func);
+// Set the method of a method table
 void val_set_method_table(MethodTable *v, MethodType t, void* func);
+//  Unset the method of a method table
 void val_unset_method_table(MethodTable *v, MethodType t);
+// Unset the method of a value
 void val_unset_method(Value *v, MethodType t);
+// Own a value
 Value *val_retain(Value *v);
+// Disown a value
 void val_release(Value *v);
+// Printf but support `%?` to print values.
+int mila_printf(char *fmt, ...);
+// Generates a string from an fmt
 __attribute__((format(printf, 1, 2)))
 Value *vstring_fmt(char *fmt, ...);
+// Slice a string
 Value *vstring_slice(const char *src, size_t start, size_t len);
+// Index a string
 Value *vstring_index(const char *src, size_t index);
+// Replace some path of a string (used string.patch)
 Value *vstring_replace(const char *src,
                        const char *needle,
                        const char *repl);
+// Free a value regardless of refcount
 void val_kill(Value *v);
+// Integer contructor
 Value *vint(long i);
+// Uint constructor
 Value *vuint(unsigned long i);
+// Float constructor
 Value *vfloat(double f);
+// Bool constructor
 Value *vbool(int b);
+// Duplicate a string
 Value *vstring_dup(const char *s);
+// Take a string (assuming MiLa can free it)
 Value *vstring_take(char *s);
+// Opaque pointer constructor
 Value *vopaque(void *p);
-Value *vweak_opaque(void *p);
+// Owned opaque pointer constructor (MiLa takes ownership)
 Value *vowned_opaque(void *p);
+// Create a native function
 Value *vnative(NativeFn fn, const char *name);
+// Create a bool if a value is truthy
 Value *vtruthy(Value *value);
+// Null
 Value *vnull();
+// None
 Value *vnone();
+// Error
 __attribute__((format(printf, 1, 2)))
 Value *verror(char *message, ...);
+// Tagged error
+__attribute__((format(printf, 2, 3)))
 Value *vtagged_error(ErrorType type, char *message, ...);
+// Create a function
 Value *vfunction(char **params, char *body_src, Env *closure);
+// Check if a value is any numeric type
 static int is_number(Value *v);
+// Turn any numeric type to a double
 double to_double(Value *v);
-Value *to_c_string(Value *v);
+// Turn a value into its c string equivalent
 char *as_c_string(Value *v);
+// Turn a value into its c string representation equivalent
 char *as_c_string_repr(Value *v);
+// Turn a value into its c string equivalent (do not use its overload of UMethodToString)
 char *as_c_string_raw(Value *v);
+// Turn a value into its c string representation equivalent (do not use its overload of UMethodToRepr)
 char *as_c_string_repr_raw(Value *v);
+// Print a value
 int print_value(Value *v);
+// Print a value (numeric types get a thousands operator)
 int print_value_fancy(Value *v);
+// Print a values representation
 int print_value_repr(Value *v);
+// Call a function
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
+// Create an opaque
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+// Create an owned opaque
 Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 
 // == Parsing

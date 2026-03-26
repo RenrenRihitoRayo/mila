@@ -1,176 +1,46 @@
-// decl
-var name;
-// decl + value
-var name = value;
-// assignment
-set name = value; // always binds to an outer name
-// delete name
-forget name;
+// lambda implementations musnt be a shell
+assert((fn(){return "lambda!";})() == "lambda!", "Lambdas arent correct!");
 
-// scope
-{
-	set name = value; // tries to look for name in outer scopes
-	var name = value; // shadow name if it does exist
+// functions also need to be supported of course
+fn concat(name) {
+	// test concat + string coercion
+	return null + name + " concat!" + true + 1 + array(0) + list() + dict() + none;
 }
 
-
-// Ranges
-var r = range(10); // similar to pythons range range(stop), range(start, stop), range(start, stop, step)
-
-// Loops
-foreach num : r {
-	// IO
-	println(num); // prints with newline
-	print(num); // prints without newline
-	printr(num); // prints without spaces between multiple arguments and no newline, print raw
-	printf("fmt\n"); // C style printf (yes supports all format specifier classes)
-}
-
-// While loops
-
-while (cond) {
-	// do something
-	// break, continue permitted here
-}
-
-/*
-	File IO, similar to C
-	open(filename, mode);
-	fread(file, nbytes);
-	fprint(file, string);
-	fseek(file);
-	ftell(file);
-	fclose(file);
-
-	File streams that are predefined:
-	stdout
-	stderr
-	stdin
-*/
-
-// __name__ is like in python (with some caveats)
-// __name__ is `__main__` when its in the script being currently ran (started via CLI)
-// __name__ is the basename of its path when its not the root script (not the first script ran)
-var program_name = __name__;
-// __importer__ is null if in the root script
-// otherwise its the __name__ of the script that imported/ran the script
-var imported_by = __importer__;
-
-// Data types
-
-var d = dict(
-	"key1", "value1",
-	"key2", "value2"
+assert(
+  concat("Test") == "nullTest concat!true1array.from()list()dict()none",
+  "Concatination failed!"
 );
 
-// nested subscripting needs subsequent subscripts to be in parenthesis
-// (item[...])[...]
+assert(
+  "globbing! and random stuff" => "gl[!O][a-z]bi?g!*",
+  "Globbing unsupported!"
+)
 
-var l = list(
-	"item1", "item2", "item3", "itemN"
-);
-
-var a = array.from(
-	"item1", "item2", "item3", "itemN"
-);
-
-// MiLa supports hex literals.
-// As well as unsigned literals and percent literals.
-
-var uint = 0u;
-var uint_h = 0x0u;
-var int = 0;
-var float = 0.0;
-
-var uint_p = 0u%;
-var uint_h_p = 0x0u%;
-var int_p = 0%;
-var float_p = 0.0%;
-
-// Running commands
-
-system("ls"); // returns exit code of command
-
-// Running code
-
-eval("println(\"Hello, world!\");"); // returns experession result
-run("example/printf.mila"); // run file
-
-// Loading extensions
-
-// load("somefile.so");
-
-// Catching errors
-
-catch {
-	// owner ship (for C interopt)
-	var name = own(value); // this tells MiLa it can free the opaque pointer when done
-	var name = unown(value); // this tells MiLa it cannot free the opaque pointer
+catch err {
+	report("test");
 }
 
-// catch errors into a variable
-catch error {
-	// Named blocks to tag errors (MiLa doesnt support line numbers in errors)
-	block named_block {
-		report("Error!");
-	}
+assert(err == "test", "errors are not handled properly");
+
+catch err_tagged {
+	report_tagged(E_GENERIC, "test");
 }
-println("Error:", error);
 
-/*
-	String operations:
-	// replaces every occurence of the substring `needle` with the string `string`
-	str.patch(s, needle, string)
-	// slice returns a copy! (essencially a view)
-	str.slice(s, index, length)
-	// Does mutate string
-	str.pop_b(s) pop last char (pop the back)
-	str.pop_f(s) pop first char (pop the front)
-	// not mutating
-	str.len(s) get length
-	str.copy(s) get a copy of the string
-
-	Byte operations:
-	ascii.from_int(0x45); numeric -> string
-	ascii.from_string("E"); string -> numeric
-
-	Casting:
-	cast.int("0"); // string -> int
-	cast.float("0.0"); // string -> float
-	cast.string("0.0"); // any -> string
-	cast.i2f(0); // int -> float
-	cast.f2i(0.0); // float -> int
-	cast.i2u(0); // int -> uint
-	cast.i2u(0u); // uint -> int
-
-	Misc:
-	as_opaque(v) // copies `v` into an owned opaque pointer
-
-	Type specififc:
-	array.set(a, index, value)
-	array.get(a, index)
-	array.len(a) // returns allocated size not number of occupied slots
-
-	dict.get(d, index)
-	dict.set(d, index, value)
-	dict.rem(d, index)
-	dict.len(d)
-
-	list.append(l, value)
-	list.pop(l, index?) // pops items at index if index is given otherwise last item
-	list.set(l, index, value)
-	list.get(l, index)
-*/
-
-fn greet(name) {
-	println("Hello " + name + "!");
-}
+assert(err_tagged == "Generic[5]: test", "tagged errors are not handled properly");
 
 namespace test {
-	var .test = 90;
-	namespace .what {
-		var .test = 90;
-		fn .greet() {
-		}
-	}
+	var .namespaced = 0x45;
+	var not_namespaced = -0x45;
 }
+
+assert(test.namespaced == 0x45, "namespaces arent handled!");
+assert(not_namespaced == -0x45, "namespaces arent handled!");
+
+assert(
+	str.patch("testdotwhat", "dot", ".") == "test.what", 
+	"Patch doesnt patch?..."
+);
+
+assert(cast.string(range(10)) == "range(0, 10, 1)",
+		   "wrong range representation!");

@@ -300,6 +300,56 @@ int is_truthy(Value *value)
     return truth;
 }
 
+int match_range(const char **pat, char c) {
+    int negate = 0;
+    if (**pat == '!') {
+        negate = 1;
+        (*pat)++;
+    }
+
+    int matched = 0;
+    while (**pat && **pat != ']') {
+        if ((*pat)[1] == '-' && (*pat)[2] && (*pat)[2] != ']') {
+            // Handle range a-z
+            if (c >= **pat && c <= (*pat)[2]) matched = 1;
+            *pat += 3;  // skip 'a-z'
+        } else {
+            if (c == **pat) matched = 1;
+            (*pat)++;
+        }
+    }
+
+    if (**pat == ']') (*pat)++; // skip closing bracket
+    return negate ? !matched : matched;
+}
+
+int match(const char *pattern, const char *str) {
+    while (*pattern) {
+        if (*pattern == '*') {
+            pattern++;
+            if (!*pattern) return 1;
+            while (*str) {
+                if (match(pattern, str)) return 1;
+                str++;
+            }
+            return 0;
+        } else if (*pattern == '?') {
+            if (!*str) return 0;
+            pattern++;
+            str++;
+        } else if (*pattern == '[') {
+            pattern++;
+            if (!*str || !match_range(&pattern, *str)) return 0;
+            str++;
+        } else {
+            if (*pattern != *str) return 0;
+            pattern++;
+            str++;
+        }
+    }
+    return !*str;
+}
+
 Value *vnull() { return val_new(T_NULL); }
 Value *vnone() { return val_new(T_NONE); }
 Value *vbreak() { return val_new(T_BREAK); }
@@ -372,7 +422,274 @@ Value *verror(char *fmt, ...)
     v->v.message = buf;
     return v;
 }
+// __attribute__((format(printf, 1, 2)))
+int mila_printf(char* fmt, ...)
+{
+    if (fmt == NULL) {
+        fprintf(stderr, "Error: printf(fmt, ...): Format string is NULL\n");
+        return 0;
+    }
+    
+    va_list args;
+    va_start(args, fmt);
+    
+    _Bool is_comma = 0;
+    int count = 0;
+    unsigned long char_count = 0;
+    int precision = -1;
+    char tmp[20] = {0};
 
+    while (*fmt) {
+        if ((*fmt) == '%') {
+            fmt++;
+
+            // skip over any flags like -, +, space, #, 0
+            while (*fmt == '-' || *fmt == '+' || *fmt == ' ' || *fmt == '#' || *fmt == '0')
+                fmt++;
+
+            // skip over a numeric width if present, skip * and coresponding argument
+            if (*fmt == '.')
+            {
+                fmt++;
+                if (*fmt == '*') {
+                    Value* v = va_arg(args, Value*);
+                    precision = (int)GET_INTEGER(v);
+                    fmt++;
+                } else {
+                    char* start = fmt;
+                    while (*fmt >= '0' && *fmt <= '9')
+                        fmt++;
+                    int len = fmt-start;
+                    sprintf(tmp, "%.*s", len, start);
+                    precision = atoi(tmp);
+                    tmp[0] = '\0'; // reset buffer
+                }
+            }
+
+            // check for our custom ' comma-separator extension
+            _Bool local_comma = is_comma;
+            is_comma = 0;
+            if (*fmt == '\'') { local_comma = 1; fmt++; }
+
+            // figure out the length modifier so we know how wide to read
+            // from an opaque pointer. 0=none 1=h 2=hh 3=l 4=ll 5=z 6=t 7=j
+            int length = 0;
+            if (*fmt == 'h') {
+                fmt++;
+                if (*fmt == 'h') { length = 2; fmt++; } // hh - signed/unsigned char
+                else              length = 1;            // h  - short
+            } else if (*fmt == 'l') {
+                fmt++;
+                if (*fmt == 'l') { length = 4; fmt++; } // ll - long long
+                else              length = 3;            // l  - long / double
+            } else if (*fmt == 'z') { length = 5; fmt++; } // size_t
+            else if (*fmt == 't') { length = 6; fmt++; } // ptrdiff_t
+            else if (*fmt == 'j') { length = 7; fmt++; } // intmax_t
+
+            switch (*fmt)
+            {
+            case '\'':
+                // comma modifier showed up after the length modifier, handle it
+                local_comma = 1;
+                fmt++;
+                goto reparse_specifier;
+
+            reparse_specifier:;
+
+            case '?': {
+                Value* v = va_arg(args, Value*);
+                if (__builtin_expect(local_comma, 0)) {
+                    char_count += print_value_fancy(v);
+                } else {
+                    char_count += print_value(v);
+                }
+            } break;
+
+            case 'd': case 'i': case 'u': case 'f': case 'g': case 'e':
+            case 'E': case 'G': case 'o': {
+                Value* v = va_arg(args, Value*);
+
+                if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
+                    void* p = GET_OPAQUE(v);
+                    switch (*fmt) {
+                    case 'f': case 'e': case 'E':
+                        if      (length == 3) char_count += printf("%.*lf", precision,  *(double*)p);
+                        else if (length == 4) char_count += printf("%.*Lf", precision,  *(long double*)p);
+                        else                  char_count += printf("%.*f", precision,   *(float*)p);
+                        break;
+                    case 'g': case 'G':
+                        if      (length == 3) char_count += printf("%.*lg", precision,  *(double*)p);
+                        else if (length == 4) char_count += printf("%.*Lg", precision,  *(long double*)p);
+                        else                  char_count += printf("%.*g", precision,   *(float*)p);
+                        break;
+                    case 'd': case 'i':
+                        switch (length) {
+                        case 0:  char_count += printf("%.*d", precision,   *(int*)p);          break;
+                        case 1:  char_count += printf("%.*d", precision,   *(short*)p);        break;
+                        case 2:  char_count += printf("%.*d", precision,   *(signed char*)p);  break;
+                        case 3:  char_count += printf("%.*ld", precision,  *(long*)p);         break;
+                        case 4:  char_count += printf("%.*lld", precision, *(long long*)p);    break;
+                        case 5:  char_count += printf("%.*zd", precision,  *(ssize_t*)p);      break;
+                        case 6:  char_count += printf("%.*td", precision,  *(ptrdiff_t*)p);    break;
+                        case 7:  char_count += printf("%.*jd", precision,  *(intmax_t*)p);     break;
+                        }
+                        break;
+                    case 'u':
+                        switch (length) {
+                        case 0:  char_count += printf("%.*u", precision,   *(unsigned int*)p);        break;
+                        case 1:  char_count += printf("%.*u", precision,   *(unsigned short*)p);      break;
+                        case 2:  char_count += printf("%.*u", precision,   *(unsigned char*)p);       break;
+                        case 3:  char_count += printf("%.*lu", precision,  *(unsigned long*)p);       break;
+                        case 4:  char_count += printf("%.*llu", precision, *(unsigned long long*)p);  break;
+                        case 5:  char_count += printf("%.*zu", precision,  *(size_t*)p);              break;
+                        case 6:  char_count += printf("%.*tu", precision,  *(ptrdiff_t*)p);           break;
+                        case 7:  char_count += printf("%.*ju", precision,  *(uintmax_t*)p);           break;
+                        }
+                        break;
+                    case 'o':
+                        switch (length) {
+                        case 0:  char_count += printf("%.*o", precision,   *(unsigned int*)p);        break;
+                        case 1:  char_count += printf("%.*o", precision,   *(unsigned short*)p);      break;
+                        case 2:  char_count += printf("%.*o", precision,   *(unsigned char*)p);       break;
+                        case 3:  char_count += printf("%.*lo", precision,  *(unsigned long*)p);       break;
+                        case 4:  char_count += printf("%.*llo", precision, *(unsigned long long*)p);  break;
+                        case 5:  char_count += printf("%.*zo", precision,  *(size_t*)p);              break;
+                        case 7:  char_count += printf("%.*jo", precision,  *(uintmax_t*)p);           break;
+                        }
+                        break;
+                    }
+                } else {
+                    // not an opaque pointer, just let our value printer handle it
+                    if (__builtin_expect(local_comma, 0)) char_count += print_value_fancy(v);
+                    else char_count += print_value(v);
+                }
+            } break;
+
+            case 'x': {
+                Value* v = va_arg(args, Value*);
+                if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
+                    void* p = GET_OPAQUE(v);
+                    switch (length) {
+                    case 0:  char_count += printf("%.*x", precision,   *(unsigned int*)p);        break;
+                    case 1:  char_count += printf("%.*x", precision,   *(unsigned short*)p);      break;
+                    case 2:  char_count += printf("%.*x", precision,   *(unsigned char*)p);       break;
+                    case 3:  char_count += printf("%.*lx", precision,  *(unsigned long*)p);       break;
+                    case 4:  char_count += printf("%.*llx", precision, *(unsigned long long*)p);  break;
+                    case 5:  char_count += printf("%.*zx", precision,  *(size_t*)p);              break;
+                    case 7:  char_count += printf("%.*jx", precision,  *(uintmax_t*)p);           break;
+                    }
+                } else {
+                    // non-opaque, just cast whatever numeric type we got
+                    unsigned int value = 0;
+                    switch (MILA_GET_TYPE(v)) {
+                    case T_INT:   value = (unsigned int)GET_INTEGER(v);  break;
+                    case T_UINT:  value = (unsigned int)GET_UINTEGER(v); break;
+                    case T_FLOAT: value = (unsigned int)GET_FLOAT(v);    break;
+                    }
+                    char_count += printf("%.*x", precision, value);
+                }
+            } break;
+
+            case 'X': {
+                Value* v = va_arg(args, Value*);
+                if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE) {
+                    void* p = GET_OPAQUE(v);
+                    switch (length) {
+                    case 0:  char_count += printf("%.*X", precision,   *(unsigned int*)p);        break;
+                    case 1:  char_count += printf("%.*X", precision,   *(unsigned short*)p);      break;
+                    case 2:  char_count += printf("%.*X", precision,   *(unsigned char*)p);       break;
+                    case 3:  char_count += printf("%.*lX", precision,  *(unsigned long*)p);       break;
+                    case 4:  char_count += printf("%.*llX", precision, *(unsigned long long*)p);  break;
+                    case 5:  char_count += printf("%.*zX", precision,  *(size_t*)p);              break;
+                    case 7:  char_count += printf("%.*jX", precision,  *(uintmax_t*)p);           break;
+                    }
+                } else {
+                    // same as %x but uppercase, same casting logic
+                    unsigned int value = 0;
+                    switch (MILA_GET_TYPE(v)) {
+                    case T_INT:   value = (unsigned int)GET_INTEGER(v);  break;
+                    case T_UINT:  value = (unsigned int)GET_UINTEGER(v); break;
+                    case T_FLOAT: value = (unsigned int)GET_FLOAT(v);    break;
+                    }
+                    char_count += printf("%.*X", precision, value);
+                }
+            } break;
+
+            case 's': {
+                Value* v = va_arg(args, Value*);
+                switch (MILA_GET_TYPE(v)) {
+                case T_STRING:
+                    char_count += printf("%.*s", precision, GET_STRING(v)); break;
+                case T_OPAQUE:
+                case T_OWNED_OPAQUE:
+                    char_count += printf("%.*s", precision, (char*)GET_OPAQUE(v));
+                    break;
+                default:
+                    if (__builtin_expect(local_comma, 0)) char_count += print_value_fancy(v);
+                    else char_count += print_value(v);
+                    break;
+                }
+            } break;
+
+            case 'c': {
+                Value* v = va_arg(args, Value*);
+                char value = '?';
+                switch (MILA_GET_TYPE(v)) {
+                case T_STRING:       value = *GET_STRING(v);           break; // just grab the first character
+                case T_OPAQUE:
+                case T_OWNED_OPAQUE: value = *(char*)GET_OPAQUE(v);    break;
+                default:
+                    return -1;
+                }
+                char_count += printf("%c", value);
+            } break;
+
+            case 'p': {
+                Value* v = va_arg(args, Value*);
+                void* ptr = NULL;
+                switch (MILA_GET_TYPE(v)) {
+                case T_OWNED_OPAQUE: ptr = GET_OPAQUE(v); break;
+                default:             ptr = v; break; // print the Value* itself as an address
+                }
+                char_count += printf("%p", ptr);
+            } break;
+
+            case 'n': {
+                // write back the number of characters printed so far
+                Value* v = va_arg(args, Value*);
+                if (MILA_GET_TYPE(v) == T_INT) {
+                    v->type = T_UINT;
+                    v->v.ui = char_count;
+                } else if (MILA_GET_TYPE(v) == T_UINT) {
+                    v->v.i = char_count;
+                } else if (MILA_GET_TYPE(v) == T_OPAQUE) {
+                    v->type = T_UINT;
+                    v->v.ui = char_count;
+                } else if (MILA_GET_TYPE(v) == T_NONE) {
+                    v->type = T_UINT;
+                    v->v.ui = char_count;
+                } else if (MILA_GET_TYPE(v) == T_NULL) {
+                    v->type = T_UINT;
+                    v->v.ui = char_count;
+                }
+            } break;
+
+            case '%':
+                putchar('%'); char_count++; break;
+
+            default:
+                return -1;
+            }
+        } else {
+            putchar(*fmt);
+            char_count++;
+        }
+        fmt++;
+    }
+
+    va_end(args);
+    return (int)char_count;
+}
 __attribute__((format(printf, 1, 2)))
 Value *vstring_fmt(char *fmt, ...)
 {
@@ -970,7 +1287,11 @@ int print_value(Value *v)
     {
         return printf("cnull");
     }
-    char *txt = as_c_string(v);
+    char *txt;
+    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+        txt = as_c_string_repr(v);
+    else
+        txt = as_c_string(v);
     int i = printf("%s", txt);
     mila_free(txt);
     return i;
@@ -1048,6 +1369,8 @@ void val_release(Value *v)
             mila_free(v->v.s);
         if (v->type == T_ERROR && v->v.message)
             mila_free(v->v.message);
+        if (v->type == T_TAGGED_ERROR && v->v.tagged_error.message)
+            mila_free(v->v.tagged_error.message);
         if (v->type == T_FUNCTION)
         {
             if (v->v.fn->params)
@@ -1113,6 +1436,8 @@ void val_kill(Value *v)
         mila_free(v->v.s);
     if (v->type == T_ERROR && v->v.message)
         mila_free(v->v.message);
+    if (v->type == T_TAGGED_ERROR && v->v.tagged_error.message)
+        mila_free(v->v.tagged_error.message);
     if (v->type == T_FUNCTION)
     {
         if (v->v.fn->params)
@@ -1384,7 +1709,6 @@ int load_library(Env *env, const char *libpath)
             }
             env_register_native(env, names[i], (void *)f);
         }
-        return 0;
     }
 
     const NativeEntry *entries =
@@ -1444,7 +1768,6 @@ int load_library(Env *env, const char *libpath)
             }
             env_register_native(env, names[i], f);
         }
-        return 0;
     }
 
     dlerror();
@@ -1456,6 +1779,127 @@ int load_library(Env *env, const char *libpath)
     {
         for (size_t i = 0; entries[i].name && entries[i].func; i++)
         {
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
+    }
+
+    if (!fail)
+        return 0;
+
+    fprintf(stderr, "dlsym 'lib_functions' error: %s\nMust have a simple 'const char* lib_functions' and list the function names (last item must be NULL)\nor also 'const NativeEntry lib_function_entries[]' which takes in (NativeEntry){.name, .func} with the last item being (NativeEntry){NULL, NULL}\n", err);
+    dlclose(lib);
+    return -2;
+#endif
+}
+int load_library_noisy(Env *env, const char *libpath)
+{
+    int fail = 1;
+#ifdef _WIN32
+    HMODULE lib = LoadLibraryA(libpath);
+    if (!lib)
+    {
+        fprintf(stderr, "LoadLibraryA('%s') failed (err=%lu)\n", libpath, GetLastError());
+        return -1;
+    }
+
+    void (*init_func)(Env *) = void(*)(Env *)(lib, "_mila_lib_init");
+
+    if (init_func)
+    {
+        fail = 0;
+        init_func(env);
+    }
+
+    const char *const *names =
+        (const char *const *)GetProcAddress(lib, "lib_functions");
+
+    if (names)
+    {
+        for (size_t i = 0; names[i] != NULL; i++)
+        {
+            FARPROC f = GetProcAddress(lib, names[i]);
+            if (!f)
+            {
+                fprintf(stderr, "Warning: function '%s' not found in '%s'\n", names[i], libpath);
+                continue;
+            }
+            fprintf(stderr, "from lib_functions, Loaded symbol '%s'\n", names[i]);
+            env_register_native(env, names[i], (void *)f);
+        }
+    }
+
+    const NativeEntry *entries =
+        (const NativeEntry *)GetProcAddress(lib, "lib_function_entries");
+
+    if (entries)
+    {
+        char *name;
+        NativeFn func;
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            fprintf(stderr, "from lib_function_entries, Loaded symbol '%s'\n", entries[i].name);
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
+    }
+
+    if (!fail)
+        return 0;
+
+    fprintf(stderr, "Must have a simple 'const char* lib_functions' and list the function names (last item must be NULL)\nor also 'const NativeEntry lib_function_entries[]' which takes in (NativeEntry){.name, .func} with the last item being (NativeEntry){NULL, NULL}\n");
+    FreeLibrary(lib);
+    return -2;
+
+#else // POSIX
+    void *lib = dlopen(libpath, RTLD_LAZY);
+    if (!lib)
+    {
+        fprintf(stderr, "dlopen('%s') failed: %s\n", libpath, dlerror());
+        return -1;
+    }
+
+    dlerror();
+    void (*init_func)(Env *) = dlsym(lib, "_mila_lib_init");
+    const char *err = dlerror();
+    if (!err)
+    {
+        fail = 0;
+        init_func(env);
+    }
+
+    const char *const *names =
+        (const char *const *)dlsym(lib, "lib_functions");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; names[i] != NULL; i++)
+        {
+            dlerror();
+            void *f = dlsym(lib, names[i]);
+            const char *err2 = dlerror();
+            if (err2)
+            {
+                fprintf(stderr, "Warning: '%s' not found in '%s'\n",
+                        names[i], libpath);
+                continue;
+            }
+            fprintf(stderr, "from lib_functions, Loaded symbol '%s'\n", names[i]);
+            env_register_native(env, names[i], f);
+        }
+    }
+
+    dlerror();
+    const NativeEntry *entries =
+        (const NativeEntry *)dlsym(lib, "lib_function_entries");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            fprintf(stderr, "from lib_function_entries, Loaded symbol '%s'\n", entries[i].name);
             env_register_native(env, entries[i].name, entries[i].func);
         }
         return 0;
@@ -2407,34 +2851,46 @@ Value *eval_primary(Src *s, Env *env)
             HANDLE_CONTROL(res);
             return res;
         }
-
         else if (src_peek(s) == '[')
         {
-            Value *index = parse_subscript(s, env);
             Value *obj = expr;
-
+ 
             if (!obj)
             {
-                val_release(index);
-                val_release(obj);
                 Value *ret = verror("cannot be subscripted as it is cnull");
                 return ret;
             }
-
-            if (obj->method_table && obj->method_table[BMethodGetItem])
+ 
+            val_retain(obj);
+ 
+            // Handle chained subscripts: (expr)[x][y][z]
+            while (src_peek(s) == '[')
             {
-                Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
-                val_release(index);
-                val_release(obj);
-                return val_retain(res);
+                Value *index = parse_subscript(s, env);
+ 
+                if (!obj)
+                {
+                    val_release(index);
+                    Value *ret = verror("cannot be subscripted as it is cnull");
+                    return ret;
+                }
+ 
+                if (obj->method_table && obj->method_table[BMethodGetItem])
+                {
+                    Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
+                    val_release(index);
+                    val_release(obj);
+                    obj = res;
+                }
+                else
+                {
+                    val_release(index);
+                    val_release(obj);
+                    return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
+                }
             }
-            else
-            {
-                val_release(index);
-                Value *res = verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
-                val_release(obj);
-                return res;
-            }
+ 
+            return val_retain(obj);
         }
         return expr;
     }
@@ -2614,36 +3070,51 @@ Value *eval_primary(Src *s, Env *env)
             for (int i = 0; i < argc; i++)
                 val_release(args[i]);
             mila_free(args);
-
             HANDLE_RETURN(res);
             return res;
         }
         else if (src_peek(s) == '[')
         {
-            Value *index = parse_subscript(s, env);
             Value *obj = env_get(env, id);
-
             if (!obj)
             {
-                val_release(index);
                 Value *ret = verror("%s cannot be subscripted as it is cnull", id);
                 mila_free(id);
                 return ret;
             }
-
-            if (obj->method_table && obj->method_table[BMethodGetItem])
+            mila_free(id);
+ 
+            // val_retain(obj);
+ 
+            // Handle chained subscripts: (expr)[x][y][z]
+            while (src_peek(s) == '[')
             {
-                Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
-                val_release(index);
-                mila_free(id);
-                return val_retain(res);
+                Value *index = parse_subscript(s, env);
+ 
+                if (!obj)
+                {
+                    val_release(index);
+                    val_release(obj);
+                    Value *ret = verror("cannot be subscripted as it is cnull");
+                    return ret;
+                }
+ 
+                if (obj->method_table && obj->method_table[BMethodGetItem])
+                {
+                    Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
+                    val_release(index);
+                    // val_release(obj);
+                    obj = res;
+                }
+                else
+                {
+                    val_release(index);
+                    val_release(obj);
+                    return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
+                }
             }
-            else
-            {
-                val_release(index);
-                mila_free(id);
-                return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
-            }
+ 
+            return val_retain(obj);
         }
         else
         {
@@ -2879,6 +3350,14 @@ Value *binary_op(Value *a, MethodType op, Value *b)
         }
         return vnull();
     }
+    else if (b->type == T_STRING && a->type == T_STRING && op == BMethodGlob)
+    {
+        char *string, *pattern;
+        string = GET_STRING(a);
+        pattern = GET_STRING(b);
+        if (match(pattern, string)) return vbool(1);
+        else return vbool(0);
+    }
     return vnull();
 }
 
@@ -2978,6 +3457,8 @@ int precedence_of(MethodType op)
         return 7;
     if (BMethodMod == op || BMethodMul == op || BMethodDiv == op)
         return 8;
+    if (BMethodGlob == op)
+        return 9;
     return 0;
 }
 
@@ -3033,6 +3514,11 @@ MethodType parse_op(Src *s)
     {
         s->pos += 2;
         return BMethodDefault;
+    }
+    if (a == '=' && b == '>')
+    {
+        s->pos += 2;
+        return BMethodGlob;
     }
     // single-char ops
     s->pos++;
@@ -3117,10 +3603,133 @@ Value *eval_statement(Src *s, Env *env)
         s->pos += strlen("set");
         char *id = parse_ident(s);
         if (!id)
-            return verror("Invalid let statement.");
+            return verror("Invalid set statement.");
         Value *v = NULL;
         MethodType mt = MethodNone;
         skip_ws(s);
+        
+        // Check if this is a subscripted assignment
+        if (src_peek(s) == '[')
+        {
+            // Handle nested subscripts: set a[x][y][z] = value
+            Value *obj = env_get(env, id);
+            
+            if (!obj)
+            {
+                Value *ret = verror("%s cannot be subscripted as it is cnull", id);
+                mila_free(id);
+                return ret;
+            }
+            
+            val_retain(obj);
+            
+            // Collect all subscript indices
+            Value **indices = NULL;
+            int num_indices = 0;
+            
+            while (src_peek(s) == '[')
+            {
+                Value *index = parse_subscript(s, env);
+                indices = mila_realloc(indices, sizeof(Value *) * (num_indices + 1));
+                indices[num_indices++] = index;
+            }
+            
+            skip_ws(s);
+            
+            // Parse the assignment or statement
+            if (match_char(s, '='))
+            {
+                v = eval_expr(s, env);
+                match_char(s, ';');
+            }
+            else if (match_char(s, ':'))
+            {
+                v = eval_statement(s, env);
+            }
+            else
+            {
+                for (int i = 0; i < num_indices; i++)
+                    val_release(indices[i]);
+                mila_free(indices);
+                val_release(obj);
+                mila_free(id);
+                return verror("Expected = or : after subscripts!");
+            }
+            
+            if (v && v->type == T_RETURN)
+            {
+                Value *tmp = v;
+                v = (Value *)tmp->v.opaque;
+                val_release(tmp);
+            }
+            
+            // Traverse to the parent object (all but the last index)
+            Value *parent = obj;
+            for (int i = 0; i < num_indices - 1; i++)
+            {
+                if (parent->method_table && parent->method_table[BMethodGetItem])
+                {
+                    Value *res = ((binary_method)parent->method_table[BMethodGetItem])(parent, indices[i]);
+                    // val_release(parent);
+                    parent = res;
+                    
+                    if (!parent)
+                    {
+                        Value *ret = verror("cannot be subscripted at level %d", i + 1);
+                        for (int j = 0; j < num_indices; j++)
+                            val_release(indices[j]);
+                        mila_free(indices);
+                        val_release(obj);
+                        val_release(v);
+                        mila_free(id);
+                        return ret;
+                    }
+                }
+                else
+                {
+                    Value *ret = verror("Type %s does not support subscripting at level %d!", MILA_GET_TYPENAME(parent), i + 1);
+                    for (int j = 0; j < num_indices; j++)
+                        val_release(indices[j]);
+                    mila_free(indices);
+                    val_release(obj);
+                    val_release(parent);
+                    val_release(v);
+                    mila_free(id);
+                    return ret;
+                }
+            }
+            
+            // Set the final item using the last index
+            Value *last_index = indices[num_indices - 1];
+            if (parent->method_table && parent->method_table[TMethodSetItem])
+            {
+                Value *res = ((trinary_method)parent->method_table[TMethodSetItem])(parent, last_index, v);
+                
+                for (int i = 0; i < num_indices; i++)
+                    val_release(indices[i]);
+                mila_free(indices);
+                val_release(obj);
+                // val_release(parent);
+                val_release(v);
+                mila_free(id);
+                return val_retain(res);
+            }
+            else
+            {
+                Value *ret = verror("Type %s does not support item assignment!", MILA_GET_TYPENAME(parent));
+                
+                for (int i = 0; i < num_indices; i++)
+                    val_release(indices[i]);
+                mila_free(indices);
+                val_release(obj);
+                val_release(parent);
+                val_release(v);
+                mila_free(id);
+                return ret;
+            }
+        }
+        
+        // Non-subscript assignment (original logic)
         switch (src_peek(s))
         {
         case '+':
@@ -3156,8 +3765,6 @@ Value *eval_statement(Src *s, Env *env)
                 }
                 if (inplace)
                     binary_op_in_place(inplace, mt, v);
-                // Since we do an inplace operation
-                // We dont really need to set it now
                 mila_free(id);
                 val_release(v);
                 match_char(s, ';');
@@ -3168,59 +3775,11 @@ Value *eval_statement(Src *s, Env *env)
         {
             v = eval_statement(s, env);
         }
-        else if (src_peek(s) == '[')
-        {
-            Value *index = parse_subscript(s, env);
-            Value *obj = env_get(env, id);
-
-            if (match_char(s, '='))
-            {
-                v = eval_expr(s, env);
-                match_char(s, ';');
-            }
-            else if (match_char(s, ':'))
-            {
-                v = eval_statement(s, env);
-            }
-
-            if (v && v->type == T_RETURN)
-            {
-                Value *tmp = v;
-                v = (Value *)tmp->v.opaque;
-                val_release(tmp);
-            }
-
-            if (!obj)
-            {
-                val_release(index);
-                Value *ret = verror("%s cannot be subscripted as it is cnull", id);
-                val_release(v);
-                mila_free(id);
-                return ret;
-            }
-            if (obj->method_table && obj->method_table[TMethodSetItem])
-            {
-                Value *res = ((trinary_method)obj->method_table[TMethodSetItem])(obj, index, v);
-                val_release(index);
-                val_release(v);
-                mila_free(id);
-                return val_retain(res);
-            }
-            else
-            {
-                val_release(index);
-                val_release(v);
-                mila_free(id);
-                Value *res = verror("Type %s does not support TMethodSetItem!", MILA_GET_TYPENAME(obj));
-                val_release(obj);
-                return res;
-            }
-        }
         else
         {
             return verror("Expected a proper set statement!");
         }
-
+        
         if (v && v->type == T_RETURN)
         {
             Value *tmp = v;
@@ -3543,7 +4102,6 @@ Value *eval_statement(Src *s, Env *env)
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
                 Env *frame = env_new(env);
-
                 env_set_local_raw(frame, id, v);
                 bod = eval_block_raw(s, frame);
                 val_release(v);
@@ -3632,10 +4190,19 @@ Value *eval_statement(Src *s, Env *env)
         if (IS_ERROR(res) && !IS_FATAL(res))
         {
             if (id) {
-                res->v.s = res->v.message;
-                res->type = T_STRING;
-                env_set_local_raw(env, id, res);
-                free(id);
+                if (MILA_GET_TYPE(res) == T_ERROR) {
+                    Value *ret = vstring_fmt("%s", res->v.message);
+                    env_set_local(env, id, ret);
+                    val_release(res);
+                    free(id);
+                    return ret;
+                } else {
+                    Value* ret = vstring_fmt("%s[%i]: %s", MILA_GET_ERRORNAME(res), MILA_GET_ERROR(res), res->v.tagged_error.message);
+                    val_release(res);
+                    env_set_local(env, id, ret);
+                    free(id);
+                    return ret;
+                }
             }
             else val_release(res);
             return vnull();
@@ -3646,6 +4213,7 @@ Value *eval_statement(Src *s, Env *env)
             fprintf(stderr, "FATAL ERROR[%s]: %s\n", MILA_GET_ERRORNAME(res), GET_ERROR_TAGGED(res));
             abort();
         }
+        free(id);
         return res;
     }
     if (is_keyword_at(s, "fn"))
@@ -3771,7 +4339,8 @@ Value *eval_source(Src *s, Env *env)
             }
             if (last->type == T_TAGGED_ERROR)
             {
-                printf("\n= Error[%s]: %s\n", MILA_GET_ERRORNAME(last), last->v.tagged_error.message);
+                if (IS_FATAL(last)) printf("\n= FATAL ERROR[%s]: %s\n", MILA_GET_ERRORNAME(last), last->v.tagged_error.message);
+                else printf("\n= Error[%s]: %s\n", MILA_GET_ERRORNAME(last), last->v.tagged_error.message);
                 return last;
             }
             else if (last->type == T_RETURN)
@@ -4142,7 +4711,7 @@ int main(int argc, char **argv)
             else if (strncmp(buffer, ".load", 5) == 0)
             {
                 *strchr(buffer, '\n') = 0;
-                if (load_library(g, buffer + 6))
+                if (load_library_noisy(g, buffer + 6))
                     printf("Library loading went wrong!\n");
                 printf(">>> ");
                 buffer[0] = 0;
@@ -4168,9 +4737,11 @@ int main(int argc, char **argv)
                 Src *S = src_new(buffer);
                 Value *res = eval_source(S, g);
 
-                printf("  : ");
-                print_value_repr(res);
-                putchar('\n');
+                if (MILA_GET_TYPE(res) != T_NULL && !IS_ERROR(res)) {
+                    printf("  : ");
+                    print_value_repr(res);
+                    putchar('\n');
+                }
 
                 val_release(res);
                 src_free(S);

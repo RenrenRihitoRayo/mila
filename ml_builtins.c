@@ -310,10 +310,31 @@ Value *list_to_iter(Value *self)
     return vopaque(iter);
 }
 
-Value *list_display(Value *self)
+Value *list_repr(Value *self)
 {
     LinkedList *lst = (LinkedList *)self->v.opaque;
     if (lst->size > MAX_ITEMS_DISPLAYED) return vstring_fmt("list(%zu items)", lst->size);
+    Value **iter = ll_to_iter(lst);
+
+    char *buffer = mila_strdup("list(");
+    for (int i = 0; iter[i]; i++)
+    {
+        char *repr = as_c_string_repr(iter[i]);
+        if (i < lst->size - 1)
+            our_asprintf(&buffer, "%s, ", repr);
+        else
+            our_asprintf(&buffer, "%s", repr);
+        val_release(iter[i]);
+        mila_free(repr);
+    }
+    our_asprintf(&buffer, ")");
+    mila_free(iter);
+    return vstring_take(buffer);
+}
+
+Value *list_str(Value *self)
+{
+    LinkedList *lst = (LinkedList *)self->v.opaque;
     Value **iter = ll_to_iter(lst);
 
     char *buffer = mila_strdup("list(");
@@ -381,7 +402,9 @@ Value *native_list_len(Env *e, int argc, Value **argv)
 
 Value* native_list_pop(Env* e, int argc, Value** argv)
 {
-    return ll_pop(argv[0]->v.opaque, argv[1]->v.i);
+    if (argc == 1) return ll_pop(argv[0]->v.opaque, -1);
+    else if (argc == 2) return ll_pop(argv[0]->v.opaque, argv[1]->v.i);
+    return vtagged_error(E_RUNTIME, "list.pop(l, index?): Missing list argument!");
 }
 
 Value *list_free(Value *self)
@@ -732,6 +755,43 @@ Value *array_to_str(Value *self)
         return vstring_take(buffer);
     }
 
+    our_asprintf(&buffer, "array.from(");
+    for (int i = 0; i < arr->size; i++)
+    {
+        Value *slot = arr->array[i];
+        if (!slot)
+        {
+            our_asprintf(&buffer, "?null?");
+        }
+        else
+        {
+            char *s = as_c_string_repr(slot);
+            our_asprintf(&buffer, "%s", s);
+            mila_free(s);
+        }
+        if (i < arr->size - 1)
+            our_asprintf(&buffer, ", ");
+    }
+    our_asprintf(&buffer, ")");
+    return vstring_take(buffer);
+}
+
+Value *array_to_repr(Value *self)
+{
+    char *buffer = NULL;
+    if (!self || self->type != T_OPAQUE)
+    {
+        our_asprintf(&buffer, "<not-an-array>");
+        return vstring_take(buffer);
+    }
+
+    Array *arr = (Array *)self->v.opaque;
+    if (!arr)
+    {
+        our_asprintf(&buffer, "<null-array-data>");
+        return vstring_take(buffer);
+    }
+
     if (arr->size > MAX_ITEMS_DISPLAYED) return vstring_fmt("array(%i items)", arr->size);
 
     our_asprintf(&buffer, "array.from(");
@@ -819,6 +879,12 @@ Value *range_to_iter(Value *self)
     }
     v[index] = NULL;
     return vopaque(v);
+}
+
+Value *range_to_str(Value *self)
+{
+    Range *data = (Range *)(self->v.opaque);
+    return vstring_fmt("range(%zu, %zu, %zu)", data->start, data->end, data->step);
 }
 
 Value *range_free(Value *self)
@@ -1135,9 +1201,9 @@ Value *native_report(Env *env, int argc, Value **argv)
 {
     (void)env;
     if (argc == 1 && argv[0]->type == T_STRING)
-        return verror("report(message): %s\n", argv[0]->v.s);
+        return verror("%s", argv[0]->v.s);
     else if (argc == 0)
-        return verror("report(message) - No details given.");
+        return verror("No details given.");
     else
         return verror("report(message): Invalid number of arguments given.");
 }
@@ -1146,13 +1212,13 @@ Value *native_report_tagged(Env *env, int argc, Value **argv)
 {
     (void)env;
     if (argc == 2) {
-        return vtagged_error((ErrorType)GET_INTEGER(argv[0]), "report_tagged(tag, message): %s", GET_STRING(argv[1]));
+        return vtagged_error((ErrorType)GET_INTEGER(argv[0]), "%s", GET_STRING(argv[1]));
     }
     else if (argc == 1) {
-        return vtagged_error((ErrorType)GET_INTEGER(argv[0]), "report_tagged(tag, message) - No details given.");
+        return vtagged_error(E_GENERIC, "No details given.");
     }
     else
-        return verror("report(message): Invalid number of arguments given.");
+        return verror("report(tag, message): Invalid number of arguments given.");
 }
 
 Value *native_exit(Env *env, int argc, Value **argv)
@@ -1505,8 +1571,20 @@ Value* native_list_append(Env* env, int argc, Value **argv)
 
 Value* native_repr(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1) return verror("raw_repr(value): Expected at least one argument!");
+    if (argc != 1) return verror("repr(value): Expected at least one argument!");
+    return vstring_take(as_c_string_repr(argv[0]));
+}
+
+Value* native_repr_raw(Env *env, int argc, Value **argv) {
+    (void)env;
+    if (argc != 1) return verror("repr_repr(value): Expected at least one argument!");
     return vstring_take(as_c_string_repr_raw(argv[0]));
+}
+
+Value* native_str(Env *env, int argc, Value **argv) {
+    (void)env;
+    if (argc != 1) return verror("str(value): Expected at least one argument!");
+    return vstring_take(as_c_string(argv[0]));
 }
 
 Value *env_free_builtins()
@@ -1892,6 +1970,15 @@ Value* native_printf(Env* e, int argc, Value** argv)
     return vnull();
 }
 
+
+Value* native_assert(Env* env, int argc, Value** argv)
+{
+    (void)env;
+    if (argc != 2) return verror("assert(cond, message): Needs two arguments!");
+    if (!is_truthy(argv[0])) return verror("%s", GET_STRING(argv[1]));
+    return vnull();
+}
+
 #ifdef MILA_TRUE_BARE
     #define MILA_NO_SETUP
     #define MILA_NO_COLLECTIONS
@@ -1924,6 +2011,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "own", native_own);
     env_register_native(g, "unown", native_unown);
     env_register_native(g, "repr", native_repr);
+    env_register_native(g, "repr_raw", native_repr_raw);
+    env_register_native(g, "str", native_str);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printf", native_printf); // lovely printf function for C programmers
@@ -1966,7 +2055,7 @@ void env_register_builtins(Env *g)
 
     list_meta = val_make_table();
 
-    val_set_method_table(list_meta, UMethodToString, list_display);
+    val_set_method_table(list_meta, UMethodToString, list_repr);
     val_set_method_table(list_meta, UMethodFree, list_free);
     val_set_method_table(list_meta, UMethodToIter, list_to_iter);
     val_set_method_table(list_meta, BMethodGetItem, get_list);
@@ -1976,6 +2065,7 @@ void env_register_builtins(Env *g)
 
     val_set_method_table(array_meta, UMethodToIter, array_to_iter);
     val_set_method_table(array_meta, UMethodToString, array_to_str);
+    val_set_method_table(array_meta, UMethodToRepr, array_to_repr);
     val_set_method_table(array_meta, BMethodGetItem, get_array);
     val_set_method_table(array_meta, TMethodSetItem, set_array);
     val_set_method_table(array_meta, UMethodFree, free_array);
@@ -1983,6 +2073,7 @@ void env_register_builtins(Env *g)
     range_meta = val_make_table();
 
     val_set_method_table(range_meta, UMethodToIter, range_to_iter);
+    val_set_method_table(range_meta, UMethodToString, range_to_str);
     val_set_method_table(range_meta, UMethodFree, range_free);
 
     istring_meta = val_make_table();
@@ -2060,11 +2151,13 @@ void env_register_builtins(Env *g)
     // === Error handling
     env_register_native(g, "report", native_report);
     env_register_native(g, "report_tagged", native_report_tagged);
-    env_set_local(g, "E_PRE_RUNTIME", vint(E_PRE_RUNTIME));
-    env_set_local(g, "E_RUNTIME", vint(E_RUNTIME));
-    env_set_local(g, "E_TYPE_ERROR", vint(E_TYPE_ERROR));
-    env_set_local(g, "E_FATAL", vint(E_FATAL));
-    env_set_local(g, "E_GENERIC", vint(E_GENERIC));
+    env_register_native(g, "assert", native_assert);
+    env_set_local_raw(g, "E_PRE_RUNTIME", vint(E_PRE_RUNTIME));
+    env_set_local_raw(g, "E_RUNTIME", vint(E_RUNTIME));
+    env_set_local_raw(g, "E_TYPE_ERROR", vint(E_TYPE_ERROR));
+    env_set_local_raw(g, "E_FATAL", vint(E_FATAL));
+    env_set_local_raw(g, "E_GENERIC", vint(E_GENERIC));
+    env_set_local_raw(g, "E_SYNTAX_ERROR", vint(E_SYNTAX_ERROR));
     env_register_native(g, "exit", native_exit);
     // === Time measurement
     env_register_native(g, "get_time", native_get_time);

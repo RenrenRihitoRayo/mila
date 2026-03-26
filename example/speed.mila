@@ -15,3 +15,4 @@ foreach item : range(1, 2001) {
 var end_time = get_time() - start_time;
 
 println("Time: " + end_time + "s");
+println(a[1999]);

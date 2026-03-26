@@ -241,7 +241,7 @@ Value *dict_display(Value *self)
 
     KVPair *entries = NULL;
     size_t count = 0, capacity = 16;
-    entries = mila_malloc(capacity * sizeof(KVPair));
+    entries = (KVPair*)mila_malloc(capacity * sizeof(KVPair));
     if (!entries)
         return NULL;
 
@@ -254,7 +254,7 @@ Value *dict_display(Value *self)
             if (count >= capacity)
             {
                 capacity *= 2;
-                KVPair *tmp = realloc(entries, capacity * sizeof(KVPair));
+                KVPair *tmp = (KVPair*)realloc(entries, capacity * sizeof(KVPair));
                 if (!tmp)
                 {
                     mila_free(entries);

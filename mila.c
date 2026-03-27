@@ -2972,8 +2972,89 @@ Value *eval_primary(Src *s, Env *env)
                     return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
                 }
             }
+
  
             return obj;
+        }
+        else if (src_peek(s) == ':')
+        {
+            src_get(s); // skip the colon
+            char* method = parse_ident(s);
+            
+            Value* obj = expr;
+            Value* attr = vstring_take(method);
+            Value* function = NULL;
+
+            if (!obj)
+            {
+                val_release(attr);
+                Value *ret = verror("cannot be subscripted as it is cnull");
+                return ret;
+            }
+
+            if (obj->method_table && obj->method_table[BMethodGetItem])
+            {
+                function = ((binary_method)obj->method_table[BMethodGetItem])(obj, attr);
+                val_release(attr);
+                if (!function) {
+                    Value* err = verror("Function %s didnt exist in expression", GET_STRING(attr));
+                    return err;
+                }
+            }
+            else
+            {
+                val_release(attr);
+                return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
+            }
+
+            if (src_peek(s) == '(')
+            {
+                // parse args
+                src_get(s); // consume '('
+                // parse comma separated expressions
+                Value **args = malloc(sizeof(Value*));
+                args[0] = val_retain(obj);
+                int argc = 1;
+                skip_ws(s);
+
+                // handle (value)(...) calls
+                if (src_peek(s) != ')')
+                {
+                    for (;;)
+                    {
+                        Value *a = eval_expr(s, env);
+                        if (IS_ERROR(a))
+                        {
+                            for (int i = 0; i < argc; i++)
+                                val_release(args[i]);
+                            mila_free(args);
+                            return a;
+                        }
+                        args = mila_realloc(args, sizeof(Value *) * (argc + 1));
+                        args[argc++] = a;
+                        if (match_char(s, ','))
+                            continue;
+                        if (match_char(s, ')'))
+                            break;
+                        for (int i = 0; i < argc; i++)
+                            val_release(args[i]);
+                        mila_free(args);
+                        return verror("Expected a comma or closing parenthesis!");
+                    }
+                }
+                else
+                {
+                    // empty
+                    src_get(s); // consume ')'
+                }
+                // callp
+                Value *res = call_function(function, env, argc, args);
+                for (int i = 0; i < argc; i++)
+                    val_release(args[i]);
+                mila_free(args);
+                HANDLE_RETURN(res);
+                return res;
+            }
         }
         return expr;
     }
@@ -3274,7 +3355,6 @@ Value *eval_primary(Src *s, Env *env)
                     // empty
                     src_get(s); // consume ')'
                 }
-                // get callee (id)
                 mila_free(id);
                 // callp
                 Value *res = call_function(function, env, argc, args);

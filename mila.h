@@ -191,10 +191,10 @@ typedef void* MethodTable;
 typedef struct
 {
     char **params;  // NULL-terminated
+    char **contextuals; // NULL_terminated
     char *body_src; // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
     char *name;
-    Env *closure; // closure environment
 } FunctionV;
 
 typedef struct
@@ -242,6 +242,7 @@ typedef struct Var
 struct Env
 {
     Var *vars;
+    Var *contextual_vars;
     Env *parent;
 };
 
@@ -342,7 +343,7 @@ Value *verror(char *message, ...);
 __attribute__((format(printf, 2, 3)))
 Value *vtagged_error(ErrorType type, char *message, ...);
 // Create a function
-Value *vfunction(char **params, char *body_src, Env *closure);
+Value *vfunction(char **params, char** contextuals, char *body_src);
 // Check if a value is any numeric type
 static int is_number(Value *v);
 // Turn any numeric type to a double

@@ -1,0 +1,46 @@
+namespace random {
+    export .make_indexes = fn(len) {
+        var l = list();
+        var existing = list();
+        foreach index : range(len) {
+            list.append(existing, index);
+        }
+        while (list.len(existing)) {
+            var to_get = random(0, list.len(existing)-1);
+            var index = list.pop(existing, to_get);
+            list.append(l, index);
+        }
+        return l;
+    };
+    export .shuffle_list = fn(l) {
+        var new = list();
+        var indexes = random.make_indexes(list.len(l));
+        foreach index : indexes {
+            list.append(new, l[index]);
+        }
+        return new;
+    };
+    export .shuffle_array = fn(a) {
+        var new = array(array.len(a));
+        var indexes = random.make_indexes(array.len(a));
+        var count = 0;
+        foreach index : indexes {
+            set new[count] = a[index];
+            set count += 1;
+        }
+        return new;
+    };
+
+    export .test = fn() {
+        var l = list(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        set l = random.shuffle_list(l);
+        println(l);
+        var a = array.from(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        set a = random.shuffle_array(a);
+        println(a);
+    }
+
+    if (not(__importer__)) {
+        .test();
+    }
+}

@@ -1,0 +1,6 @@
+run("./utils/random.mila");
+
+random.test();
+println(random.shuffle_list(list(1, 2, 3, 4)));
+
+println((list(1, 2))[1])

@@ -1380,6 +1380,13 @@ void val_release(Value *v)
                     mila_free(p[i]);
                 mila_free(p);
             }
+            if (v->v.fn->contextuals)
+            {
+                char **p = v->v.fn->contextuals;
+                for (int i = 0; p[i]; ++i)
+                    mila_free(p[i]);
+                mila_free(p);
+            }
             if (v->v.fn->body_src)
                 mila_free(v->v.fn->body_src);
             if (v->v.fn->name)
@@ -1447,6 +1454,13 @@ void val_kill(Value *v)
                 mila_free(p[i]);
             mila_free(p);
         }
+        if (v->v.fn->contextuals)
+        {
+            char **p = v->v.fn->contextuals;
+            for (int i = 0; p[i]; ++i)
+                mila_free(p[i]);
+            mila_free(p);
+        }
         if (v->v.fn->body_src)
             mila_free(v->v.fn->body_src);
         if (v->v.fn->name)
@@ -1493,6 +1507,14 @@ void env_free(Env *e)
         mila_free(v);
         v = nx;
     }
+    v = e->contextual_vars;
+    while (v)
+    {
+        Var *nx = v->next;
+        mila_free(v->name);
+        mila_free(v);
+        v = nx;
+    }
     mila_free(e);
 }
 
@@ -1533,6 +1555,14 @@ void env_kill(Env *e)
         mila_free(v);
         v = nx;
     }
+    v = e->contextual_vars;
+    while (v)
+    {
+        Var *nx = v->next;
+        mila_free(v->name);
+        mila_free(v);
+        v = nx;
+    }
     mila_free(e);
 }
 
@@ -1549,6 +1579,119 @@ Value *env_get(Env *e, const char *name)
         }
     }
     return NULL;
+}
+
+Value *env_get_contextual(Env *e, const char *name)
+{
+    for (Env *cur = e; cur; cur = cur->parent)
+    {
+        for (Var *v = cur->contextual_vars; v; v = v->next)
+        {
+            if (strcmp(v->name, name) == 0)
+            {
+                return v->value;
+            }
+        }
+    }
+    return NULL;
+}
+
+void env_set_local_contextual(Env *e, const char *name, Value *val)
+{
+    // set or create in current frame
+    for (Var *v = e->contextual_vars; v; v = v->next)
+    {
+        if (strcmp(v->name, name) == 0)
+        {
+            val_release(v->value);
+            v->value = val_retain(val);
+            return;
+        }
+    }
+    /* try to set the name variable, makes debugging easier */
+    if (val->type == T_FUNCTION && val->v.fn->name == NULL)
+    {
+        val->v.fn->name = mila_strdup(name);
+    }
+    Var *nv = mila_malloc(sizeof(Var));
+    nv->name = mila_strdup(name);
+    nv->value = val_retain(val);
+    nv->next = e->contextual_vars;
+    e->contextual_vars = nv;
+}
+
+int env_set_contextual(Env *e, const char *name, Value *val)
+{
+    // assign to nearest visible frame that contains name, else set local
+    /* try to set the name variable, makes debugging easier */
+    if (val->type == T_FUNCTION && val->v.fn->name == NULL)
+    {
+        val->v.fn->name = mila_strdup(name);
+    }
+    for (Env *cur = e; cur; cur = cur->parent)
+    {
+        for (Var *v = cur->contextual_vars; v; v = v->next)
+        {
+            if (strcmp(v->name, name) == 0)
+            {
+                val_release(v->value);
+                v->value = val_retain(val);
+                return 1;
+            }
+        }
+    }
+    // not found, set locally
+    env_set_local_contextual(e, name, val);
+    return 1;
+}
+
+void env_set_local_raw_contextual(Env *e, const char *name, Value *val)
+{
+    // set or create in current frame
+    for (Var *v = e->contextual_vars; v; v = v->next)
+    {
+        if (strcmp(v->name, name) == 0)
+        {
+            val_release(v->value);
+            v->value = val;
+            return;
+        }
+    }
+    /* try to set the name variable, makes debugging easier */
+    if (val && val->type == T_FUNCTION && val->v.fn->name == NULL)
+    {
+        val->v.fn->name = mila_strdup(name);
+    }
+    Var *nv = mila_malloc(sizeof(Var));
+    nv->name = mila_strdup(name);
+    nv->value = val;
+    nv->next = e->contextual_vars;
+    e->contextual_vars = nv;
+}
+
+int env_set_raw_contextual(Env *e, const char *name, Value *val)
+{
+    // assign to nearest visible frame that contains name, else set local
+    /* try to set the name variable, makes debugging easier */
+    if (val != NULL && val->type == T_FUNCTION && val->v.fn->name == NULL)
+    {
+        val->v.fn->name = mila_strdup(name);
+    }
+    for (Env *cur = e; cur; cur = cur->parent)
+    {
+        for (Var *v = cur->contextual_vars; v; v = v->next)
+        {
+            if (strcmp(v->name, name) == 0)
+            {
+                val_release(v->value);
+                v->value = val;
+                return 1;
+            }
+        }
+    }
+    // not found, set locally
+    env_set_local_raw_contextual(e, name, val);
+    return 1;
 }
 
 void env_set_local(Env *e, const char *name, Value *val)
@@ -2409,6 +2552,48 @@ char **parse_param_list(Src *s)
     return arr;
 }
 
+char **parse_context_list(Src *s)
+{
+    skip_ws(s);
+    if (!match_char(s, '['))
+        return NULL;
+    skip_ws(s);
+    // empty
+    if (match_char(s, ']'))
+    {
+        char **p = mila_malloc(sizeof(char *));
+        p[0] = NULL;
+        return p;
+    }
+    // read identifiers
+    char **arr = NULL;
+    int cnt = 0;
+    for (;;)
+    {
+        char *id = parse_ident(s);
+        if (!id)
+        {
+            // error
+            // cleanup
+            for (int i = 0; i < cnt; i++)
+                mila_free(arr[i]);
+            mila_free(arr);
+            return NULL;
+        }
+        arr = mila_realloc(arr, sizeof(char *) * (cnt + 2));
+        arr[cnt++] = id;
+        arr[cnt] = NULL;
+        skip_ws(s);
+        if (match_char(s, ','))
+            continue;
+        if (match_char(s, ']'))
+            break;
+        // error -> break
+        break;
+    }
+    return arr;
+}
+
 Value *parse_subscript(Src *s, Env *e)
 {
     if (!match_char(s, '['))
@@ -2527,67 +2712,11 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
         return verror("Function is NULL!");
     }
 
-    if (fnval->type == T_NATIVE)
-    {
-        for (int t = 0; t < count; ++t)
-        {
-            if (IS_ERROR(args[t]))
-            {
-                for (int i = 0; i < count; i++)
-                    val_release(args[i]);
-                return args[t];
-            }
-        }
-        Value *result = fnval->v.native->fn(env, count, args);
-        for (int i = 0; i < count; i++)
-            val_release(args[i]);
-        mila_free(args);
-        return result;
-    }
-    else if (fnval->type == T_FUNCTION)
-    {
-        // create new environment with closure as parent
-        Env *frame = env_new(fnval->v.fn->closure);
-        // bind params
-        char **p = fnval->v.fn->params;
-        int i = 0;
-        for (; p && p[i]; ++i)
-        {
-            // if fewer args provided, bind null
-            Value *a = (i < count) ? args[i] : vnull();
-            env_set_local(frame, p[i], a);
-        }
-        // Evaluate body: note body_src contains the body text e.g., "{ ... }"
-        Src *child = src_new(fnval->v.fn->body_src);
-        // position should start at 0 for the body; body is a block (starts with '{')
-        // Evaluate block using the new frame
-        Value *res = eval_block(child, frame);
 
-        src_free(child);
-        env_free(frame);
-        // If res is return value (T_RETURN) it will have been unwrapped earlier in eval_block but to be safe:
-        if (res && res->type == T_RETURN)
-        {
-            Value *rv = (Value *)res->v.opaque;
-            val_kill(res);
-            for (int i = 0; i < count; i++)
-                val_release(args[i]);
-            mila_free(args);
-            return rv;
-        }
-        for (int i = 0; i < count; i++)
-            val_release(args[i]);
-        mila_free(args);
-        return res;
-    }
-    else
-    {
-        for (int i = 0; i < count; i++)
-            val_release(args[i]);
-        mila_free(args);
-        // not callable
-        return verror("Attempt to call non-callable value.");
-    }
+    Value* res = call_function(fnval, env, count, args);
+    for (int i=0; i<count; ++i) val_release(args[i]);
+    free(args);
+    return res;
 }
 
 Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
@@ -2625,67 +2754,10 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
         return verror("Function is NULL!");
     }
 
-    if (fnval->type == T_NATIVE)
-    {
-        for (int t = 0; t < count; ++t)
-        {
-            if (IS_ERROR(args[t]))
-            {
-                for (int i = 0; i < count; i++)
-                    val_release(args[i]);
-                return args[t];
-            }
-        }
-        Value *result = fnval->v.native->fn(env, count, args);
-        for (int i = 0; i < count; i++)
-            val_release(args[i]);
-        mila_free(args);
-        return result;
-    }
-    else if (fnval->type == T_FUNCTION)
-    {
-        // create new environment with closure as parent
-        Env *frame = env_new(fnval->v.fn->closure);
-        // bind params
-        char **p = fnval->v.fn->params;
-        int i = 0;
-        for (; p && p[i]; ++i)
-        {
-            // if fewer args provided, bind null
-            Value *a = (i < count) ? args[i] : vnull();
-            env_set_local(frame, p[i], a);
-        }
-        // Evaluate body: note body_src contains the body text e.g., "{ ... }"
-        Src *child = src_new(fnval->v.fn->body_src);
-        // position should start at 0 for the body; body is a block (starts with '{')
-        // Evaluate block using the new frame
-        Value *res = eval_block(child, frame);
-
-        src_free(child);
-        env_free(frame);
-        // If res is return value (T_RETURN) it will have been unwrapped earlier in eval_block but to be safe:
-        if (res && res->type == T_RETURN)
-        {
-            Value *rv = (Value *)res->v.opaque;
-            val_kill(res);
-            for (int i = 0; i < count; i++)
-                val_release(args[i]);
-            mila_free(args);
-            return rv;
-        }
-        for (int i = 0; i < count; i++)
-            val_release(args[i]);
-        mila_free(args);
-        return res;
-    }
-    else
-    {
-        for (int i = 0; i < count; i++)
-            val_release(args[i]);
-        mila_free(args);
-        // not callable
-        return verror("Attempt to call non-callable value.");
-    }
+    Value* res = call_function(fnval, env, count, args);
+    for (int i=0; i<count; ++i) val_release(args[i]);
+    free(args);
+    return res;
 }
 
 Value **make_args(Value *first, ...)
@@ -2731,7 +2803,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
     else if (fnval->type == T_FUNCTION)
     {
         // create new environment with closure as parent
-        Env *frame = env_new(fnval->v.fn->closure);
+        Env *frame = env_new(env);
         // bind params
         char **p = fnval->v.fn->params;
         int i = 0;
@@ -2744,6 +2816,18 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             }
             Value *a = (i < argc) ? argv[i] : vnull();
             env_set_local(frame, p[i], a);
+        }
+        p = fnval->v.fn->contextuals;
+        i = 0;
+        for (; p && p[i]; ++i)
+        {
+            Value *a = env_get_contextual(env, p[i]);
+            if (!a) {
+                env_free(frame);
+                return verror("Function %s requires the contextual value `%s`", fnval->v.fn->name ? fnval->v.fn->name : "(lambda)", p[i]);
+            }
+            env_set_local(frame, p[i], a);
+            env_set_local_raw_contextual(frame, p[i], a);
         }
         // Evaluate body: note body_src contains the body text e.g., "{ ... }"
         Src *child = src_new(fnval->v.fn->body_src);
@@ -2861,8 +2945,6 @@ Value *eval_primary(Src *s, Env *env)
                 return ret;
             }
  
-            val_retain(obj);
- 
             // Handle chained subscripts: (expr)[x][y][z]
             while (src_peek(s) == '[')
             {
@@ -2879,8 +2961,9 @@ Value *eval_primary(Src *s, Env *env)
                 {
                     Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
                     val_release(index);
+                    Value* tmp = val_retain(res);
                     val_release(obj);
-                    obj = res;
+                    obj = tmp;
                 }
                 else
                 {
@@ -2890,7 +2973,7 @@ Value *eval_primary(Src *s, Env *env)
                 }
             }
  
-            return val_retain(obj);
+            return obj;
         }
         return expr;
     }
@@ -2923,6 +3006,7 @@ Value *eval_primary(Src *s, Env *env)
         s->pos += strlen("fn");
         // parse params
         char **params = parse_param_list(s);
+        char **contextuals = parse_context_list(s);
         skip_ws(s);
         // body is block; extract substring from '{' to matching '}'
         if (src_peek(s) != '{')
@@ -2969,7 +3053,7 @@ Value *eval_primary(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params, body, env);
+        Value *fn = vfunction(params, contextuals, body);
         return fn;
     }
     // identifier or keyword like 'null', 'true', 'false', or bare native name
@@ -3084,8 +3168,6 @@ Value *eval_primary(Src *s, Env *env)
             }
             mila_free(id);
  
-            // val_retain(obj);
- 
             // Handle chained subscripts: (expr)[x][y][z]
             while (src_peek(s) == '[')
             {
@@ -3094,7 +3176,6 @@ Value *eval_primary(Src *s, Env *env)
                 if (!obj)
                 {
                     val_release(index);
-                    val_release(obj);
                     Value *ret = verror("cannot be subscripted as it is cnull");
                     return ret;
                 }
@@ -3103,8 +3184,9 @@ Value *eval_primary(Src *s, Env *env)
                 {
                     Value *res = ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
                     val_release(index);
+                    Value* tmp = res;
                     // val_release(obj);
-                    obj = res;
+                    obj = tmp;
                 }
                 else
                 {
@@ -3115,6 +3197,93 @@ Value *eval_primary(Src *s, Env *env)
             }
  
             return val_retain(obj);
+        }
+        else if (src_peek(s) == ':')
+        {
+            src_get(s); // skip the colon
+            char* method = parse_ident(s);
+            
+            Value* obj = env_get(env, id);
+            Value* attr = vstring_take(method);
+            Value* function = NULL;
+
+            if (!obj)
+            {
+                val_release(attr);
+                Value *ret = verror("cannot be subscripted as it is cnull");
+                mila_free(id);
+                return ret;
+            }
+
+            if (obj->method_table && obj->method_table[BMethodGetItem])
+            {
+                function = ((binary_method)obj->method_table[BMethodGetItem])(obj, attr);
+                val_release(attr);
+                if (!function) {
+                    Value* err = verror("Function %s didnt exist in value %s", GET_STRING(attr), id);
+                    mila_free(id);
+                    return err;
+                }
+            }
+            else
+            {
+                mila_free(id);
+                val_release(attr);
+                return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
+            }
+
+            if (src_peek(s) == '(')
+            {
+                // parse args
+                src_get(s); // consume '('
+                // parse comma separated expressions
+                Value **args = malloc(sizeof(Value*));
+                args[0] = val_retain(obj);
+                int argc = 1;
+                skip_ws(s);
+
+                // handle (value)(...) calls
+                if (src_peek(s) != ')')
+                {
+                    for (;;)
+                    {
+                        Value *a = eval_expr(s, env);
+                        if (IS_ERROR(a))
+                        {
+                            mila_free(id);
+                            for (int i = 0; i < argc; i++)
+                                val_release(args[i]);
+                            mila_free(args);
+                            return a;
+                        }
+                        args = mila_realloc(args, sizeof(Value *) * (argc + 1));
+                        args[argc++] = a;
+                        if (match_char(s, ','))
+                            continue;
+                        if (match_char(s, ')'))
+                            break;
+                        mila_free(id);
+                        for (int i = 0; i < argc; i++)
+                            val_release(args[i]);
+                        mila_free(args);
+                        return verror("Expected a comma or closing parenthesis!");
+                    }
+                }
+                else
+                {
+                    // empty
+                    src_get(s); // consume ')'
+                }
+                // get callee (id)
+                mila_free(id);
+                // callp
+                Value *res = call_function(function, env, argc, args);
+                for (int i = 0; i < argc; i++)
+                    val_release(args[i]);
+                mila_free(args);
+                HANDLE_RETURN(res);
+                return res;
+            }
         }
         else
         {
@@ -3637,7 +3806,99 @@ Value *eval_statement(Src *s, Env *env)
             skip_ws(s);
             
             // Parse the assignment or statement
-            if (match_char(s, '='))
+            switch (src_peek(s))
+            {
+            case '+':
+                mt = BMethodAdd;
+                break;
+            case '-':
+                mt = BMethodSub;
+                break;
+            case '*':
+                mt = BMethodMul;
+                break;
+            case '/':
+                mt = BMethodDiv;
+                break;
+            case '%':
+                mt = BMethodMod;
+                break;
+            }
+            if (mt != MethodNone)
+                s->pos++;
+            if (__builtin_expect(!!match_char(s, '='), 1))
+            {
+                v = eval_expr(s, env);
+                if (mt != MethodNone)
+                {
+                    // Traverse to the parent object (all but the last index)
+                    Value *parent = obj;
+                    for (int i = 0; i < num_indices - 1; i++)
+                    {
+                        if (parent->method_table && parent->method_table[BMethodGetItem])
+                        {
+                            Value *res = ((binary_method)parent->method_table[BMethodGetItem])(parent, indices[i]);
+                            // val_release(parent);
+                            parent = res;
+                            
+                            if (!parent)
+                            {
+                                Value *ret = verror("cannot be subscripted at level %d", i + 1);
+                                for (int j = 0; j < num_indices; j++)
+                                    val_release(indices[j]);
+                                mila_free(indices);
+                                val_release(obj);
+                                val_release(v);
+                                mila_free(id);
+                                return ret;
+                            }
+                        }
+                        else
+                        {
+                            Value *ret = verror("Type %s does not support subscripting at level %d!", MILA_GET_TYPENAME(parent), i + 1);
+                            for (int j = 0; j < num_indices; j++)
+                                val_release(indices[j]);
+                            mila_free(indices);
+                            val_release(obj);
+                            val_release(parent);
+                            val_release(v);
+                            mila_free(id);
+                            return ret;
+                        }
+                    }
+                    
+                    // Set the final item using the last index
+                    Value *last_index = indices[num_indices - 1];
+                    if (parent->method_table && parent->method_table[TMethodSetItem])
+                    {
+                        Value *inplace = ((binary_method)parent->method_table[BMethodGetItem])(parent, last_index);
+                        
+                        for (int i = 0; i < num_indices; i++)
+                            val_release(indices[i]);
+                        mila_free(indices);
+                        val_release(obj);
+                        if (inplace)
+                            binary_op_in_place(inplace, mt, v);
+                        val_release(v);
+                        mila_free(id);
+                        match_char(s, ';');
+                        return val_retain(inplace);
+                    }
+                    else
+                    {
+                        Value *ret = verror("Type %s does not support item assignment!", MILA_GET_TYPENAME(parent));
+                        for (int i = 0; i < num_indices; i++)
+                            val_release(indices[i]);
+                        mila_free(indices);
+                        val_release(obj);
+                        val_release(parent);
+                        val_release(v);
+                        mila_free(id);
+                        return ret;
+                    }
+                }
+            }
+            else if (match_char(s, '='))
             {
                 v = eval_expr(s, env);
                 match_char(s, ';');
@@ -3729,7 +3990,6 @@ Value *eval_statement(Src *s, Env *env)
             }
         }
         
-        // Non-subscript assignment (original logic)
         switch (src_peek(s))
         {
         case '+':
@@ -3794,6 +4054,23 @@ Value *eval_statement(Src *s, Env *env)
         env_set(env, id, v);
         mila_free(id);
         return v;
+    }
+    if (is_keyword_at(s, "contextual"))
+    {
+        s->pos += strlen("contextual");
+        char *id = parse_ident(s);
+        if (!id)
+            return verror("Invalid contextual statement.");
+        Value *a = env_get(env, id);
+        if (!a) {
+            Value* res = verror("Variable `%s` cannot become contextual as it doesnt exist!", id);
+            free(id);
+            return res;
+        }
+        env_set_raw_contextual(env, id, a);
+        free(id);
+        match_char(s, ';');
+        return vnull();
     }
     if (is_keyword_at(s, "var"))
     {
@@ -4224,6 +4501,7 @@ Value *eval_statement(Src *s, Env *env)
         if (!name)
             return verror("Function needs a name!");
         char **params = parse_param_list(s);
+        char **contextuals = parse_context_list(s);
         skip_ws(s);
         // body is block; extract substring from '{' to matching '}'
         if (src_peek(s) != '{')
@@ -4271,7 +4549,7 @@ Value *eval_statement(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params, body, env);
+        Value *fn = vfunction(params, contextuals, body);
         env_set_local(env, name, fn);
         free(name);
         return fn;
@@ -4308,13 +4586,13 @@ f:
 }
 
 // vfunction creation
-Value *vfunction(char **params, char *body_src, Env *closure)
+Value *vfunction(char **params, char** contextuals, char *body_src)
 {
     Value *v = val_new(T_FUNCTION);
     v->v.fn = (FunctionV *)mila_malloc(sizeof(FunctionV));
     v->v.fn->params = params;
+    v->v.fn->contextuals = contextuals;
     v->v.fn->body_src = body_src;
-    v->v.fn->closure = closure;
     return v;
 }
 

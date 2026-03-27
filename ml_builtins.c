@@ -437,9 +437,10 @@ Value *native_cast_int(Env *env, int argc, Value **argv)
         {
             char *buffer = NULL;
             our_asprintf(&buffer, "cast.int(str): Got bad part \"%s\"...", end);
-            return verror("%s\n", buffer);
+            Value* tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
             mila_free(buffer);
             i = 0;
+            return tmp;
         }
     }
     else
@@ -463,9 +464,10 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
         {
             char *buffer = NULL;
             our_asprintf(&buffer, "cast.float(str): Got bad part \"%s\"...", end);
-            return verror("%s\n", buffer);
+            Value* tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
             mila_free(buffer);
             f = 0;
+
         }
     }
     else
@@ -1110,12 +1112,8 @@ Value *get_array(Value *self, Value *index)
     }
 
     Value *val = arr->array[idx];
-    if (val)
-        val_retain(val);
-    else
-        return vnull();
 
-    return val;
+    return val ? val : vnull();
 }
 
 Value *set_array(Value *self, Value *index, Value *val)
@@ -1142,8 +1140,6 @@ Value *set_array(Value *self, Value *index, Value *val)
     if (old)
         val_release(old);
     arr->array[idx] = val_retain(val);
-
-    return vnull();
 }
 
 Value *native_free_array(Env *env, int argc, Value **argv)
@@ -1569,6 +1565,26 @@ Value* native_list_append(Env* env, int argc, Value **argv)
     return vnull();
 }
 
+Value* native_list_contains(Env* env, int argc, Value** argv)
+{
+    (void)env;
+    Value** list = ll_to_iter(GET_OPAQUE(argv[0]));
+    for (long i = 0; list[i]; ++i)
+    {
+        Value* value = binary_op(argv[1], BMethodEq, list[i]);
+        if (is_truthy(value)) {
+            val_release(value);
+            for (; list[i]; ++i) val_release(list[i]);
+            free(list);
+            return vbool(1);
+        }
+        val_release(value);
+        val_release(list[i]);
+    }
+    free(list);
+    return vbool(0);
+}
+
 Value* native_repr(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc != 1) return verror("repr(value): Expected at least one argument!");
@@ -1979,6 +1995,33 @@ Value* native_assert(Env* env, int argc, Value** argv)
     return vnull();
 }
 
+Value* native_srandom(Env* env, int argc, Value** argv)
+{
+    if (argc != 1 || MILA_GET_TYPE(argv[0]) != T_INT) return verror("srandom(seed): Expected an integer argument!");
+    srand(GET_INTEGER(argv[0]));
+    return vnull();
+}
+
+Value* native_random(Env* env, int argc, Value** argv)
+{
+    if (argc == 2 &&
+            MILA_GET_TYPE(argv[0]) == T_INT &&
+            MILA_GET_TYPE(argv[1]) == T_INT
+    )
+    {
+        long min = GET_INTEGER(argv[0]);
+        long max = GET_INTEGER(argv[1]);
+        return vint((rand() % (max - min + 1)) + min);
+    }
+    return verror("random(lower, upper): Expected two integer arguments.");
+}
+
+Value* native_crandom(Env* env, int argc, Value** argv)
+{
+    if (argc != 0) verror("crandom(): Expected no arguments");
+    return vint(rand());
+}
+
 #ifdef MILA_TRUE_BARE
     #define MILA_NO_SETUP
     #define MILA_NO_COLLECTIONS
@@ -2013,6 +2056,9 @@ void env_register_builtins(Env *g)
     env_register_native(g, "repr", native_repr);
     env_register_native(g, "repr_raw", native_repr_raw);
     env_register_native(g, "str", native_str);
+    env_register_native(g, "random", native_random);
+    env_register_native(g, "srandom", native_srandom);
+    env_register_native(g, "crandom", native_crandom);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printf", native_printf); // lovely printf function for C programmers
@@ -2055,7 +2101,8 @@ void env_register_builtins(Env *g)
 
     list_meta = val_make_table();
 
-    val_set_method_table(list_meta, UMethodToString, list_repr);
+    val_set_method_table(list_meta, UMethodToRepr, list_repr);
+    val_set_method_table(list_meta, UMethodToString, list_str);
     val_set_method_table(list_meta, UMethodFree, list_free);
     val_set_method_table(list_meta, UMethodToIter, list_to_iter);
     val_set_method_table(list_meta, BMethodGetItem, get_list);
@@ -2087,6 +2134,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "list.pop", native_list_pop);
     env_register_native(g, "list.len", native_list_len);
     env_register_native(g, "list.append", native_list_append);
+    env_register_native(g, "list.contains", native_list_contains);
     // === Array
     env_register_native(g, "array", native_new_array);
     env_register_native(g, "array.from", native_from_array);

@@ -1,0 +1,18 @@
+var t = dict(
+	"name", "Darren",
+	"age", 16,
+	"greet", fn(self) {
+		println(self["name"]);
+	},
+	"grow", fn(self) {
+		set self["age"] += 1;
+	}
+);
+
+t:greet();
+set t["name"] = "Hailey";
+t:greet();
+
+println(t["age"]);
+t:grow();
+println(t["age"]);

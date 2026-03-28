@@ -67,16 +67,16 @@ follows this specs defined bellow.
 You may add features but never modify syntax.
 Such as changing syntax of while loops.
 
-## Keywords (18 total)
+## Keywords (19 total)
 
 * if
 * elif
 * else
-* fn
+* fn (5 variants)
 * return
-* catch
+* catch (2 variants)
 * block
-* set
+* set (3 variants)
 * var
 * foreach
 * while
@@ -87,6 +87,9 @@ Such as changing syntax of while loops.
 * null
 * none
 * export
+* contextual
+
+Total of 25 different constructs.
 
 ## Operators
 
@@ -117,7 +120,9 @@ Such as changing syntax of while loops.
 |    \\a    |     \\a      |
 |    \\xhh    |     \\xhh      |
 |    \\0oo    |     \\0oo      |
-|    \\Ndd    |     \\Ndd (accepts decimal digits) |
+|    \\Ndd    |     \\Ndd      |
+
+`\N` accepts decimal digits.
 
 ## Examples
 
@@ -139,19 +144,30 @@ var name = value;
 * Functions
 
 ```Plaintext
-let greet = fn(name) {
-    println("Hello " + name "!");
-};
-
-greet("Name");
-
-// or
-
 fn greet(name) {
-    println("Hello " + name "!");
+    println("Hello " + name + "!");
 }
 
-greet("Name");
+greet("Gene");
+
+fn greet_ctx()[name] {
+    println("Hello " + name + "!");
+}
+
+{
+    var name = "Gene";
+    contextual name;
+    greet_ctx();
+}
+
+fn make_greet(name) {
+    fn greet_closure():[name] {
+        println("Hello " + name + "!");
+    }
+}
+
+var greet_closure = make_greet("Gene");
+greet_closure();
 ```
 
 * Loops

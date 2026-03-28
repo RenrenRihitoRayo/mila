@@ -38,7 +38,6 @@
 
 #define HANDLE_CONTROL(val) \
     {\
-        if (!val) return val;\
         if (val->type == T_BREAK)\
             return val;\
         if (val->type == T_CONTINUE)\
@@ -195,6 +194,7 @@ typedef struct
     char *body_src; // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
     char *name;
+    Env* closure;
 } FunctionV;
 
 typedef struct
@@ -343,7 +343,7 @@ Value *verror(char *message, ...);
 __attribute__((format(printf, 2, 3)))
 Value *vtagged_error(ErrorType type, char *message, ...);
 // Create a function
-Value *vfunction(char **params, char** contextuals, char *body_src);
+Value *vfunction(char **params, char** contextuals, Env* closure, char *body_src);
 // Check if a value is any numeric type
 static int is_number(Value *v);
 // Turn any numeric type to a double

@@ -32,7 +32,7 @@ fn random_place(rect) {
 
     Rectangle.set_x(rect, cast.i2f(GetRandomValue(0, screen_w-cast.f2i(food_size))));
     Rectangle.set_y(rect, cast.i2f(GetRandomValue(0, screen_h-cast.f2i(food_size))));
-};
+}
 
 var start_x = Rectangle.get_x(player);
 var start_y = Rectangle.get_y(player);
@@ -47,19 +47,19 @@ var score = 0;
 fn Clamp(val, min, max) {
     if (val < min) {
         return min;
-    } else if (val > max) {
+    } elif (val > max) {
         return max;
     } else {
         return val;
     }
-};
+}
 
 fn distance(v1, v2) {
     var dx = Vector2.get_x(v2) - Vector2.get_x(v1);
     var dy = Vector2.get_y(v2) - Vector2.get_y(v1);
     var dis = sqrtf(dx*dx + dy*dy);
     return dis;
-};
+}
 
 fn step(v1, v2, speed) {
     var dx = Vector2.get_x(v2) - Vector2.get_x(v1);
@@ -70,7 +70,7 @@ fn step(v1, v2, speed) {
     // Randomness makes it impossible to get stuck between two equally far food particles.
     Vector2.set_x(v1, Vector2.get_x(v1) + (dx / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
     Vector2.set_y(v1, Vector2.get_y(v1) + (dy / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
-};
+}
 
 var food_num = 1000;
 var foods = list();
@@ -139,9 +139,10 @@ while (not(WindowShouldClose()))
         DrawRectangleRec(food, GREEN);
         if (CheckCollisionRecs(player, food)) {
             random_place(food);
-            set score = score + 1;
+            set score += 1;
         }
     }
+
 
     DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, BLACK);
 
@@ -152,7 +153,7 @@ while (not(WindowShouldClose()))
     if (current_fps > peak_fps) {
         set peak_fps = current_fps;
     }
-    else if (current_fps < peak_fps * 0.8) {
+    elif (current_fps < peak_fps * 0.8) {
         set peak_fps = current_fps; // reset peak_fps
     }
 
@@ -166,22 +167,22 @@ while (not(WindowShouldClose()))
 
     DrawText(
         "Score: " + score,
-        cast.f2i(screen_w / 2 - MeasureText("Score: " + score, 30)/ 2),
+        cast.f2i(screen_w / 2 - MeasureText("Score: " + score, 30)/2),
         20, 30, 
         BLUE_TRANSLUCENT
     );
 
-    if ( IsKeyDown(KeyboardKey.KEY_D)) {
-        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) + ceil(speedX * delta), 0, screen_w-180.0));
+    if (IsKeyDown(KeyboardKey.KEY_D)) {
+        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) + ceil(speedX * delta), 0, screen_w - 180.0));
     }
-    elif ( IsKeyDown(KeyboardKey.KEY_W)) {
+    elif (IsKeyDown(KeyboardKey.KEY_W)) {
         Rectangle.set_y(player, Clamp(Rectangle.get_y(player) - ceil(speedY * delta), 0, screen_h));
     } 
-    elif ( IsKeyDown(KeyboardKey.KEY_A)) {
+    elif (IsKeyDown(KeyboardKey.KEY_A)) {
         Rectangle.set_x(player, Clamp(Rectangle.get_x(player) - ceil(speedX * delta), 0, screen_w));
     }
-    elif ( IsKeyDown(KeyboardKey.KEY_S)) {
-        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) + ceil(speedY * delta), 0, screen_h-60.0));
+    elif (IsKeyDown(KeyboardKey.KEY_S)) {
+        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) + ceil(speedY * delta), 0, screen_h - 60.0));
     }
     elif (IsKeyDown(KeyboardKey.KEY_E)) {
         Rectangle.set_x(player, start_x);

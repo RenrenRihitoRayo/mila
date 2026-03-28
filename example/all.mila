@@ -3,8 +3,8 @@ assert((fn(){return "lambda!";})() == "lambda!", "Lambdas arent correct!");
 
 // functions also need to be supported of course
 fn concat(name) {
-	// test concat + string coercion
-	return null + name + " concat!" + true + 1 + array(0) + list() + dict() + none;
+  // test concat + string coercion
+  return null + name + " concat!" + true + 1 + array(0) + list() + dict() + none;
 }
 
 assert(
@@ -15,32 +15,57 @@ assert(
 assert(
   "globbing! and random stuff" => "gl[!O][a-z]bi?g!*",
   "Globbing unsupported!"
-)
+);
 
 catch err {
-	report("test");
+    report("test");
 }
 
 assert(err == "test", "errors are not handled properly");
 
 catch err_tagged {
-	report_tagged(E_GENERIC, "test");
+    report_tagged(E_GENERIC, "test");
 }
 
 assert(err_tagged == "Generic[5]: test", "tagged errors are not handled properly");
 
 namespace test {
-	var .namespaced = 0x45;
-	var not_namespaced = -0x45;
+    var .namespaced = 0x45;
+    var not_namespaced = -0x45;
 }
 
 assert(test.namespaced == 0x45, "namespaces arent handled!");
 assert(not_namespaced == -0x45, "namespaces arent handled!");
 
 assert(
-	str.patch("testdotwhat", "dot", ".") == "test.what", 
-	"Patch doesnt patch?..."
+    str.patch("testdotwhat", "dot", ".") == "test.what", 
+    "Patch doesnt patch?..."
 );
 
 assert(cast.string(range(10)) == "range(0, 10, 1)",
-		   "wrong range representation!");
+       "wrong range representation!");
+
+{
+    var name = "Darren";
+    contextual name;
+
+    fn greet(name)[name] {
+        assert(name == "Darren", "Contextuals must override parameters!");
+        println(name);
+    }
+
+    greet("Hailey");
+
+    fn counter(count) {
+        var count = count-1 ?? -1;
+        fn counter():[count] {
+            set count += 1;
+        }
+        return counter;
+    }
+
+    var count = counter();
+    assert(count() == 0, "closures dont work?");
+    assert(count() == 1, "closures dont work?");
+    assert(count() == 2, "closures dont work?");
+}

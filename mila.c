@@ -1391,8 +1391,8 @@ void val_release(Value *v)
                 mila_free(v->v.fn->body_src);
             if (v->v.fn->name)
                 mila_free(v->v.fn->name);
+            env_free(v->v.fn->closure);
             mila_free(v->v.fn);
-            // closure env not freed here (env owns values)
         }
         if (v->type == T_NATIVE)
         {
@@ -1465,8 +1465,8 @@ void val_kill(Value *v)
             mila_free(v->v.fn->body_src);
         if (v->v.fn->name)
             mila_free(v->v.fn->name);
+        env_free(v->v.fn->closure);
         mila_free(v->v.fn);
-        // closure env not freed here (env owns values)
     }
     if (v->type == T_NATIVE)
     {
@@ -1706,11 +1706,7 @@ void env_set_local(Env *e, const char *name, Value *val)
             return;
         }
     }
-    /* try to set the name variable, makes debugging easier */
-    if (val->type == T_FUNCTION && val->v.fn->name == NULL)
-    {
-        val->v.fn->name = mila_strdup(name);
-    }
+
     Var *nv = mila_malloc(sizeof(Var));
     nv->name = mila_strdup(name);
     nv->value = val_retain(val);
@@ -2277,7 +2273,7 @@ char *parse_ident(Src *s)
     if (!is_ident_start(c))
         return NULL;
     src_get(s);
-    while (isalnum((unsigned char)src_peek(s)) || src_peek(s) == '_' || src_peek(s) == '.')
+    while (isalnum((unsigned char)src_peek(s)) || src_peek(s) == '_' || src_peek(s) == '.' || src_peek(s) == '?')
         src_get(s);
     int en = s->pos;
     int n = en - st;
@@ -2617,7 +2613,7 @@ Value *eval_block(Src *s, Env *env)
     skip_ws(s);
     if (!match_char(s, '{'))
     {
-        return vnull();
+        return verror("Expected a block!");
     }
     // new local frame
     Env *frame = env_new(env);
@@ -2633,6 +2629,10 @@ Value *eval_block(Src *s, Env *env)
         val_release(last);
         last = st;
 
+        if (IS_ERROR(st)) {
+            env_free(frame);
+            return st;
+        }
         if (IS_CONTROL(st))
         {
             env_free(frame);
@@ -2664,7 +2664,10 @@ Value *eval_block_raw(Src *s, Env *frame)
         Value *st = eval_statement(s, frame);
         val_release(last);
         last = st;
-
+        
+        if (IS_ERROR(st)) {
+            return st;
+        }
         if (IS_CONTROL(st))
         {
             if (st->type == T_RETURN)
@@ -2803,7 +2806,13 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
     else if (fnval->type == T_FUNCTION)
     {
         // create new environment with closure as parent
-        Env *frame = env_new(env);
+        Env *frame = NULL;
+        if (fnval->v.fn->closure) {
+            fnval->v.fn->closure->parent = env;
+            frame = env_new(fnval->v.fn->closure);
+        } else {
+            frame = env_new(env);
+        }
         // bind params
         char **p = fnval->v.fn->params;
         int i = 0;
@@ -2814,27 +2823,41 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             {
                 return argv[i];
             }
-            Value *a = (i < argc) ? argv[i] : vnull();
+            Value *a = (i < argc) ? argv[i] : NULL;
+            if (a == NULL) {i++; break;}
             env_set_local(frame, p[i], a);
         }
+        // set contextual values
         p = fnval->v.fn->contextuals;
         i = 0;
         for (; p && p[i]; ++i)
         {
-            Value *a = env_get_contextual(env, p[i]);
-            if (!a) {
-                env_free(frame);
-                return verror("Function %s requires the contextual value `%s`", fnval->v.fn->name ? fnval->v.fn->name : "(lambda)", p[i]);
+            char* name = mila_strdup(p[i]);
+            int is_optional = 0;
+            if (name[strlen(name)-1] == '?') {
+                is_optional = 1;
+                name[strlen(name)-1] = 0;
             }
-            env_set_local(frame, p[i], a);
-            env_set_local_raw_contextual(frame, p[i], a);
+            Value *a = env_get_contextual(env, name);
+            if (is_optional == 0 && a == NULL) {
+                env_free(frame);
+                Value* res =  verror("Function %s requires the contextual value `%s`", fnval->v.fn->name ? fnval->v.fn->name : "(lambda)", name);
+                free(name);
+                return res;
+            }
+            else if (a && !is_optional) {
+                env_set_local(frame, name, a);
+            }
+            else if ((!a) && is_optional) {
+                env_set_local_raw(frame, name, vnull());
+            }
+            free(name);
         }
         // Evaluate body: note body_src contains the body text e.g., "{ ... }"
         Src *child = src_new(fnval->v.fn->body_src);
         // position should start at 0 for the body; body is a block (starts with '{')
         // Evaluate block using the new frame
         Value *res = eval_block(child, frame);
-
         src_free(child);
         env_free(frame);
         HANDLE_CONTROL(res);
@@ -2972,7 +2995,6 @@ Value *eval_primary(Src *s, Env *env)
                     return verror("Type %s does not support BMethodGetItem!", MILA_GET_TYPENAME(obj));
                 }
             }
-
  
             return obj;
         }
@@ -3134,7 +3156,7 @@ Value *eval_primary(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params, contextuals, body);
+        Value *fn = vfunction(params, contextuals, NULL, body);
         return fn;
     }
     // identifier or keyword like 'null', 'true', 'false', or bare native name
@@ -4156,6 +4178,11 @@ Value *eval_statement(Src *s, Env *env)
     {
         s->pos += strlen("var");
         char *id = parse_ident(s);
+        // check for type hints
+        if (match_char(s, ':')) {
+            Value* type = parse_string(s);
+            val_release(type); // ignore for now
+        }
         if (!id)
             return verror("Invalid var statement.");
         if (match_char(s, ';'))
@@ -4276,7 +4303,6 @@ Value *eval_statement(Src *s, Env *env)
                 Value *res = NULL;
                 res = eval_block_raw(s, env);
                 clean_elif_chain(s);
-
                 HANDLE_CONTROL(res);
             }
             else
@@ -4387,6 +4413,10 @@ Value *eval_statement(Src *s, Env *env)
                     s->pos = body_end_pos;
                     return bod;
                 }
+                else if (IS_ERROR(bod)) {
+                    s->pos = body_end_pos;
+                    return bod;
+                }
             }
             return bod;
         }
@@ -4493,6 +4523,11 @@ Value *eval_statement(Src *s, Env *env)
                         s->pos = body_end_pos;
                         return bod;
                     }
+                    else if (bod->type == T_ERROR)
+                    {
+                        s->pos = body_end_pos;
+                        return bod;
+                    }
                 }
 
                 val_release(bod);
@@ -4543,7 +4578,11 @@ Value *eval_statement(Src *s, Env *env)
     {
         s->pos += strlen("catch");
         char* id = parse_ident(s);
-        Value *res = eval_block(s, env);
+        size_t start = s->pos;
+        skip_block(s);
+        size_t end = s->pos;
+        s->pos = start;
+        Value *res = eval_block_raw(s, env);
         if (IS_ERROR(res) && !IS_FATAL(res))
         {
             if (id) {
@@ -4552,12 +4591,14 @@ Value *eval_statement(Src *s, Env *env)
                     env_set_local(env, id, ret);
                     val_release(res);
                     free(id);
+                    s->pos = end;
                     return ret;
                 } else {
                     Value* ret = vstring_fmt("%s[%i]: %s", MILA_GET_ERRORNAME(res), MILA_GET_ERROR(res), res->v.tagged_error.message);
                     val_release(res);
                     env_set_local(env, id, ret);
                     free(id);
+                    s->pos = end;
                     return ret;
                 }
             }
@@ -4570,6 +4611,7 @@ Value *eval_statement(Src *s, Env *env)
             fprintf(stderr, "FATAL ERROR[%s]: %s\n", MILA_GET_ERRORNAME(res), GET_ERROR_TAGGED(res));
             abort();
         }
+        s->pos = end;
         free(id);
         return res;
     }
@@ -4582,10 +4624,28 @@ Value *eval_statement(Src *s, Env *env)
             return verror("Function needs a name!");
         char **params = parse_param_list(s);
         char **contextuals = parse_context_list(s);
+        char **names;
+        Env* closure = env_new(NULL);
+        if (match_char(s, ':'))
+        {
+            names = parse_context_list(s);
+            for (int i=0; names[i]; ++i)
+            {
+                env_set_local(closure, names[i], env_get(env, names[i]));
+                free(names[i]);
+            }
+            free(names);
+        }
         skip_ws(s);
         // body is block; extract substring from '{' to matching '}'
         if (src_peek(s) != '{')
         {
+            env_free(closure);
+            for (int i=0; params[i]; ++i)
+            {
+                free(params[i]);
+            }
+            free(params);
             free(name);
             // error: expected body
             return verror("Body wasnt found.");
@@ -4629,7 +4689,7 @@ Value *eval_statement(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params, contextuals, body);
+        Value *fn = vfunction(params, contextuals, closure, body);
         env_set_local(env, name, fn);
         free(name);
         return fn;
@@ -4666,13 +4726,14 @@ f:
 }
 
 // vfunction creation
-Value *vfunction(char **params, char** contextuals, char *body_src)
+Value *vfunction(char **params, char** contextuals, Env* closure, char *body_src)
 {
     Value *v = val_new(T_FUNCTION);
     v->v.fn = (FunctionV *)mila_malloc(sizeof(FunctionV));
     v->v.fn->params = params;
     v->v.fn->contextuals = contextuals;
     v->v.fn->body_src = body_src;
+    v->v.fn->closure = closure;
     return v;
 }
 

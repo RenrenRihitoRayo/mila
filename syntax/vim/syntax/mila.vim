@@ -2,7 +2,7 @@
 " Save as ~/.vim/syntax/mila.vim
 
 " Keywords
-syntax keyword milaKeyword if elif else while fn set var export return break continue
+syntax keyword milaKeyword if elif else while fn set var export return break continue contextual
 
 syntax keyword keyword_indent "{"
 syntax keyword keyword_dedent "}"
@@ -15,7 +15,7 @@ syntax match milaBuiltins "cast.\(int\|float\|string\|i2f\|f2i\|u2i\|i2u\)"
 syntax match milaBuiltins "array.\(get\|set\|len\)"
 syntax match milaBuiltins "dict.\(get\|set\|rem\)"
 syntax keyword milaBuiltins open fread fprint ftell fseek
-syntax keyword milaBuiltins floor ceil pow tan cos sin atan2 sqrt fabs abs
+syntax keyword milaBuiltins floor ceil pow tan cos sin atan2 sqrt fabs abs crandom random srandom
 syntax match milaBuiltins "str.\(slice\|index\|patch\|length\|pop_f\|pop_b\)"
 syntax match milaBuiltins "ascii.\(to\|from\)"
 

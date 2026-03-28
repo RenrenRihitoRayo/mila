@@ -282,6 +282,9 @@ int main(void) {
     Value* tmp = env_get(e, "var");
     val_kill(tmp);
     env_set(e, "var", NULL);
+
+    // Updated way
+    // env_remove(e, "var");
     
     // Clean up
     val_release(v); 
@@ -302,7 +305,12 @@ int main(void) {
     Env* e = env_new(NULL);
     env_register_builtins(e);
     
-    run_file(e, "some_file.mila");
+    run_file("some_file.mila", e);
+
+    // Below keeps last statements value
+
+    Value* res = run_file_keep_res("some_file.mila", e);
+    val_release(res);
     
     val_release(v); 
     env_free(e);

@@ -379,6 +379,7 @@ Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 typedef struct Src
 {
     char *src;    // full source string (null-terminated)
+    char *cur_namespace; // current namespace
     uint64_t pos; // current position
     int line;
     int len;

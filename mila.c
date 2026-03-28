@@ -2264,7 +2264,6 @@ int is_ident_start(char c)
 }
 
 // parse identifier
-char *mila_name_space = NULL;
 char *parse_ident(Src *s)
 {
     skip_ws(s);
@@ -2281,9 +2280,9 @@ char *parse_ident(Src *s)
     memcpy(res, s->src + st, n);
     res[n] = 0;
 
-    if (res[0] == '.' && mila_name_space != NULL)
+    if (res[0] == '.' && s->cur_namespace != NULL)
     {
-        char *r = mila_strdup(mila_name_space);
+        char *r = mila_strdup(s->cur_namespace);
         our_asprintf(&r, ".%s", res + 1);
         mila_free(res);
         return r;
@@ -4561,17 +4560,17 @@ Value *eval_statement(Src *s, Env *env)
     {
         s->pos += strlen("namespace");
         skip_ws(s);
-        char *old_name = mila_name_space;
-        mila_name_space = parse_ident(s);
-        if (!mila_name_space)
+        char *old_name = s->cur_namespace;
+        s->cur_namespace = parse_ident(s);
+        if (!s->cur_namespace)
         {
-            mila_name_space = old_name;
+            s->cur_namespace = old_name;
             return verror("Namespace needs a name!");
         }
         skip_ws(s);
         Value *res = eval_block_raw(s, env);
-        mila_free(mila_name_space);
-        mila_name_space = old_name;
+        mila_free(s->cur_namespace);
+        s->cur_namespace = old_name;
         return res;
     }
     if (is_keyword_at(s, "catch"))
@@ -4602,7 +4601,6 @@ Value *eval_statement(Src *s, Env *env)
                     return ret;
                 }
             }
-            else val_release(res);
             return vnull();
         }
         if (IS_FATAL(res))

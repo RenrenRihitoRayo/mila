@@ -46,7 +46,7 @@ assert(cast.string(range(10)) == "range(0, 10, 1)",
        "wrong range representation!");
 
 // function syntax is
-// fn name()[contextuals]:[closures]
+// fn name(parameters)[contextuals]:[closures] { body }
 // both contextuals and closures are optional
 // contextual is name binding on the call site
 // closures is name binding on definition
@@ -58,7 +58,6 @@ assert(cast.string(range(10)) == "range(0, 10, 1)",
 
     fn greet(name)[name] {
         assert(name == "Darren", "Contextuals must override parameters!");
-        println(name);
     }
 
     greet("Hailey");

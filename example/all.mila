@@ -45,6 +45,13 @@ assert(
 assert(cast.string(range(10)) == "range(0, 10, 1)",
        "wrong range representation!");
 
+// function syntax is
+// fn name()[contextuals]:[closures]
+// both contextuals and closures are optional
+// contextual is name binding on the call site
+// closures is name binding on definition
+// Contextuals have the precedence over parameters
+// On reading variables: local scope -> closure -> outer scopes
 {
     var name = "Darren";
     contextual name;

@@ -173,11 +173,11 @@ greet_closure();
 * Loops
 
 ```Plaintext
-let i = 0;
-let sum = 0;
+var i = 0;
+var sum = 0;
 while (i < 10) {
-    let sum = sum + i;
-    let i = i + 1;
+    var sum = sum + i;
+    var i = i + 1;
 }
 
 var l = array(5);
@@ -199,13 +199,13 @@ foreach n : range(10) {
 * Implicit and Explicit return
 
 ```Plaintext
-let res = fn{
-    90;
+var res = fn{
+    90; // semicolon can be ommited
 };
 
 // or
 
-let res = fn{
+var res = fn{
     /* this is preferred for readability */
     return 90;
 };
@@ -215,7 +215,7 @@ let res = fn{
 
 ```Plaintext
 // notice we use a colon, not an equal sign
-let res : {
+var res : {
     return 90;
 } // no semi colon
 ```
@@ -538,41 +538,45 @@ boolean "and" and "or" is "&&" and "||" respectively
 
 * slice(str, index, size) -> str
 
-str.slice("hello", 2, 3) == "llo"
+`str.slice("hello", 2, 3) == "llo"`
 
 * index(str, index) -> str
 
-str.index("hello", 1) == "e"
+`str.index("hello", 1) == "e"`
 
 * patch(str, needle, replacement) -> str
 
-str.patch("hello", "e", "wow") == "hwowllo"
+`str.patch("hello", "e", "wow") == "hwowllo"`
 
 * pop\_f(str!) -> str
 
-let str = "hello";
+```
+var str = "hello";
 str.pop\_f(str) == "h"
 str == "ello"
+```
 
 * pop\_b(str!) -> str
 
-let str = "hello";
+```
+var str = "hello";
 str.pop\_b(str) == "o"
 str == "hell"
+```
 
 * length(str) -> int
 
-str.length("this") == 4
+`str.length("this") == 4`
 
 ### ascii.*
 
 * ascii.to(code) -> str
 
-ascii.to(65) == "A"
+`ascii.to(65) == "A"`
 
 * ascii.from(str) -> int
 
-ascii.from("A") == 65
+`ascii.from("A") == 65`
 
 ### Error handling
 

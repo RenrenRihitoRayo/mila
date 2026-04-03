@@ -50,7 +50,12 @@
 
 #define MILA_EDITION 202603
 #define MILA_VERSION 2
+
+#ifndef VMM_BUILD
 #define MILA_LPREFIX "canon:"
+#else
+#define MILA_LPREFIX "vmm:"
+#endif
 
 // Define meta tables
 

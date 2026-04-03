@@ -1092,6 +1092,7 @@ Value *native_get_time(Env *env, int argc, Value **argv) {
   return vfloat(get_unix_timestamp());
 }
 
+#ifndef VMM_BUILD
 Value *native_run(Env *env, int argc, Value **argv) {
   if (argc != 1 || argv[0]->type != T_STRING) {
     return verror("invalid number of arguments given or incorrect types.");
@@ -1142,6 +1143,7 @@ Value *native_eval(Env *env, int argc, Value **argv) {
 
   return eval_str(argv[0]->v.s, env);
 }
+#endif
 
 Value *native_new_dict(Env *env, int argc, Value **argv) {
   (void)env;

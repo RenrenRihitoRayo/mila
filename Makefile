@@ -57,7 +57,7 @@ test:
 	@rm test.*
 
 vmm:
-	gcc -E mila.c -o mila_vmm.c
+	gcc -E -fdirectives-only mila.c -o mila_vmm.c
 
 static: $(files)
 	gcc -o mila -Os mila.c -lm -static

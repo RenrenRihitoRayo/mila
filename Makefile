@@ -3,6 +3,8 @@ std ?= c11
 files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c
 cflags = -O3 -lm -lc -std=$(std) -ffast-math
 
+.PHONY: vmm
+
 all: $(files)
 	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -fsanitize=address -g\
 	 -D MILA_NO_SIGNAL_HANDLER
@@ -54,7 +56,7 @@ test:
 
 	@rm test.*
 
-vmm: $(files)
+vmm:
 	gcc -E mila.c -o mila_vmm.c
 
 static: $(files)

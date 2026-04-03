@@ -4932,9 +4932,7 @@ void mila_deinit(Env *g) {
   env_free(g);
 }
 
-#ifndef VMM_BUILD
-
-#ifndef ML_LIB
+#if !(defined(VMM_BUILD) || defined(ML_LIB))
 int main(int argc, char **argv) {
   // read file if provided or use built-in demo
   char *src_text = NULL;
@@ -5168,45 +5166,12 @@ int main(int argc, char **argv) {
   }
   return 0;
 }
-#endif
 
 #else
 
-int main(int argc, char **argv) {
+int repr() {
   // read file if provided or use built-in demo
   char *src_text = NULL;
-  if (argc == 2) {
-    if (strcmp(argv[1], "--info") == 0) {
-      printf("MiLa - Info\n"
-             "Version: 1.0\n\n"
-             "Variable size:\n"
-             "  %lu Bytes\n"
-             "  %lu Bytes for worst case (boxed value is not counted)\n"
-             "Estimated memory:\n"
-             "  t * %lu + n * 40 Bytes\n"
-             "  n = # of vars\n"
-             "  t = # of types\n"
-             "Max num digits:\n"
-             "  %i\n",
-             sizeof(Value),
-             sizeof(Value) + sizeof(MethodTable) * MethodTotalCount,
-             sizeof(MethodTable) * MethodTotalCount, MAX_NUMBER_DIGITS);
-      return 0;
-    } else if (strcmp(argv[1], "--version") == 0 ||
-               strcmp(argv[1], "-v") == 0) {
-      printf("MiLa Specification v1.0\n"
-             "CLI v1.0\n"
-             "API v1.0\n");
-      return 0;
-    } else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
-      printf("MiLa v1.0\n"
-             "  --info         = For internal info as well as version info\n"
-             "  --version | -v = Prints version\n"
-             "  --help    | -h = Prints this list\n");
-      return 0;
-    }
-  }
-  Value *array = NULL;
 
   // prepare global env
 #ifndef MILA_USE_SHARED

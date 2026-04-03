@@ -1,0 +1,21 @@
+
+var pool = async.pool();
+var tasks = list();
+
+foreach task : range(10) {
+	var e = env.make();
+	env.bind(e, "task");
+	var id = async.add(pool, !{
+		foreach item : range(3) {
+			println("Task #" + task + " loop #" + num);
+			yield item;
+		}
+	}, e);
+}
+
+var res = async.next(pool);
+println(res);
+var res = async.next(pool);
+println(res);
+var res = async.next(pool);
+println(res);

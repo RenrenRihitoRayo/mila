@@ -293,7 +293,7 @@ Value *list_repr(Value *self) {
     return vstring_fmt("list(%zu items)", lst->size);
   Value **iter = ll_to_iter(lst);
 
-  char *buffer = mila_strdup("list(");
+  char *buffer = mila_strdup("[");
   for (int i = 0; iter[i]; i++) {
     char *repr = as_c_string_repr(iter[i]);
     if (i < lst->size - 1)
@@ -303,7 +303,7 @@ Value *list_repr(Value *self) {
     val_release(iter[i]);
     mila_free(repr);
   }
-  our_asprintf(&buffer, ")");
+  our_asprintf(&buffer, "]");
   mila_free(iter);
   return vstring_take(buffer);
 }

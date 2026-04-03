@@ -1,0 +1,20 @@
+grammar Expression {
+	$ => num op num == (a op b);
+	num = isdigit(num);
+	op = string.contains("+-*/", op) && string.length(op) == 1;
+
+	// (list of atoms or other rules)
+	// name => rule;
+	// $ means the start, maps the pattern into the final mapping
+	// $ => rule == (mapping);
+	// (must be a valid mila expression)
+	// name = proposition;
+
+	// atoms must always be a proposition.
+}
+
+var pattern = Expression.parse("90 + 80");
+
+println(pattern["a"], pattern["op"], patterm["b"]); // `90 + 80`
+
+var correct = Expression.validate("90 ++ 80"); // false

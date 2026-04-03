@@ -2931,6 +2931,58 @@ Value *eval_primary(Src *s, Env *env) {
   if (c == '"') {
     return parse_string(s);
   }
+  if (c=='[') {
+    src_get(s);
+    char is_dict = match_char(s, '@');
+    size_t start = s->pos;
+    Value **args = NULL;
+    Value* list = call_function_str(env, "list", NULL);
+    int argc = 0;
+    for (;;) {
+      skip_ws(s);
+      Value *a = eval_expr(s, env);
+      if (IS_ERROR(a)) {
+        mila_free(args);
+        val_release(list);
+        return a;
+      }
+      args = mila_realloc(args, sizeof(Value *) * (argc + 1));
+      args[argc++] = a;
+      val_release(call_function_str(env, "list.append", val_retain(list), a, NULL));
+      skip_ws(s);
+      if (match_char(s, ','))
+        continue;
+      if (match_char(s, '='))
+        continue;
+      if (match_char(s, ']'))
+        break;
+      val_release(list);
+      mila_free(args);
+      int k = 1;
+      while (k) {
+        if (src_peek(s) == '[')
+          k++;
+        if (src_peek(s) == ']')
+          k--;
+        s->pos++;
+      }
+      size_t end = s->pos;
+      int len = end - start + 1;
+      return vtagged_error(
+          E_SYNTAX_ERROR,
+          "Expected a %s or closing bracket!\nAt list `%.*s`",
+          is_dict && argc % 2 ? "colon" : "comma",
+          len, s->src + start);
+    }
+    if (is_dict) {
+      Value* dict = native_new_dict(env, argc, args);
+      val_release(list);
+      free(args);
+      return dict;
+    }
+    free(args);
+    return list;
+  }
   // parentheses
   if (c == '(') {
     size_t start = s->pos;
@@ -3372,13 +3424,14 @@ Value *eval_primary(Src *s, Env *env) {
       if (obj->method_table && obj->method_table[BMethodGetItem]) {
         function =
             ((binary_method)obj->method_table[BMethodGetItem])(obj, attr);
-        val_release(attr);
         if (!function) {
           Value *err = verror("Function %s didnt exist in value %s",
                               GET_STRING(attr), id);
+          val_release(attr);
           mila_free(id);
           return err;
         }
+        val_release(attr);
       } else {
         mila_free(id);
         val_release(attr);

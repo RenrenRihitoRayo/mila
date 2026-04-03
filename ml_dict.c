@@ -242,10 +242,10 @@ Value *dict_display(Value *self) {
     return vstring_fmt("dict(%zu pairs)", dict->size);
 
   if (!dict || !dict->buckets)
-    return vstring_dup("dict()");
+    return vstring_dup("[@]");
 
   char *buffer = NULL;
-  our_asprintf(&buffer, "dict(");
+  our_asprintf(&buffer, "[@ ");
 
   KVPair *entries = NULL;
   size_t count = 0, capacity = 16;
@@ -276,13 +276,13 @@ Value *dict_display(Value *self) {
   for (size_t i = count; i > 0; i--) {
     char *val_str = as_c_string_repr(entries[i - 1].value);
     if (i > 1)
-      our_asprintf(&buffer, "%s, %s, ", entries[i - 1].key, val_str);
+      our_asprintf(&buffer, "%s = %s, ", entries[i - 1].key, val_str);
     else
-      our_asprintf(&buffer, "%s, %s", entries[i - 1].key, val_str);
+      our_asprintf(&buffer, "%s = %s", entries[i - 1].key, val_str);
     mila_free(val_str);
   }
 
-  our_asprintf(&buffer, ")");
+  our_asprintf(&buffer, "]");
   mila_free(entries);
   return vstring_take(buffer);
 }

@@ -1,18 +1,15 @@
-var t: "canon:dict" = dict(
-	"name", "Darren",
-	"age", 16,
-	"greet", fn(self) {
-		println(self["name"]);
-	},
-	"grow", fn(self) {
-		set self["age"] += 1;
+
+fn person.new(name: "string") -> "canon:dict" {
+	object person {
+		var name = name;
+
+		fn greet(self, name: "string") -> "null" {
+			println("Hello " + name + ", I am " + self["name"] + ".");
+		}
 	}
-);
 
-t:greet();
-set t["name"] = "Hailey";
-t:greet();
+	return person;
+}
 
-println(t["age"]);
-t:grow();
-println(t["age"]);
+var person: "canon:dict" = person.new("Darren");
+person:greet("Alice");

@@ -67,7 +67,7 @@ follows this specs defined bellow.
 You may add features but never modify syntax.
 Such as changing syntax of while loops.
 
-## Keywords (19 total)
+## Keywords (20 total)
 
 * if
 * elif
@@ -88,8 +88,9 @@ Such as changing syntax of while loops.
 * none
 * export
 * contextual
+* sync
 
-Total of 25 different constructs.
+Total of 26 different constructs.
 
 ## Operators
 

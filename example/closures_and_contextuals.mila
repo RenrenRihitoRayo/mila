@@ -1,0 +1,81 @@
+/*
+   Contextuals grabs variables from the call site
+     * Contextuals are explicitly defined in the scope.
+     * Contextuals can be optional.
+   Closures grabs variables from the site of definition
+     * Isnt explicitly defined in the scope, but only in
+       the function definition.
+     * Caller cannot know if a function has a state (closures)
+ */
+
+fn closure(count) {
+	// make sure we dont store a ref
+	// and set up the value as well
+	set count = count - 1;
+
+	// closures are always constant
+	// and only grabs the closures on the site of definition
+	return fn ():[count] {
+		set count += 1;
+		return count;
+	};
+}
+
+var counter = closure(0);
+println(counter());
+println(counter());
+println(counter());
+println(counter());
+
+fn context()[count] {
+	// make sure we dont store a ref
+	// and set up the value as well
+	set count = count - 1;
+
+	// closures are always constant
+	return fn ():[count] {
+		set count += 1;
+		return count;
+	};
+}
+
+
+{
+	var count = 0;
+	// tells reader this might be grabbed
+	// by a function with contextuals
+  contextual count;
+
+	// context grabs `count` at the call site
+	var counter = context();
+	println(counter());
+	println(counter());
+	println(counter());
+	println(counter());
+}
+
+fn allocator(size)
+{
+	println("Allocated " + size + " bytes.");
+}
+
+fn function_that_may_allocate()[_allocator] {
+	var obj = _allocator(10);
+}
+
+{
+	contextual allocator as _allocator;
+	function_that_may_allocate();
+	forget [_allocator];
+	catch err {
+		function_that_may_allocate(); // raises an error
+	}
+	println(err);
+}
+
+/*
+   Contextuals are useful if you implement an allocator.
+   Closures are useful for hiding internal state or abstracting
+   away object oriented logic.
+ */
+

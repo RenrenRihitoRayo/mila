@@ -75,3 +75,12 @@ assert(cast.string(range(10)) == "range(0, 10, 1)",
     assert(count() == 1, "closures dont work?");
     assert(count() == 2, "closures dont work?");
 }
+
+var a = "What";
+var b = a;
+sync a = "Eyy";
+
+assert(b == "Eyy", "sync doesnt work on aliases");
+
+// println(make_closure);
+dump_vars();

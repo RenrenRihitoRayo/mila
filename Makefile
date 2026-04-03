@@ -1,6 +1,6 @@
 cc ?= gcc
 std ?= c11
-files = mila.c ml_builtins.c ml_dict.c mila.h ml_alloc.c ml_ll.c
+files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c
 cflags = -O3 -lm -lc -std=$(std) -ffast-math
 
 all: $(files)
@@ -54,6 +54,9 @@ test:
 
 	@rm test.*
 
+vmm: $(files)
+	gcc -E mila.c -o mila_vmm.c
+
 static: $(files)
 	gcc -o mila -Os mila.c -lm -static
 	strip mila
@@ -84,4 +87,4 @@ release-custom: $(files)
 	$(cc) $(cflags) -o mila mila.c -march=native -D MILA_CUSTOM
 
 clean:
-	rm mila *.so
+	rm mila mila_vmm.c *.so

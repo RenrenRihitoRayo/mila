@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define MAX_METHODS 100
 #define MAX_NUMBER_DIGITS 250
@@ -297,6 +298,8 @@ void val_unset_method(Value *v, MethodType t);
 Value *val_retain(Value *v);
 // Disown a value
 void val_release(Value *v);
+// Disown a value, doesnt free value instance, only the inner data
+void val_release_incomplete(Value *v);
 // Printf but support `%?` to print values.
 int mila_printf(char *fmt, ...);
 // Generates a string from an fmt
@@ -430,7 +433,6 @@ void mila_add_atexit(Value* fn);
 Env* mila_init(void);
 void mila_deinit(Env* env);
 
-#ifndef MILA_CUSTOM
 void* mila_malloc(size_t size) {
     void* ptr = malloc(size);
     memset(ptr, 0, size);
@@ -442,6 +444,3 @@ void* mila_realloc(void* ptr, size_t size) {
 void mila_free(void* ptr) {
     free(ptr);
 }
-#else
-#include "ml_alloc.c"
-#endif

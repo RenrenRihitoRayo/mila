@@ -12,6 +12,7 @@ var RAYWHITE = Color(245u, 245u, 245u, 255u);
 var WHITE = Color(255u, 255u, 255u, 255u);
 var BLACK = Color(0u, 0u, 0u, 255u);
 var RED = Color(255u, 0u, 0u, 255u);
+var MARIGOLD = Color(234u, 162u, 33u, 255u);
 var GREEN = Color(0u, 255u, 0u, 255u);
 var BLUE_TRANSLUCENT = Color(0u, 0u, 255u, 150u);
 var NONE = Color(255u, 255u, 255u, 255u);
@@ -38,7 +39,7 @@ var start_x = Rectangle.get_x(player);
 var start_y = Rectangle.get_y(player);
 
 var fps = 100;
-SetTargetFPS(fps);
+// SetTargetFPS(fps);
 var new = 0;
 var old = 0;
 
@@ -130,13 +131,13 @@ while (not(WindowShouldClose()))
     if (IsWindowResized()) {
         foreach food : foods {
             random_place(food);
-            DrawRectangleRec(food, GREEN);
+            DrawRectangleRec(food, MARIGOLD);
         }
         random_place(player);
     }
 
     foreach food : foods {
-        DrawRectangleRec(food, GREEN);
+        DrawRectangleRec(food, MARIGOLD);
         if (CheckCollisionRecs(player, food)) {
             random_place(food);
             set score += 1;

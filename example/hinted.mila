@@ -1,0 +1,10 @@
+
+fn greet(name: "string") -> "null" {
+	println("Hello " + name  +"!");
+}
+
+var person: "string" = "Test";
+
+greet(person);
+
+

@@ -2011,6 +2011,7 @@ Value *native_strftime(Env *env, int argc, Value **argv) {
 // the dots are namespaces.
 // And yes if you remove this file it wont trash the interpreter.
 void env_register_builtins(Env *g) {
+#ifndef VMM_BUILD
   // === Setup
   // canonical builtins reports edition (2026 march)
   env_set_raw(g, "__mila_canonical_builtins", vint(202603L));
@@ -2020,7 +2021,17 @@ void env_register_builtins(Env *g) {
   // tell users what implementation it is
   // heres its canon since this is the base implementation.
   env_set_raw(g, "__mila_codename", vstring_dup("canon"));
-
+#else
+  // === Setup
+  // canonical builtins reports edition (2026 march)
+  env_set_raw(g, "__mila_canonical_builtins", vint(202603L));
+  // canonical builtins version reports actual version (integer, any changes
+  // means ver++)
+  env_set_raw(g, "__mila_canonical_builtins_version", vint(1));
+  // tell users what implementation it is
+  // heres its canon since this is the base implementation.
+  env_set_raw(g, "__mila_codename", vstring_dup("vmm"));
+#endif
   // === Misc
   env_register_native(g, "range", native_range);
   env_register_native(g, "as_opaque", native_as_opaque);

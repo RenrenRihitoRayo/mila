@@ -2053,11 +2053,10 @@ void env_register_builtins(Env *g) {
   env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
   env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
   env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin fd'"));
+  file_meta = val_make_table();
+  val_set_method_table(file_meta, UMethodToString, file_printer);
 #endif
   // === Lists
-  file_meta = val_make_table();
-
-  val_set_method_table(file_meta, UMethodToString, file_printer);
 
   dict_meta = val_make_table();
 

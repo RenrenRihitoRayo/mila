@@ -338,6 +338,8 @@ Value *vnull() { return val_new(T_NULL); }
 Value *vnone() { return val_new(T_NONE); }
 Value *vbreak() { return val_new(T_BREAK); }
 Value *vcontinue() { return val_new(T_CONTINUE); }
+
+#ifndef VMM_BUILD
 __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
                                                            char *fmt, ...) {
   va_list ap;
@@ -399,6 +401,8 @@ __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...) {
   v->v.message = buf;
   return v;
 }
+#endif
+
 // __attribute__((format(printf, 1, 2)))
 int mila_printf(char *fmt, ...) {
   if (fmt == NULL) {

@@ -11,8 +11,6 @@
  * Welcome to the MiLa Language Kernel.
  */
 
-#define _POSIX_C_SOURCE 200809L
-
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -36,12 +34,8 @@
 
 #include "ml_string.c"
 
-#ifndef MILA_USE_SHARED
 #include "ml_builtins.c"
-_Bool mila_is_builtins_dynamic = 0;
-#else
-_Bool mila_is_builtins_dynamic = 1;
-#endif
+
 
 #include "mila.h"
 
@@ -4918,11 +4912,7 @@ int needs_more(const char *src) {
 
 Env *mila_init(void) {
   Env *g = env_new(NULL);
-
-#ifndef MILA_USE_SHARED
   env_register_builtins(g);
-#endif
-
   return g;
 }
 
@@ -4969,19 +4959,7 @@ int main(int argc, char **argv) {
   }
   Value *array = NULL;
 
-  // prepare global env
-#ifndef MILA_USE_SHARED
-  // register native functions
   Env *g = mila_init();
-  env_set_raw(g, "__mila_builtins_dynamic", vbool(0));
-#else
-  Env *g = env_new(NULL);
-  // allows users to use '.so' files instead.
-  // Must be on LD_PATH
-  if (load_library(g, "mila_builtins.so"))
-    env_set_raw(g, "__mila_builtins_dynamic_failed", vbool(1));
-  env_set_raw(g, "__mila_builtins_dynamic", vbool(1));
-#endif
 
   // Check if built ins is the canonical
   Value *builtins_flag = env_get(g, "__mila_canonical_builtins");
@@ -5053,9 +5031,7 @@ int main(int argc, char **argv) {
     mila_free(src_text);
 
     mila_deinit(g);
-#ifndef MILA_USE_SHARED
     env_free_builtins();
-#endif
   } else {
     if (is_builtins && argc > 1 && strcmp(argv[1], "--") == 0) {
       array = call_function_str(g, "array", vint(argc - 2), NULL);
@@ -5077,14 +5053,6 @@ int main(int argc, char **argv) {
       printf("Cannonical Builtins (%ld) version %ld\n",
              env_get(g, "__mila_canonical_builtins")->v.i,
              env_get(g, "__mila_canonical_builtins_version")->v.i);
-    }
-
-    if (mila_is_builtins_dynamic) {
-      printf("Builtins loaded via shared object.\n");
-      if (env_get(g, "__mila_builtins_dynamic_failed"))
-        printf("INFO: Loading mightve failed!\n");
-    } else {
-      printf("Builtins embedded.\n");
     }
 
     char line[256];
@@ -5174,18 +5142,8 @@ int repr() {
   char *src_text = NULL;
 
   // prepare global env
-#ifndef MILA_USE_SHARED
   // register native functions
   Env *g = mila_init();
-  env_set_raw(g, "__mila_builtins_dynamic", vbool(0));
-#else
-  Env *g = env_new(NULL);
-  // allows users to use '.so' files instead.
-  // Must be on LD_PATH
-  if (load_library(g, "mila_builtins.so"))
-    env_set_raw(g, "__mila_builtins_dynamic_failed", vbool(1));
-  env_set_raw(g, "__mila_builtins_dynamic", vbool(1));
-#endif
 
   // Check if built ins is the canonical
   Value *builtins_flag = env_get(g, "__mila_canonical_builtins");
@@ -5202,14 +5160,6 @@ int repr() {
     printf("Cannonical Builtins (%ld) version %ld\n",
            env_get(g, "__mila_canonical_builtins")->v.i,
            env_get(g, "__mila_canonical_builtins_version")->v.i);
-  }
-
-  if (mila_is_builtins_dynamic) {
-    printf("Builtins loaded via shared object.\n");
-    if (env_get(g, "__mila_builtins_dynamic_failed"))
-      printf("INFO: Loading mightve failed!\n");
-  } else {
-    printf("Builtins embedded.\n");
   }
 
   char line[256];

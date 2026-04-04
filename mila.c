@@ -2783,6 +2783,7 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...) {
   for (int i = 0; i < count; ++i)
     val_release(args[i]);
   mila_free(args);
+  HANDLE_RETURN(res);
   return res;
 }
 
@@ -2821,6 +2822,7 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...) {
   for (int i = 0; i < count; ++i)
     val_release(args[i]);
   mila_free(args);
+  HANDLE_RETURN(res);
   return res;
 }
 

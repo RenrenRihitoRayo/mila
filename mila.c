@@ -4909,6 +4909,7 @@ int run_file(char *name, Env *env) {
 
   char basename[MAX_PATH_LENGTH] = {0};
   path_basename(name, basename, sizeof(basename));
+  env_set_local_raw(env, "__name__", vstring_dup(basename));
 #endif
   char *src_text = NULL;
   FILE *f = fopen(name, "rb");
@@ -4916,7 +4917,6 @@ int run_file(char *name, Env *env) {
     fprintf(stderr, "Cannot open %s\n", name);
     return 1;
   }
-  env_set_local_raw(env, "__name__", vstring_dup(basename));
   fseek(f, 0, SEEK_END);
   long size = ftell(f);
   fseek(f, 0, SEEK_SET);

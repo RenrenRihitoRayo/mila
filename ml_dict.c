@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "ml_string.c"
+
 #ifdef ML_LIB
 #define ML_ALREADY
 #endif

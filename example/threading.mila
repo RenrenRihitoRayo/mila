@@ -1,23 +1,27 @@
 
-// thread(code: "string") -> "id: int"
+// thread.make(code: "string", on_kill: "string?") -> "id: int"
 
-var th = thread(!{
+// normal thread, keep interpreter awake
+var th = thread.make(!{
 	foreach item : range(4) {
 		println("Hello "  + item);
 		time_sleep(1);
 	}
 	return 90;
 });
-var th1 = thread(!{
-	foreach item : range(4) {
+
+// should take 40s~
+var th_deamon = thread.make(!{
+	var loop;
+	foreach item : range(40) {
 		println("Hello "  + item);
 		time_sleep(1);
+		set loop = item;
 	}
-	return 91;
+	return 90;
+}, !{
+    // always runs even if interpreter dies
+    println("Stopped at " + loop);
 });
-
-// join(id: "int") -> "value: any"
-var th = join(th);
-var th1 = join(th1);
-
-println(th, th1);
+// on interpreter exit, kill thread
+thread.set_deamon(th_deamon);

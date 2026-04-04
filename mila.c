@@ -4933,6 +4933,7 @@ int run_file(char *name, Env *env) {
 }
 
 Value *run_file_keep_res(char *name, Env *env) {
+#ifndef VMM_BUILD
   char out_pwd[MAX_PATH_LENGTH] = {0};
   char out[MAX_PATH_LENGTH] = {0};
   path_dirname(name, out, sizeof(out));
@@ -4940,12 +4941,13 @@ Value *run_file_keep_res(char *name, Env *env) {
 
   char basename[MAX_PATH_LENGTH] = {0};
   path_basename(name, basename, sizeof(basename));
+  env_set_local_raw(env, "__name__", vstring_dup(basename));
+#endif
   char *src_text = NULL;
   FILE *f = fopen(name, "rb");
   if (!f) {
     return verror("Cannot open %s\n", name);
   }
-  env_set_local_raw(env, "__name__", vstring_dup(basename));
   fseek(f, 0, SEEK_END);
   long size = ftell(f);
   fseek(f, 0, SEEK_SET);

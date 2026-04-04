@@ -1092,9 +1092,21 @@ Value *native_get_time(Env *env, int argc, Value **argv) {
   (void)argv;
   (void)env;
   if (argc != 0) {
-    return verror("invalid number of arguments given.\n");
+    return verror("get_time(): invalid number of arguments given.\n");
   }
   return vfloat(get_unix_timestamp());
+}
+
+Value *native_time_sleep(Env *env, int argc, Value **argv) {
+  (void)argc;
+  (void)argv;
+  (void)env;
+  if (argc != 1) {
+    return verror("time_sleep(time): invalid number of arguments given.\n");
+  }
+  if (MILA_GET_TYPE(argv[0]) == T_INT) sleep(GET_INTEGER(argv[0]));
+  else if (MILA_GET_TYPE(argv[0]) == T_UINT) sleep(GET_UINTEGER(argv[0]));
+  return vnull();
 }
 
 #ifndef VMM_BUILD
@@ -2217,6 +2229,7 @@ void env_register_builtins(Env *g) {
   env_register_native(g, "exit", native_exit);
   // === Time measurement
   env_register_native(g, "get_time", native_get_time);
+  env_register_native(g, "time_sleep", native_time_sleep);
   env_register_native(g, "strftime", native_strftime);
   env_register_native(g, "get_tm_gmt", native_get_tm_gmt);
   env_register_native(g, "get_tm_local", native_get_tm_local);

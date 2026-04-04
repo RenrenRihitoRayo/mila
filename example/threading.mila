@@ -1,0 +1,22 @@
+
+
+
+var th = thread(!{
+	foreach item : range(4) {
+		println("Hello "  + item);
+		time_sleep(1);
+	}
+	return 90;
+});
+var th1 = thread(!{
+	foreach item : range(4) {
+		println("Hello "  + item);
+		time_sleep(1);
+	}
+	return 91;
+});
+
+var th = join(th);
+var th1 = join(th1);
+
+println(th, th1);

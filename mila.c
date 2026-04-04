@@ -38,6 +38,7 @@
 
 #include "ml_builtins.c"
 
+#include "ml_threading.c"
 
 #include "mila.h"
 
@@ -4988,6 +4989,7 @@ int needs_more(const char *src) {
 Env *mila_init(void) {
   Env *g = env_new(NULL);
   env_register_builtins(g);
+  register_thread_builtins(g);
   return g;
 }
 

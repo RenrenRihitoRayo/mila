@@ -1,6 +1,6 @@
 cc ?= gcc
 std ?= c11
-files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c
+files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c ml_string.c ml_threading.c
 files_web = $(files) ./addon/ml_web.c
 targets_web = ./web/mila.wasm ./web/mila.js
 cflags = -O3 -lm -lc -std=$(std) -ffast-math

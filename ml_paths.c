@@ -28,11 +28,13 @@ struct path_list {
   int capacity;
 };
 
+#ifndef MILA_PROTO
+
 // =========================================================
 // internal: simple helpers
 // =========================================================
 
-static int file_exists(const char *p) {
+int file_exists(const char *p) {
   struct stat st;
   return stat(p, &st) == 0;
 }
@@ -41,7 +43,7 @@ static int file_exists(const char *p) {
 // transform_path: expands ~, expands $VAR, normalizes slashes
 // =========================================================
 
-static void normalize_slashes(char *buf) {
+void normalize_slashes(char *buf) {
 #ifdef _WIN32
   const char from = '/', to = '\\';
 #else
@@ -71,7 +73,7 @@ static void normalize_slashes(char *buf) {
   *dst = '\0';
 }
 
-static const char *get_env(const char *name, size_t len) {
+const char *get_env(const char *name, size_t len) {
   char var[1024];
   if (len >= sizeof(var))
     return NULL;
@@ -81,7 +83,7 @@ static const char *get_env(const char *name, size_t len) {
 }
 
 // Expand $VAR and ${VAR}
-static void expand_env(char **bufptr) {
+void expand_env(char **bufptr) {
   char *in = *bufptr;
   size_t outcap = strlen(in) * 2 + 64; // generous
   char *out = malloc(outcap);
@@ -173,7 +175,7 @@ void path_join(char *out, size_t outsize, int count, ...) {
 }
 
 // Expand `~` → HOME or USERPROFILE
-static void expand_home(char **bufptr) {
+void expand_home(char **bufptr) {
   char *in = *bufptr;
 
   if (in[0] != '~')
@@ -417,3 +419,23 @@ char *path_get_cwd(void) {
   normalize_slashes(cwd);
   return cwd;
 }
+
+#else
+
+int file_exists(const char *p);
+void normalize_slashes(char *buf);
+const char *get_env(const char *name, size_t len);
+void expand_env(char **bufptr);
+void path_join(char *out, size_t outsize, int count, ...);
+void expand_home(char **bufptr);
+char *transform_path(const char *input);
+path_list *path_list_new(void);
+void path_dirname(const char *path, char *out, size_t outsize);
+void path_basename(const char *path, char *out, size_t outsize);
+void path_list_free(path_list *pl);
+int path_list_add(path_list *pl, const char *path);
+int path_list_remove(path_list *pl, const char *path);
+char *path_list_find(path_list *pl, const char *file);
+char *path_get_cwd(void);
+
+#endif

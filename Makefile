@@ -1,9 +1,11 @@
 cc ?= gcc
 std ?= c11
 files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c
+files_web = $(files) ./addon/ml_web.c
+targets_web = ./web/mila.wasm ./web/mila.js
 cflags = -O3 -lm -lc -std=$(std) -ffast-math
 
-.PHONY: vmm
+.PHONY: web
 
 all: $(files)
 	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -fsanitize=address -g\
@@ -61,22 +63,8 @@ static: $(files)
 	strip mila
 
 smallest: $(files)
-	gcc -o mila -Os mila.c -lm
+	$(cc) -o mila -Os mila.c -lm
 	strip mila
-
-bare: $(files)
-	$(cc) -std=$(std) -O3 -lm -o mila mila.c -D MILA_USE_SHARED
-
-	# Build mila shared library
-	$(cc) -std=$(std) -lm -fPIC -shared -o libmila_runtime.so mila.c -D MILA_USE_SHARED -D ML_LIB
-	
-	# Build mila builtins shared library, linking against mila.so
-	$(cc) -std=$(std) -lm -fPIC -shared -o mila_builtins.so ml_builtins.c -L. -lmila_runtime
-	
-	@echo "Copying builtins canonical to /lib"
-	sudo cp mila_builtins.so /lib
-	@echo "Copying runtime to /lib"
-	sudo cp libmila_runtime.so /lib
 
 release: $(files)
 	$(cc) $(cflags) -o mila mila.c -march=native
@@ -85,5 +73,9 @@ release: $(files)
 release-custom: $(files)
 	$(cc) $(cflags) -o mila mila.c -march=native -D MILA_CUSTOM
 
+web $(targets_web): $(files_web)
+	mkdir -p build/web;:
+	emcc -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_main"]' -s EXPORTED_RUNTIME_METHODS='["FS","callMain"]' mila.c addon/ml_web.c -o ./build/web/mila.js -D EXT_WEB
+
 clean:
-	rm mila mila_vmm.c *.so
+	rm mila *.so test.*

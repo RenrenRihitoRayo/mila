@@ -63,9 +63,6 @@
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
 
-typedef struct path_list path_list;
-path_list *search_path = NULL;
-
 typedef struct Value Value;
 typedef struct Env Env;
 typedef Value *(*NativeFn)(Env *env, int argc, Value **argv);
@@ -86,15 +83,6 @@ typedef enum
     E_FATAL,        // Errors that should be fatal, like syntax errors
     E_GENERIC       // Errors that cannot be classified as ones above
 } ErrorType;
-
-const char *MILA_ERROR_NAMES[] = {
-    "SyntaxError",
-    "PreRuntime",
-    "Runtime",
-    "TypeError",
-    "Fatal",
-    "Generic"
-};
 
 typedef enum
 {
@@ -118,6 +106,8 @@ typedef enum
     T_ARG_END
 } ValueType;
 
+typedef struct path_list path_list;
+#ifndef MILA_PROTO
 // Simple trick
 const char *MILA_TYPE_NAMES[] = {
     "null",
@@ -139,6 +129,24 @@ const char *MILA_TYPE_NAMES[] = {
     "tagged_error",
     "arg_end",
 };
+
+const char *MILA_ERROR_NAMES[] = {
+    "SyntaxError",
+    "PreRuntime",
+    "Runtime",
+    "TypeError",
+    "Fatal",
+    "Generic"
+};
+
+path_list *search_path;
+
+#else
+extern path_list *search_path;
+extern char **MILA_TYPE_NAMES;
+extern char **MILA_ERROR_NAMES;
+
+#endif
 
 // each of these methods may be reffered to as
 // type<method name>
@@ -433,14 +441,6 @@ void mila_add_atexit(Value* fn);
 Env* mila_init(void);
 void mila_deinit(Env* env);
 
-void* mila_malloc(size_t size) {
-    void* ptr = malloc(size);
-    memset(ptr, 0, size);
-    return ptr;
-}
-void* mila_realloc(void* ptr, size_t size) {
-    return realloc(ptr, size);
-}
-void mila_free(void* ptr) {
-    free(ptr);
-}
+void* mila_malloc(size_t size);
+void* mila_realloc(void* ptr, size_t size);
+void mila_free(void* ptr);

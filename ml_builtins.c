@@ -2006,10 +2006,37 @@ Value *native_strftime(Env *env, int argc, Value **argv) {
   return vstring_dup(buffer);
 }
 
-// Minimal MiLa Builtins
-// We do not support normal objects,
-// the dots are namespaces.
-// And yes if you remove this file it wont trash the interpreter.
+Value* native_from_opaque(Env* e, int argc, Value** argv) {
+    (void)e;
+    if (argc != 2) return verror("from_opaque(str, opaque): Must have one argument!");
+    
+    if (strcmp(GET_STRING(argv[0]), "string") == 0) {
+        return vstring_dup(GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "owned_string") == 0) {
+        return vstring_take(GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "long") == 0) {
+        return vint(*(long*)GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "long") == 0) {
+        return vuint(*(unsigned long*)GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "int") == 0) {
+        return vint(*(int*)GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "float") == 0) {
+        return vint(*(float*)GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "double") == 0) {
+        return vint(*(double*)GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "char") == 0) {
+        return vint(*(char*)GET_OPAQUE(argv[1]));
+    }
+    return verror("Unsupported type: %s", GET_STRING(argv[0]));
+}
+
 void env_register_builtins(Env *g) {
 #ifndef VMM_BUILD
   // === Setup
@@ -2035,6 +2062,7 @@ void env_register_builtins(Env *g) {
   // === Misc
   env_register_native(g, "range", native_range);
   env_register_native(g, "as_opaque", native_as_opaque);
+  env_register_native(g, "from_opaque", native_from_opaque);
   env_register_native(g, "dump_vars", native_meep);
   env_register_native(g, "own", native_own);
   env_register_native(g, "unown", native_unown);
@@ -2200,6 +2228,11 @@ void env_register_builtins(Env *g) {
   env_register_native(g, "load", native_load); // loads dlls or so file
   env_register_native(g, "eval", native_eval); // runs string
 #endif
+  // ==== EXTENSIONS ====
+#ifdef EXT_WEB
+  #include "addon/ml_web.h"
+  env_register_web_ext(g);
+#endif  
 }
 
 #ifndef ML_LIB

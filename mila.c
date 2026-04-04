@@ -64,11 +64,25 @@ void print_memory_usage() {
   printf("Memory usage: %.2f %s\n", memory_usage_d, units[unit_index]);
 }
 
+path_list* search_path = NULL;
+
 // ---------- Value representation ----------
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+
+void* mila_malloc(size_t size) {
+    void* ptr = malloc(size);
+    memset(ptr, 0, size);
+    return ptr;
+}
+void* mila_realloc(void* ptr, size_t size) {
+    return realloc(ptr, size);
+}
+void mila_free(void* ptr) {
+    free(ptr);
+}
 
 static void insert_commas(char *buf, size_t bufsize) {
   char temp[128];

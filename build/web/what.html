@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MiLa in Web</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1e1e1e;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+        pre {
+            background: #252526;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #3e3e42;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        let moduleReady = false;
+        let output = [];
+        let pendingScripts = [];
+        
+        var Module = {
+            onRuntimeInitialized: function() {
+                console.log('✓ WASM module initialized');
+                moduleReady = true;
+                
+                // Run all pending MiLa scripts
+                pendingScripts.forEach(code => {
+                    runMiLa(code);
+                });
+                pendingScripts = [];
+            },
+            print: function(text) {
+                console.log(text);
+                output.push(text);
+            },
+            printErr: function(text) {
+                console.error(text);
+                output.push('[ERROR] ' + text);
+            },
+            quit: function() {
+                console.log('MiLa called exit()');
+            },
+            noInitialRun: true,
+            arguments: []
+        };
+        
+        function runMiLa(code) {
+            // If WASM isn't ready yet, queue the script
+            if (!moduleReady) {
+                console.log('WASM not ready, queueing script');
+                pendingScripts.push(code);
+                return;
+            }
+            
+            try {
+                console.log('Running MiLa script');
+                Module.FS.writeFile('/tmp/script.mila', code);
+                Module.arguments = ['/tmp/script.mila'];
+                Module.callMain(['/tmp/script.mila']);
+            } catch (e) {
+                console.error('Exception:', e);
+                output.push('\n[EXCEPTION] ' + e.message);
+                if (e.stack) {
+                    output.push(e.stack);
+                }
+            }
+        }
+    </script>
+    
+    <!-- Load WASM module FIRST -->
+    <script src="mila.js"></script>
+    
+    <!-- Now define and run MiLa scripts -->
+    <script type="text/mila">
+println("Hello, world!");
+println("MiLa is running in the browser!");
+    </script>
+    
+    <script type="text/mila">
+var x = 42;
+println("The answer is: " + x);
+dom.setText("#header", "test");
+    </script>
+    
+    <script>
+        // Process all text/mila scripts after WASM is loaded
+        function processMiLaScripts() {
+            const templates = document.querySelectorAll('script[type="text/mila"]');
+            console.log('Found ' + templates.length + ' MiLa script(s)');
+            
+            templates.forEach((script, index) => {
+                const code = script.innerHTML.trim();
+                if (code) {
+                    console.log('Queuing script #' + (index + 1));
+                    runMiLa(code);
+                }
+            });
+        }
+        
+        // Wait for WASM to be ready, then process scripts
+        function waitForWasm() {
+            if (moduleReady) {
+                processMiLaScripts();
+            } else {
+                // Check again in 100ms
+                setTimeout(waitForWasm, 100);
+            }
+        }
+        
+        // Start waiting
+        waitForWasm();
+    </script>
+</body>
+</html>

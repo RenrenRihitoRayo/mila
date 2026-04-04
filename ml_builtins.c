@@ -1261,13 +1261,13 @@ Value *native_exit(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
     {
-        exit((int)argv[0]->v.i);
         mila_threads_cleanup();
+        exit((int)argv[0]->v.i);
     }
     else if (argc == 0)
     {
-        exit(0);
         mila_threads_cleanup();
+        exit(0);
     }
     else
     {

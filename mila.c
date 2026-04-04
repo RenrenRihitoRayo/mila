@@ -4901,6 +4901,7 @@ Value *eval_str(char *src, Env *env) {
 }
 
 int run_file(char *name, Env *env) {
+#ifndef VMM_BUILD
   char out_pwd[MAX_PATH_LENGTH] = {0};
   char out[MAX_PATH_LENGTH] = {0};
   path_dirname(name, out, sizeof(out));
@@ -4908,6 +4909,7 @@ int run_file(char *name, Env *env) {
 
   char basename[MAX_PATH_LENGTH] = {0};
   path_basename(name, basename, sizeof(basename));
+#endif
   char *src_text = NULL;
   FILE *f = fopen(name, "rb");
   if (!f) {

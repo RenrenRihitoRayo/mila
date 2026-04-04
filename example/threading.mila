@@ -1,5 +1,5 @@
 
-
+// thread(code: "string") -> "id: int"
 
 var th = thread(!{
 	foreach item : range(4) {
@@ -16,6 +16,7 @@ var th1 = thread(!{
 	return 91;
 });
 
+// join(id: "int") -> "value: any"
 var th = join(th);
 var th1 = join(th1);
 

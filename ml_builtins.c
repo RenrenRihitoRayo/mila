@@ -57,6 +57,8 @@
 #define MILA_LPREFIX "vmm:"
 #endif
 
+#include "ml_threading.c"
+
 // Define meta tables
 
 MethodTable *file_meta = NULL;

@@ -5831,7 +5831,6 @@ Env *mila_init(void)
 void mila_deinit(Env *g)
 {
     // we might handle stuff here
-
     env_free(g);
 }
 

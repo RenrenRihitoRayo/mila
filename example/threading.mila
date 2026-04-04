@@ -3,6 +3,7 @@
 
 // normal thread, keep interpreter awake
 var th = thread.make(!{
+	printf("Running %x\n", thread.get_id());
 	foreach item : range(4) {
 		println("Hello "  + item);
 		time_sleep(1);
@@ -13,6 +14,7 @@ var th = thread.make(!{
 // should take 40s~
 var th_deamon = thread.make(!{
 	var loop;
+	printf("Running %x\n", thread.get_id());
 	foreach item : range(40) {
 		println("Hello "  + item);
 		time_sleep(1);
@@ -21,7 +23,11 @@ var th_deamon = thread.make(!{
 	return 90;
 }, !{
     // always runs even if interpreter dies
-    println("Stopped at " + loop);
+    println("Stopped at " + loop + " because " + _reason);
 });
 // on interpreter exit, kill thread
 thread.set_deamon(th_deamon);
+
+// _reason in on_kill block
+// == "normal" : finished job
+// == "interpreter halt" : deamon

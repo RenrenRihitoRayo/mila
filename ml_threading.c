@@ -1,3 +1,5 @@
+#pragma once
+
 #include <pthread.h>
 #include <string.h>
 #include "mila.h"
@@ -11,8 +13,9 @@ typedef struct
     Env *env;            /* Environment (child of creator's env) */
     Value *result;       /* Result value */
     pthread_t thread_id; /* POSIX thread ID */
-    int status;          /* 0 = pending, 1 = running, 2 = done */
-    int is_deamon;       /* Doesnt keep MiLa awake */
+    int status;         /* 0 = pending, 1 = running, 2 = done */
+    int is_deamon;      /* Doesnt keep MiLa awake */
+    int is_cancelled;   /* we do this to support android :D, thank google. */
 } ThreadContext;
 
 /* Global thread registry (simple array) */
@@ -107,7 +110,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
         return verror("thread.make(code, on_kill?): Requires source code");
     }
 
-    if (argv[0]->type != T_STRING || (argv == 2 && argv[1]->type != T_STRING))
+    if (argv[0]->type != T_STRING || (argc == 2 && argv[1]->type != T_STRING))
     {
         return verror("thread.make(code, on_kill?): Requires string argument");
     }
@@ -123,6 +126,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
     ctx->status = 0;
     ctx->is_deamon = 0;
     ctx->on_kill = argc == 2 ? argv[1]->v.s : NULL;
+    ctx->is_cancelled = 0;
 
     /* Register thread */
     int thread_id = thread_registry_add(ctx);
@@ -173,8 +177,9 @@ Value *native_thread_join(Env *env, int argc, Value **argv)
 
     if (ctx->on_kill)
     {
+        env_set_local_raw(ctx->env, "_reason", vstring_dup("normal"));
         val_release(eval_str(ctx->on_kill, ctx->env));
-            free(ctx->on_kill);
+        free(ctx->on_kill);
         ctx->on_kill = NULL;
     }
     /* Get result */
@@ -241,9 +246,12 @@ void mila_threads_cleanup(void)
             mila_free(ctx->src);
             env_free(ctx->env);
             mila_free(ctx);
-        } else if (ctx) {
+        }
+        else if (ctx)
+        {
             if (ctx->on_kill)
             {
+                env_set_local_raw(ctx->env, "_reason", vstring_dup("interpreter halt"));
                 val_release(eval_str(ctx->on_kill, ctx->env));
                 free(ctx->on_kill);
                 ctx->on_kill = NULL;

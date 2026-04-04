@@ -30,7 +30,9 @@
 #include <unistd.h>
 #endif
 
+#ifndef VMM_BUILD
 #include "ml_paths.c"
+#endif
 
 #include "ml_string.c"
 

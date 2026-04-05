@@ -363,11 +363,11 @@ void register_thread_builtins(Env *env)
 {
     env_register_native(env, "thread.make", native_thread_create);
     env_register_native(env, "thread.join", native_thread_join);
+    env_register_native(env, "thread.cancel", native_thread_cancel);
+    env_register_native(env, "thread.check_cancel", native_thread_check_cancel);
     env_register_native(env, "thread.set_deamon", native_thread_set_deamon);
     env_register_native(env, "thread.get_id", native_thread_id);
     env_register_native(env, "thread.status", native_thread_status);
-    env_register_native(env, "thread.cancel", native_thread_cancel);
-    env_register_native(env, "thread.check_cancel", native_thread_check_cancel);
     env_register_native(env, "thread.mutex", native_make_mutex);
     env_register_native(env, "thread.mutex_unlock", native_unlock_mutex);
     env_register_native(env, "thread.mutex_lock", native_lock_mutex);

@@ -78,5 +78,3 @@ var read = thread.make(!{
 		time_sleep(1);
 	}
 });
-
-while(true){}

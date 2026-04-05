@@ -1,0 +1,9 @@
+
+// Everything in between single quotes `'`
+// Are considered identifiers.
+
+var '' = 90;
+println(''); // prints `90`
+
+var 'some string' = 90;
+println('some string');

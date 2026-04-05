@@ -5318,6 +5318,8 @@ Value *eval_statement(Src *s, Env *env)
                     if (bod->type == T_BREAK)
                     {
                         s->pos = body_end_pos;
+                        for (;value[i]; ++i)
+                            val_release(value[i]);
                         val_release(bod);
                         mila_free(value);
                         mila_free(id);
@@ -5328,21 +5330,38 @@ Value *eval_statement(Src *s, Env *env)
                         s->pos = body_start_pos;
                         if (bod)
                             val_release(bod);
+                        for (;value[i]; ++i)
+                            val_release(value[i]);
+                        mila_free(v);
+                        mila_free(value);
+                        mila_free(id);
                         continue;
                     }
                     else if (IS_ERROR(bod))
                     {
                         s->pos = body_end_pos;
+                        for (;value[i]; ++i)
+                            val_release(value[i]);
+                        mila_free(value);
+                        mila_free(id);
                         return bod;
                     }
                     else if (bod->type == T_RETURN)
                     {
                         s->pos = body_end_pos;
+                        for (;value[i]; ++i)
+                            val_release(value[i]);
+                        mila_free(value);
+                        mila_free(id);
                         return bod;
                     }
                     else if (bod->type == T_ERROR)
                     {
                         s->pos = body_end_pos;
+                        for (;value[i]; ++i)
+                            val_release(value[i]);
+                        mila_free(value);
+                        mila_free(id);
                         return bod;
                     }
                 }
@@ -5405,30 +5424,28 @@ Value *eval_statement(Src *s, Env *env)
         {
             if (id)
             {
-                if (MILA_GET_TYPE(res) == T_ERROR)
-                {
-                    Value *ret = vstring_fmt("%s", res->v.message);
-                    env_set_local(env, id, ret);
+                if (IS_ERROR_TAGGED(res)) {
+                    Value* msg = vstring_dup(res->v.tagged_error.message);
+                    Value* type = vstring_dup(MILA_GET_ERRORNAME(res));
+                    Value* dict = call_function_str(env, "dict", vstring_dup("error"), type, vstring_dup("message"), msg, NULL);
                     val_release(res);
-                    mila_free(id);
+                    env_set_local(env, id, dict);
+                    free(id);
                     s->pos = end;
-                    return ret;
-                }
-                else
-                {
-                    Value *ret =
-                        vstring_fmt("%s[%i]: %s", MILA_GET_ERRORNAME(res),
-                                    MILA_GET_ERROR(res), res->v.tagged_error.message);
+                    return dict;
+                } else {
+                    Value* msg = vstring_dup(res->v.message);
+                    Value* dict = call_function_str(env, "dict", vstring_dup("error"), vstring_dup("Generic"), vstring_dup("message"), msg, NULL);
                     val_release(res);
-                    env_set_local(env, id, ret);
-                    mila_free(id);
+                    env_set_local(env, id, dict);
+                    free(id);
                     s->pos = end;
-                    return ret;
+                    return dict;
                 }
             }
             return vnull();
         }
-        if (IS_FATAL(res))
+        else
         {
             return res; // do not catch fatal
         }
@@ -5699,6 +5716,7 @@ Value *eval_source(Src *s, Env *env)
             }
             if (last->type == T_TAGGED_ERROR)
             {
+                if (last->v.tagged_error.type == E_THREAD_HALT) return last;
                 if (IS_FATAL(last))
                     printf("\n= FATAL ERROR[%s]: %s\n", MILA_GET_ERRORNAME(last),
                            last->v.tagged_error.message);
@@ -5947,9 +5965,8 @@ int main(int argc, char **argv)
         Src *S = src_new(src_text);
         Value *res = eval_source(S, g);
 
-        path_list_free(search_path);
-        
         mila_threads_cleanup();
+        path_list_free(search_path);
 
         // cleanup
         val_release(res);

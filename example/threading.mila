@@ -1,6 +1,5 @@
 
 // thread.make(code: "string", on_kill: "string?") -> "id: int"
-
 // normal thread, keep interpreter awake
 var th = thread.make(!{
 	printf("Running %x\n", thread.get_id());
@@ -11,23 +10,73 @@ var th = thread.make(!{
 	return 90;
 });
 
-// should take 40s~
+// should take 40s~ but gets killed due to interpreter halt
 var th_deamon = thread.make(!{
 	var loop;
-	printf("Running %x\n", thread.get_id());
 	foreach item : range(40) {
+		// Cooperative for android support
+		// thank you google.
+		thread.check_cancel(th_deamon);
+		if (th_deamon_die) {
+			return;
+		}
+		time_sleep(2);
 		println("Hello "  + item);
-		time_sleep(1);
 		set loop = item;
 	}
 	return 90;
 }, !{
     // always runs even if interpreter dies
-    println("Stopped at " + loop + " because " + _reason);
+    println("Stopped at " + loop);
+    if (_reason == "normal") {
+    	println("Exited normally!");
+    } elif (_reason == "interpreter halt") {
+    	println("Exited abnormally!");
+    } elif (_reason == "cancelled") {
+    	println("Exited abnormally due to cancel!");
+    }
 });
 // on interpreter exit, kill thread
 thread.set_deamon(th_deamon);
+time_sleep(2);
 
-// _reason in on_kill block
-// == "normal" : finished job
-// == "interpreter halt" : deamon
+// sets a cancellation flag
+// No guarantee that it would stop if it
+// lacks calls to thread.check_cancel
+thread.cancel(th_deamon);
+
+srandom(cast.f2i(get_time()));
+
+var mut = thread.mutex();
+var v = 0;
+
+var write = thread.make(!{
+	while (true) {
+		thread.mutex_lock(mut);
+		var num = random(0, 10);
+		println("?? Random 1: " + num);
+		time_sleep(random(1, 2));
+		set v = num;
+		thread.mutex_unlock(mut);
+	}
+});
+
+var write2 = thread.make(!{
+	while (true) {
+		thread.mutex_lock(mut);
+		var num = random(0, 10);
+		println("!! Random 2: " + num);
+		time_sleep(random(0, 1));
+		set v = num;
+		thread.mutex_unlock(mut);
+	}
+});
+
+var read = thread.make(!{
+	while (true) {
+		println("   Read: " + v);
+		time_sleep(1);
+	}
+});
+
+while(true){}

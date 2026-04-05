@@ -1,9 +1,13 @@
 
-catch {
+println("test");
+
+catch test {
 	block test {
 		report("test caught");
 	}
 }
+
+println(test);
 
 block test {
 	report("test uncaught");

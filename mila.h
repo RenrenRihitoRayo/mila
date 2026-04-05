@@ -15,7 +15,7 @@
 
 #define IS_ERROR(v) (MILA_GET_TYPE(v) == T_ERROR || MILA_GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_ERROR_TAGGED(v) (MILA_GET_TYPE(v) == T_TAGGED_ERROR)
-#define IS_FATAL(v) ((MILA_GET_ERROR(v) == E_FATAL || MILA_GET_ERROR(v) == E_SYNTAX_ERROR))
+#define IS_FATAL(v) ((MILA_GET_ERROR(v) == E_FATAL || MILA_GET_ERROR(v) == E_SYNTAX_ERROR || MILA_GET_ERROR(v) == E_THREAD_HALT))
 #define GET_STRING(val) (val ? val->v.s : NULL)
 #define GET_INTEGER(val) (val ? val->v.i : 0)
 #define GET_UINTEGER(val) (val ? val->v.ui : 0)
@@ -80,7 +80,8 @@ typedef enum
     E_RUNTIME,      // Errors such as undefined variables
     E_TYPE_ERROR,   // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
     E_FATAL,        // Errors that should be fatal, like syntax errors
-    E_GENERIC       // Errors that cannot be classified as ones above
+    E_GENERIC,      // Errors that cannot be classified as ones above
+    E_THREAD_HALT
 } ErrorType;
 
 typedef enum
@@ -129,14 +130,19 @@ const char *MILA_TYPE_NAMES[] = {
     "arg_end",
 };
 
+const int MILA_TYPE_COUNT = T_ARG_END;
+
 const char *MILA_ERROR_NAMES[] = {
     "SyntaxError",
     "PreRuntime",
     "Runtime",
     "TypeError",
     "Fatal",
-    "Generic"
+    "Generic",
+    "ThreadHalt"
 };
+
+const int MILA_ERROR_COUNT = E_THREAD_HALT;
 
 path_list *search_path;
 
@@ -144,7 +150,8 @@ path_list *search_path;
 extern path_list *search_path;
 extern char **MILA_TYPE_NAMES;
 extern char **MILA_ERROR_NAMES;
-
+const int MILA_ERROR_COUNT;
+const int MILA_TYPE_COUNT;
 #endif
 
 // each of these methods may be reffered to as

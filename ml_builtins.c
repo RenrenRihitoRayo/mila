@@ -2364,6 +2364,31 @@ Value *native_strftime(Env *env, int argc, Value **argv)
     return vstring_dup(buffer);
 }
 
+Value *native_break_point(Env *env, int argc, Value **argv)
+{
+#if defined(__x86_64__) || defined(__i386__)
+    __asm__ volatile ("int3");
+
+#elif defined(__aarch64__) || defined(__arm__)
+    __asm__ volatile ("brk #0");
+
+#elif defined(__riscv)
+    __asm__ volatile ("ebreak");
+
+#elif defined(__powerpc__) || defined(__ppc__)
+    __asm__ volatile ("trap");
+
+#elif defined(__mips__)
+    __asm__ volatile ("break");
+
+#else
+    /* Fallback: raise a signal that debuggers treat like a breakpoint */
+    #include <signal.h>
+    raise(SIGTRAP);
+#endif
+    return vnull();
+}
+
 Value *native_from_opaque(Env *e, int argc, Value **argv)
 {
     (void)e;
@@ -2590,6 +2615,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "strftime", native_strftime);
     env_register_native(g, "get_tm_gmt", native_get_tm_gmt);
     env_register_native(g, "get_tm_local", native_get_tm_local);
+    // === Debugging
+    env_register_native(g, "_breakpoint", native_break_point);
     // === OS Stuff
     env_register_native(g, "system", native_system);
     // === Modules

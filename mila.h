@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define MAX_METHODS 100
 #define MAX_NUMBER_DIGITS 250
 #define MAX_PATH_LENGTH 1028
 
@@ -18,8 +17,10 @@
 #define IS_FATAL(v) ((MILA_GET_ERROR(v) == E_FATAL || MILA_GET_ERROR(v) == E_SYNTAX_ERROR || MILA_GET_ERROR(v) == E_THREAD_HALT))
 #define GET_STRING(val) (val ? val->v.s : NULL)
 #define GET_INTEGER(val) (val ? val->v.i : 0)
+#define GET_BINTEGER(val) (val ? val->v.bi : 0)
 #define GET_UINTEGER(val) (val ? val->v.ui : 0)
 #define GET_FLOAT(val) (val ? val->v.f : 0.0)
+#define GET_BFLOAT(val) (val ? val->v.bf : 0.0)
 #define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
 #define GET_FUNCTION(val) (val ? val->v.fn : NULL)
 #define GET_NATIVE(val) (val ? val->v.native : NULL)
@@ -88,8 +89,10 @@ typedef enum
 {
     T_NULL = 0,
     T_INT,
+    T_BINT,
     T_UINT,
     T_FLOAT,
+    T_BFLOAT,
     T_STRING,
     T_BOOL,
     T_FUNCTION,
@@ -112,8 +115,10 @@ typedef struct path_list path_list;
 const char *MILA_TYPE_NAMES[] = {
     "null",
     "int",
+    "bint",
     "uint",
     "float",
+    "bfloat",
     "string",
     "bool",
     "function",
@@ -233,9 +238,11 @@ struct Value
         char *message;
         _Bool b;
         double f;
+        _Float128 bf;
         void *opaque;
         long i;
         unsigned long ui;
+        __int128 bi;
         // function
         FunctionV *fn;
         NativeFunctionV *native;
@@ -365,6 +372,14 @@ Value *vfunction(char **params, char** contextuals, Env* closure, char *body_src
 static int is_number(Value *v);
 // Turn any numeric type to a double
 double to_double(Value *v);
+// Turn any numeric type to a _Float128
+_Float128 to_bdouble(Value *v);
+// Turn any numeric type into a __int128
+__int128 to_bint(Value *v);
+// Turn any numeric type to an unsigned long
+unsigned long to_uint(Value *v);
+// Turn a _Float128 into a string
+char *f128toa(_Float128 value);
 // Turn a value into its c string equivalent
 char *as_c_string(Value *v);
 // Turn a value into its c string representation equivalent
@@ -385,6 +400,8 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Create an owned opaque
 Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+__int128 atoi128(char* num, char** end);
+char* i128toa(__int128 num);
 
 // == Parsing
 
@@ -430,6 +447,7 @@ Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);
 
 // == Helpers
+void sleep_ms(uint64_t ms);
 int our_asprintf(char **strp, const char *fmt, ...);
 Value *call_function(Value *fnval, Env *env, int argc, Value **argv);
 int match_types(Value **args, ...);

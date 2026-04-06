@@ -165,7 +165,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
     ctx->is_deamon = 0;
     ctx->on_kill = NULL;
     if (argc == 2) {
-        ctx->on_kill = strdup(argv[1]->v.s);
+        ctx->on_kill = mila_strdup(argv[1]->v.s);
     }
     ctx->is_cancelled = 0;
 
@@ -327,7 +327,7 @@ void mila_threads_cleanup(void)
     for (int i = 0; i < thread_registry.count; i++)
     {
         ThreadContext *ctx = thread_registry.threads[i];
-        if (ctx && !ctx->is_deamon)
+        if (ctx && ctx->status < 2 && !ctx->is_deamon)
         {
             pthread_join(ctx->thread_id, NULL);
             if (ctx->on_kill)

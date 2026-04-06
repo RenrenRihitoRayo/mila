@@ -1,86 +1,59 @@
-// lambda implementations musnt be a shell
-assert((fn(){return "lambda!";})() == "lambda!", "Lambdas arent correct!");
 
-// functions also need to be supported of course
-fn concat(name) {
-  // test concat + string coercion
-  return null + name + " concat!" + true + 1 + array(0) + list() + dict() + none;
-}
+// Variables can be any type
+var v = "string";
+var v = 90;
+var v = 9.0;
 
-assert(
-  concat("Test") == "nullTest concat!true1array.from()list()dict()none",
-  "Concatination failed!"
+// var statements can be annotated
+var v: "type" = value;
+
+// Using ID strings you can use anything
+// As a name
+var '🌟' = 90;
+println('🌟');
+
+// values
+println(
+    true,
+    false,
+    none,  // sentinel representing no value
+    null   // sentinel representing the value doesnt exist
 );
 
-assert(
-  "globbing! and random stuff" => "gl[!O][a-z]bi?g!*",
-  "Globbing unsupported!"
+// types
+println(
+    typeof(1),        // "int"    c long
+    typeof(1.0),      // "float"  c double
+    typeof(1u),       // "uint"   c unsigned long
+    typeof(0x1),      // "int"    c long
+    typeof(0x1u),     // "uint"   c unsigned long
+    typeof(1~),       // "bint"   c 128 bit int
+    typeof(0x1~),     // "bint"   c 128 bit int
+    typeof(1.0~),     // "bfloat" c 128 bit float
+    typeof("string"), // "string" c string
 );
 
+// Asserts are also available
 catch err {
-    report("test");
+    assert(false /*condition goes here*/ , "message here");
 }
 
-assert(err == "test", "errors are not handled properly");
+println(err);
 
-catch err_tagged {
-    report_tagged(E_GENERIC, "test");
+// MiLa also supports cooperative threading
+var threads = [];
+foreach num : range(3) {
+    list.append(threads,
+            thread.make(!{
+            vars.bind("num");
+            println("Working: thread #" + num);
+            time_sleep(5);
+        })
+    );
+    // So loop scope doesnt get freed too quickly
+    time_sleep_ms(1);
 }
 
-assert(err_tagged == "Generic[5]: test", "tagged errors are not handled properly");
-
-namespace test {
-    var .namespaced = 0x45;
-    var not_namespaced = -0x45;
+foreach thread : threads {
+    thread.join(thread);
 }
-
-assert(test.namespaced == 0x45, "namespaces arent handled!");
-assert(not_namespaced == -0x45, "namespaces arent handled!");
-
-assert(
-    str.patch("testdotwhat", "dot", ".") == "test.what", 
-    "Patch doesnt patch?..."
-);
-
-assert(cast.string(range(10)) == "range(0, 10, 1)",
-       "wrong range representation!");
-
-// function syntax is
-// fn name(parameters)[contextuals]:[closures] { body }
-// both contextuals and closures are optional
-// contextual is name binding on the call site
-// closures is name binding on definition
-// Contextuals have the precedence over parameters
-// On reading variables: local scope -> closure -> outer scopes
-{
-    var name = "Darren";
-    contextual name;
-
-    fn greet(name)[name] {
-        assert(name == "Darren", "Contextuals must override parameters!");
-    }
-
-    greet("Hailey");
-
-    fn counter(count) {
-        var count = count-1 ?? -1;
-        fn counter():[count] {
-            set count += 1;
-        }
-        return counter;
-    }
-
-    var count = counter();
-    assert(count() == 0, "closures dont work?");
-    assert(count() == 1, "closures dont work?");
-    assert(count() == 2, "closures dont work?");
-}
-
-var a = "What";
-var b = a;
-sync a = "Eyy";
-
-assert(b == "Eyy", "sync doesnt work on aliases");
-
-// println(make_closure);
-dump_vars();

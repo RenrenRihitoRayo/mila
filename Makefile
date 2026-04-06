@@ -1,39 +1,38 @@
 cc ?= gcc
-std ?= c23
 files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c ml_string.c ml_threading.c
 files_web = $(files) ./addon/ml_web.c
 targets_web = ./web/mila.wasm ./web/mila.js
-cflags = -O3 -lm -lc -std=$(std) -ffast-math
+cflags = -O3 -lm -lc -ffast-math -lquadmath
 
 .PHONY: web
 
 all: $(files)
-	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -fsanitize=address -g\
+	$(cc) -lc -lquadmath -lm -O0 -o mila mila.c -fsanitize=address -g\
 	 -D MILA_NO_SIGNAL_HANDLER
 
 # dont include asan, compile with debug logging
 debug: $(files)
-	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG
+	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG
 
 debug-custom: $(files)
-	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -D MILA_CUSTOM
+	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -D MILA_CUSTOM
 
 debug-asan: $(files)
-	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -fsanitize=address
+	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -fsanitize=address
 
 debug-custom-asan: $(files)
-	$(cc) -std=$(std) -lc -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -D MILA_CUSTOM -fsanitize=address
+	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -D MILA_CUSTOM -fsanitize=address
 
 test:
-	$(cc) -o test.o0.mila -O0 mila.c -lm
-	$(cc) -o test.o3.mila -O3 mila.c -lm
-	$(cc) -o test.os.mila -Os mila.c -lm
+	$(cc) -o test.o0.mila -O0 mila.c -lm -lquadmath 
+	$(cc) -o test.o3.mila -O3 mila.c -lm -lquadmath 
+	$(cc) -o test.os.mila -Os mila.c -lm -lquadmath 
 
-	$(cc) -o test.s.o0.mila -O0 mila.c -lm
+	$(cc) -o test.s.o0.mila -O0 mila.c -lm -lquadmath 
 	strip test.s.o0.mila
-	$(cc) -o test.s.o3.mila -O3 mila.c -lm
+	$(cc) -o test.s.o3.mila -O3 mila.c -lm -lquadmath 
 	strip test.s.o0.mila
-	$(cc) -o test.s.os.mila -Os mila.c -lm
+	$(cc) -o test.s.os.mila -Os mila.c -lm -lquadmath 
 	strip test.s.os.mila
 
 	@echo "MiLa -O0 build"
@@ -59,11 +58,11 @@ test:
 	@rm test.*
 
 static: $(files)
-	gcc -o mila -Os mila.c -lm -static
+	gcc -o mila -Os mila.c -lm -static -lquadmath 
 	strip mila
 
 smallest: $(files)
-	$(cc) -o mila -Os mila.c -lm
+	$(cc) -o mila -Os mila.c -lm -lquadmath 
 	strip mila
 
 release: $(files)

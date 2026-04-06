@@ -47,6 +47,7 @@ thread.cancel(th_deamon);
 
 srandom(cast.f2i(get_time()));
 
+// Demonstrate the use of locks
 var mut = thread.mutex();
 var v = 0;
 
@@ -74,9 +75,11 @@ var write2 = thread.make(!{
 
 var read = thread.make(!{
 	while (true) {
+		thread.mutex_lock(mut);
 		println("   Read: " + v);
 		time_sleep(1);
+		thread.mutex_unlock(mut);
 	}
 });
 
-while(true){}
+while (true){}

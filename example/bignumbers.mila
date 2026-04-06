@@ -1,0 +1,14 @@
+
+var bint: "bint" = 0~;
+println(bint + 10);
+
+var bfloat: "bfloat" = 0.00000000000000001~;
+println(bfloat);
+
+var start = get_time();
+var i = 0u;
+while (i < 10000000u) {
+	set i += 1;
+}
+var time = get_time() - start;
+println(time);

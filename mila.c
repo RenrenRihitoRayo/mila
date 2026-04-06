@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <getopt.h>
+#include <quadmath.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -985,6 +987,12 @@ Value *vint(long x)
     v->v.i = x;
     return v;
 }
+Value *vbint(__int128 x)
+{
+    Value *v = val_new(T_BINT);
+    v->v.bi = x;
+    return v;
+}
 Value *vuint(unsigned long x)
 {
     Value *v = val_new(T_UINT);
@@ -995,6 +1003,12 @@ Value *vfloat(double f)
 {
     Value *v = val_new(T_FLOAT);
     v->v.f = f;
+    return v;
+}
+Value *vbfloat(_Float128 f)
+{
+    Value *v = val_new(T_BFLOAT);
+    v->v.bf = f;
     return v;
 }
 Value *vbool(int b)
@@ -1277,9 +1291,20 @@ char *as_c_string(Value *v)
             our_asprintf(&buffer, "<owned opaque:%p>", v->v.opaque);
         break;
     case T_UINT:
-        our_asprintf(&buffer, "%lu", v->v.ui);
-        our_asprintf(&buffer, "u");
+        our_asprintf(&buffer, "%luu", v->v.ui);
         break;
+    case T_BINT: {
+        char* s = i128toa(v->v.bi);
+        our_asprintf(&buffer, "%s~", s);
+        free(s);
+        break;
+    }
+    case T_BFLOAT: {
+        char* s = f128toa(v->v.bf);
+        our_asprintf(&buffer, "%s~", s);
+        free(s);
+        break;
+    }
     case T_RETURN:
     {
         char *str = as_c_string_repr(v->v.opaque);
@@ -2808,6 +2833,127 @@ char *parse_ident(Src *s)
     return res;
 }
 
+
+char *i128toa(__int128 value) {
+    char tmp[50]; // enough to hold 128-bit decimal
+    int i = 0;
+
+    int neg = value < 0;
+    unsigned __int128 v = neg ? -value : value;
+
+    // Convert digits backwards
+    do {
+        tmp[i++] = '0' + (v % 10);
+        v /= 10;
+    } while (v != 0);
+
+    if (neg) tmp[i++] = '-';
+
+    // Allocate string
+    char *str = malloc(i + 1);
+    if (!str) return NULL;
+
+    // Reverse into allocated string
+    for (int j = 0; j < i; j++) {
+        str[j] = tmp[i - j - 1];
+    }
+    str[i] = '\0';
+
+    return str;
+}
+
+char *f128toa(_Float128 value) {
+    if (isnanq(value)) {
+        char *buf = malloc(4);
+        if (buf) strcpy(buf, "nan");
+        return buf;
+    }
+    if (isinfq(value)) {
+        char *buf = malloc(5);
+        if (buf) strcpy(buf, value > 0 ? "inf" : "-inf");
+        return buf;
+    }
+    if (value == 0.0Q) {
+        char *buf = malloc(4);
+        if (buf) strcpy(buf, "0.0");
+        return buf;
+    }
+    size_t bufsize = 128;
+    char *buf = malloc(bufsize);
+    if (!buf) return NULL;
+    int ret = quadmath_snprintf(buf, bufsize, "%.34Qg", value);
+    if (ret < 0 || (size_t)ret >= bufsize) {
+        // Buffer too small, expand and retry
+        bufsize = ret + 10;
+        char *newbuf = realloc(buf, bufsize);
+        if (!newbuf) {
+            free(buf);
+            return NULL;
+        }
+        buf = newbuf;
+        ret = quadmath_snprintf(buf, bufsize, "%.34Qg", value);
+        if (ret < 0) {
+            free(buf);
+            return NULL;
+        }
+    }
+    size_t len = strlen(buf);
+    char *decimal = strchr(buf, '.');
+    if (decimal && !strchr(decimal, 'e') && !strchr(decimal, 'E')) {
+        while (len > 0 && buf[len - 1] == '0') {
+            len--;
+        }
+        if (len > 0 && buf[len - 1] == '.') {
+            len++;
+        }
+        buf[len] = '\0';
+    } else if (decimal) {
+        // Has exponent, trim trailing zeros before 'e'/'E'
+        char *exp_pos = strchr(decimal, 'e');
+        if (!exp_pos) {
+            exp_pos = strchr(decimal, 'E');
+        }
+        if (exp_pos) {
+            // Find last non-zero before exponent
+            char *trim_pos = exp_pos - 1;
+            while (trim_pos > decimal && *trim_pos == '0') {
+                trim_pos--;
+            }
+            if (*trim_pos == '.') {
+                trim_pos++;
+            } else {
+                trim_pos++;
+            }
+            if (trim_pos < exp_pos) {
+                size_t exp_len = strlen(exp_pos);
+                memmove(trim_pos, exp_pos, exp_len + 1);
+            }
+        }
+    }
+    size_t final_len = strlen(buf);
+    char *str = realloc(buf, final_len + 1);
+    return str ? str : buf;
+}
+
+__int128 atoi128(char *s, char **end) {
+    const char *p = s;
+    // skip whitespace
+    while (isspace((unsigned char)*p)) p++;
+
+    int neg = 0;
+    if (*p == '+' || *p == '-') {
+        neg = (*p == '-');
+        p++;
+    }
+    __int128 result = 0;
+    while (isdigit((unsigned char)*p)) {
+        result = result * 10 + (*p - '0');
+        p++;
+    }
+    if (end) *end = (char *)p;
+    return neg ? -result : result;
+}
+
 // parse number (int or float)
 Value *parse_number(Src *s)
 {
@@ -2816,7 +2962,8 @@ Value *parse_number(Src *s)
     _Bool seen_dot = 0;
     _Bool is_unsigned = 0;
     _Bool is_percent = 0;
-    _Bool is_hex = 0;
+    char base = 10;
+    _Bool big = 0;
     if (src_peek(s) == '-')
     {
         src_get(s);
@@ -2824,11 +2971,12 @@ Value *parse_number(Src *s)
     // either normal number or hex
     while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.' ||
            src_peek(s) == 'x' || src_peek(s) == 'X' ||
-           isxdigit((unsigned char)src_peek(s)))
+           isxdigit((unsigned char)src_peek(s)) ||
+           src_peek(s) == '~')
     {
         if (src_peek(s) == '.')
         {
-            if (seen_dot || is_hex) // cant have hex literal have decimal points (that
+            if (seen_dot || base == 16) // cant have hex literal have decimal points (that
                                     // would be cool though)
             {
                 break;
@@ -2837,11 +2985,19 @@ Value *parse_number(Src *s)
         }
         else if (src_peek(s) == 'x' || src_peek(s) == 'X')
         {
-            if (is_hex || seen_dot)
+            if (base == 16 || seen_dot)
             {
                 break;
             }
-            is_hex = 1;
+            base = 16;
+        }
+        else if (src_peek(s) == '~')
+        {
+            if (big)
+            {
+                break;
+            }
+            big = 1;
         }
         src_get(s);
     }
@@ -2863,7 +3019,7 @@ Value *parse_number(Src *s)
     if (len <= 0)
         return NULL;
 
-    if (len < (int)sizeof(tmp))
+    if (len < (int)sizeof(tmp) && !big)
     {
         memcpy(tmp, s->src + st, len);
         tmp[len] = 0;
@@ -2876,7 +3032,7 @@ Value *parse_number(Src *s)
         }
         else
         {
-            long i = strtol(tmp, NULL, is_hex ? 16 : 10);
+            long i = strtol(tmp, NULL, base);
             if (is_percent)
                 return vfloat((double)i / 100.0);
             return is_unsigned ? vuint(i > 0 ? i : -i) : vint(i);
@@ -2891,17 +3047,17 @@ Value *parse_number(Src *s)
         Value *r;
         if (seen_dot)
         {
-            double f = atof(buf);
+            _Float128 f = strtoflt128(buf, NULL);
             if (is_percent)
                 f /= 100.0;
-            r = vfloat(f);
+            r = vbfloat(f);
         }
         else
         {
-            long tmp = strtol(buf, NULL, is_hex ? 16 : 10);
+            long tmp = atoi128(buf, NULL);
             if (is_percent)
-                return vfloat((double)tmp / 100.0);
-            r = is_unsigned ? vuint(tmp > 0 ? tmp : -tmp) : vint(tmp);
+                return vbfloat((_Float128)tmp / 100.0);
+            r = vbint(tmp);
         }
         mila_free(buf);
         return r;
@@ -2971,6 +3127,10 @@ Value *parse_string(Src *s)
                 char code[3] = {src_get(s), src_get(s), 0};
                 c = (char)strtol(code, NULL, 8);
             }
+            case '\n':
+            {
+                c = src_get(s);
+            }
             break;
             default:
                 c = n;
@@ -2993,7 +3153,6 @@ Value *parse_string(Src *s)
 
         buf[len++] = c;
     }
-
     // shrink to exact size
     char *res = mila_realloc(buf, len + 1);
     if (!res)
@@ -3454,44 +3613,49 @@ Value *eval_primary(Src *s, Env *env)
         Value **args = NULL;
         Value *list = call_function_str(env, "list", NULL);
         int argc = 0;
-        for (;;)
-        {
-            skip_ws(s);
-            Value *a = eval_expr(s, env);
-            if (IS_ERROR(a))
+        skip_ws(s);
+        if (src_peek(s) != ']') {
+            for (;;)
             {
-                mila_free(args);
+                skip_ws(s);
+                Value *a = eval_expr(s, env);
+                if (IS_ERROR(a))
+                {
+                    mila_free(args);
+                    val_release(list);
+                    return a;
+                }
+                args = mila_realloc(args, sizeof(Value *) * (argc + 1));
+                args[argc++] = a;
+                val_release(call_function_str(env, "list.append", val_retain(list), a, NULL));
+                skip_ws(s);
+                if (match_char(s, ','))
+                    continue;
+                if (match_char(s, '='))
+                    continue;
+                if (match_char(s, ']'))
+                    break;
                 val_release(list);
-                return a;
+                mila_free(args);
+                int k = 1;
+                while (k)
+                {
+                    if (src_peek(s) == '[')
+                        k++;
+                    if (src_peek(s) == ']')
+                        k--;
+                    s->pos++;
+                }
+                size_t end = s->pos;
+                int len = end - start + 1;
+                return vtagged_error(
+                    E_SYNTAX_ERROR,
+                    "Expected a %s or closing bracket!\nAt list `%.*s`",
+                    is_dict && argc % 2 ? "colon" : "comma",
+                    len, s->src + start);
             }
-            args = mila_realloc(args, sizeof(Value *) * (argc + 1));
-            args[argc++] = a;
-            val_release(call_function_str(env, "list.append", val_retain(list), a, NULL));
-            skip_ws(s);
-            if (match_char(s, ','))
-                continue;
-            if (match_char(s, '='))
-                continue;
-            if (match_char(s, ']'))
-                break;
-            val_release(list);
-            mila_free(args);
-            int k = 1;
-            while (k)
-            {
-                if (src_peek(s) == '[')
-                    k++;
-                if (src_peek(s) == ']')
-                    k--;
-                s->pos++;
-            }
-            size_t end = s->pos;
-            int len = end - start + 1;
-            return vtagged_error(
-                E_SYNTAX_ERROR,
-                "Expected a %s or closing bracket!\nAt list `%.*s`",
-                is_dict && argc % 2 ? "colon" : "comma",
-                len, s->src + start);
+        } else {
+            src_get(s);
         }
         if (is_dict)
         {
@@ -4128,7 +4292,7 @@ Value *eval_primary(Src *s, Env *env)
 // helper to convert numeric types and do arithmetic
 static int is_number(Value *v)
 {
-    return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
+    return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT || v->type == T_BINT || v->type == T_BFLOAT);
 }
 
 double to_double(Value *v)
@@ -4139,6 +4303,63 @@ double to_double(Value *v)
         return (double)v->v.i;
     if (v->type == T_FLOAT)
         return v->v.f;
+    if (v->type == T_UINT)
+        return (double)v->v.ui;
+    if (v->type == T_BINT)
+        return (double)v->v.bi;
+    if (v->type == T_BFLOAT)
+        return (double)v->v.bi;
+    return 0.0;
+}
+
+_Float128 to_bdouble(Value *v)
+{
+    if (!v)
+        return 0.0;
+    if (v->type == T_INT)
+        return (_Float128)v->v.i;
+    if (v->type == T_FLOAT)
+        return (_Float128)v->v.f;
+    if (v->type == T_UINT)
+        return (_Float128)v->v.ui;
+    if (v->type == T_BINT)
+        return (_Float128)v->v.bi;
+    if (v->type == T_BFLOAT)
+        return v->v.bf;
+    return 0.0;
+}
+
+__int128 to_bint(Value *v)
+{
+    if (!v)
+        return 0.0;
+    if (v->type == T_INT)
+        return (__int128)v->v.i;
+    if (v->type == T_FLOAT)
+        return (__int128)v->v.f;
+    if (v->type == T_UINT)
+        return (__int128)v->v.ui;
+    if (v->type == T_BINT)
+        return v->v.bi;
+    if (v->type == T_BFLOAT)
+        return (__int128)v->v.bf;
+    return 0.0;
+}
+
+unsigned long to_uint(Value *v)
+{
+    if (!v)
+        return 0.0;
+    if (v->type == T_INT)
+        return (unsigned long)v->v.i;
+    if (v->type == T_FLOAT)
+        return (unsigned long)v->v.f;
+    if (v->type == T_UINT)
+        return v->v.ui;
+    if (v->type == T_BINT)
+        return (unsigned long)v->v.bi;
+    if (v->type == T_BFLOAT)
+        return (unsigned long)v->v.bf;
     return 0.0;
 }
 
@@ -4180,21 +4401,68 @@ Value *binary_op(Value *a, MethodType op, Value *b)
     }
     else if (is_number(a) && is_number(b))
     {
-        if (a->type == T_UINT || b->type == T_UINT)
+        if (a->type == T_BFLOAT || b->type == T_BFLOAT)
+        {
+            _Float128 ra = to_bdouble(a), rb = to_bdouble(b);
+            if (op == BMethodAdd)
+                return vbfloat(ra + rb);
+            if (op == BMethodSub)
+                return vbfloat(ra - rb);
+            if (op == BMethodMul)
+                return vbfloat(ra * rb);
+            if (op == BMethodDiv)
+                return vbfloat(ra / rb);
+            if (op == BMethodLess)
+                return vbool(ra < rb);
+            if (op == BMethodGreat)
+                return vbool(ra > rb);
+            if (op == BMethodLE)
+                return vbool(ra <= rb);
+            if (op == BMethodGE)
+                return vbool(ra >= rb);
+            if (op == BMethodEq)
+                return vbool(ra == rb);
+            if (op == BMethodNe)
+                return vbool(ra != rb);
+            return vnull();
+        }
+        else if (a->type == T_BINT || b->type == T_BINT)
+        {
+            __int128 ra = to_bint(a), rb = to_bint(b);
+            if (op == BMethodAdd)
+                return vbint(ra + rb);
+            if (op == BMethodSub)
+                return vbint(ra - rb);
+            if (op == BMethodMul)
+                return vbint(ra * rb);
+            if (op == BMethodDiv)
+                return vbint(ra / rb);
+            if (op == BMethodLess)
+                return vbool(ra < rb);
+            if (op == BMethodGreat)
+                return vbool(ra > rb);
+            if (op == BMethodLE)
+                return vbool(ra <= rb);
+            if (op == BMethodLshift)
+                a->v.bi = ra << rb;
+            if (op == BMethodRshift)
+                a->v.bi = ra >> rb;
+            if (op == BMethodGE)
+                return vbool(ra >= rb);
+            if (op == BMethodEq)
+                return vbool(ra == rb);
+            if (op == BMethodNe)
+                return vbool(ra != rb);
+            return vnull();
+        }
+        else if (a->type == T_UINT || b->type == T_UINT)
         // treat both numbers as unsigned.
         {
-            unsigned long ia = a->v.ui, ib = b->v.ui;
+            unsigned long ia = to_uint(a), ib = to_uint(b);
             if (op == BMethodAdd)
                 return vuint(ia + ib);
             if (op == BMethodSub)
-            {
-                if (a->type == T_INT)
-                {
-                    long v = a->v.i - b->v.i;
-                    return vuint(v > 0 ? v : -v);
-                }
                 return vuint(ia - ib);
-            }
             if (op == BMethodMul)
                 return vuint(ia * ib);
             if (op == BMethodDiv)
@@ -4355,34 +4623,65 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
 {
     if (is_number(a) && is_number(b))
     {
-        if (a->type == T_UINT || b->type == T_UINT)
+        if (a->type == T_BFLOAT || b->type == T_BFLOAT)
+        {
+            _Float128 ra = to_bdouble(a), rb = to_bdouble(b);
+            if (op == BMethodAdd)
+                return vbfloat(ra + rb);
+            if (op == BMethodSub)
+                return vbfloat(ra - rb);
+            if (op == BMethodMul)
+                return vbfloat(ra * rb);
+            if (op == BMethodDiv)
+                return vbfloat(ra / rb);
+            if (op == BMethodLess)
+                return vbool(ra < rb);
+            if (op == BMethodGreat)
+                return vbool(ra > rb);
+            if (op == BMethodLE)
+                return vbool(ra <= rb);
+            if (op == BMethodGE)
+                return vbool(ra >= rb);
+            if (op == BMethodEq)
+                return vbool(ra == rb);
+            if (op == BMethodNe)
+                return vbool(ra != rb);
+            return a;
+        }
+        else if (a->type == T_BINT || b->type == T_BINT)
+        {
+            __int128 ra = to_bint(a), rb = to_bint(b);
+            if (op == BMethodAdd)
+                a->v.bi = ra + rb;
+            if (op == BMethodSub)
+                a->v.bi = ra - rb;
+            if (op == BMethodMul)
+                a->v.bi = ra * rb;
+            if (op == BMethodDiv)
+                a->v.bi = ra / rb;
+            if (op == BMethodLshift)
+                a->v.bi = ra << rb;
+            if (op == BMethodRshift)
+                a->v.bi = ra >> rb;
+            return a;
+        }
+        else if (a->type == T_UINT || b->type == T_UINT)
         // treat both numbers as unsigned.
         {
-            unsigned long ia = a->v.ui, ib = b->v.ui;
-            a->type = T_UINT;
+            unsigned long ia = to_uint(a), ib = to_uint(b);
             if (op == BMethodAdd)
                 a->v.ui = ia + ib;
-            else if (op == BMethodSub)
-            {
-                if (a->type == T_INT)
-                {
-                    long v = a->v.i - b->v.i;
-                    a->v.ui = v > 0 ? v : -v;
-                }
-                else
-                {
-                    a->v.ui = ia - ib;
-                }
-            }
-            else if (op == BMethodMul)
+            if (op == BMethodSub)
+                a->v.ui = ia - ib;
+            if (op == BMethodMul)
                 a->v.ui = ia * ib;
-            else if (op == BMethodDiv)
+            if (op == BMethodDiv)
                 a->v.ui = ia / ib;
-            else if (op == BMethodLshift)
+            if (op == BMethodLshift)
                 a->v.ui = ia << ib;
-            else if (op == BMethodRshift)
+            if (op == BMethodRshift)
                 a->v.ui = ia >> ib;
-            else if (op == BMethodMod)
+            if (op == BMethodMod)
                 a->v.ui = ia % ib;
             return a;
         }
@@ -5420,6 +5719,7 @@ Value *eval_statement(Src *s, Env *env)
         size_t end = s->pos;
         s->pos = start;
         Value *res = eval_block_raw(s, env);
+
         if (IS_ERROR(res) && !IS_FATAL(res))
         {
             if (id)
@@ -5443,12 +5743,12 @@ Value *eval_statement(Src *s, Env *env)
                     return dict;
                 }
             }
-            return vnull();
         }
         else
         {
             return res; // do not catch fatal
         }
+
         s->pos = end;
         mila_free(id);
         return res;
@@ -5572,9 +5872,11 @@ Value *eval_statement(Src *s, Env *env)
         {
             s->pos += strlen("with");
             char *obj_name = parse_ident(s);
-            if (!name)
+            if (!obj_name)
             {
-                return vtagged_error(E_SYNTAX_ERROR, "Expected a name after `from`");
+                Value* res = vtagged_error(E_SYNTAX_ERROR, "Expected a name after `with` for object `%s`", name);
+                free(name);
+                return res;
             }
             obj = call_function_str(env, "dict", NULL);
             Value *with_obj = env_get(env, obj_name);

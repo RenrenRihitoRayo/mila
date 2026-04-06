@@ -572,6 +572,18 @@ Value *native_type_of(Env *env, int argc, Value **argv)
     return vstring_dup(MILA_GET_TYPENAME(argv[0]));
 }
 
+Value *native_is_numeric(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+    {
+        return verror("is_numeric(any): Expected 1 argument (any) any.\n");
+    }
+    if (argv[0]->type_name)
+        return vstring_dup(argv[0]->type_name);
+    return vbool(is_number(argv[0]));
+}
+
 #ifndef VMM_BUILD
 
 Value *file_printer(Value *self)
@@ -1304,6 +1316,29 @@ Value *native_time_sleep(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+void sleep_ms(uint64_t microseconds) {
+    struct timespec ts;
+    ts.tv_sec = microseconds / 1000000;
+    ts.tv_nsec = (microseconds % 1000000) * 1000;
+    nanosleep(&ts, NULL);
+}
+
+Value *native_time_sleep_ms(Env *env, int argc, Value **argv)
+{
+    (void)argc;
+    (void)argv;
+    (void)env;
+    if (argc != 1)
+    {
+        return verror("time_sleep_ms(time): invalid number of arguments given.\n");
+    }
+    if (MILA_GET_TYPE(argv[0]) == T_INT)
+        sleep_ms(GET_INTEGER(argv[0]) * 1000);
+    else if (MILA_GET_TYPE(argv[0]) == T_UINT)
+        sleep_ms(GET_UINTEGER(argv[0]) * 1000);
+    return vnull();
+}
+
 #ifndef VMM_BUILD
 Value *native_run(Env *env, int argc, Value **argv)
 {
@@ -1557,6 +1592,15 @@ Value *native_vars_set(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2)
         return verror("vars.set(name, val): Requires two arguments");
+    env_set(env, argv[0]->v.s, argv[1]);
+    return vnull();
+}
+
+Value *native_vars_set_local(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 2)
+        return verror("vars.set_local(name, val): Requires two arguments");
     env_set_local(env, argv[0]->v.s, argv[1]);
     return vnull();
 }
@@ -2364,6 +2408,15 @@ Value *native_strftime(Env *env, int argc, Value **argv)
     return vstring_dup(buffer);
 }
 
+Value* native_vars_bind(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("vars.bind(name: \"string\"): Expected an argument");
+    Env* parent = env->parent ? env->parent : env;
+    Value* v = env_get(parent, GET_STRING(argv[0]));
+    if (!v) return verror("vars.bind(name: \"string\"): Variable %s does exist!", GET_STRING(argv[0]));
+    env_set_local(env, GET_STRING(argv[0]), v);
+    return vnull();
+}
+
 Value *native_break_point(Env *env, int argc, Value **argv)
 {
 #if defined(__x86_64__) || defined(__i386__)
@@ -2562,6 +2615,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "cast.u2i", native_cast_uint_to_int);
     env_register_native(g, "cast.f2i", native_cast_float_to_int);
     env_register_native(g, "typeof", native_type_of);
+    env_register_native(g, "is_numeric", native_is_numeric);
     // === String
     env_register_native(g, "str.slice", native_str_slice);
     env_register_native(g, "str.index", native_str_index);
@@ -2590,14 +2644,16 @@ void env_register_builtins(Env *g)
     env_set_raw(g, "RAND_MAX", vint(RAND_MAX));
     // === Env
     env_register_native(g, "vars.set", native_vars_set);
+    env_register_native(g, "vars.set_local", native_vars_set_local);
+    env_register_native(g, "vars.bind", native_vars_bind);
     env_register_native(g, "vars.get", native_vars_get);
     env_register_native(g, "vars.local", native_vars_local);
     env_register_native(g, "vars.global", native_vars_global);
 
     /*
-   * _typeof differentiates between native and non native functions
-   * this is for very specific use cases
-   */
+     * _typeof differentiates between native and non native functions
+     * this is for very specific use cases
+     */
     // === Error handling
     env_register_native(g, "report", native_report);
     env_register_native(g, "report_tagged", native_report_tagged);
@@ -2612,6 +2668,7 @@ void env_register_builtins(Env *g)
     // === Time measurement
     env_register_native(g, "get_time", native_get_time);
     env_register_native(g, "time_sleep", native_time_sleep);
+    env_register_native(g, "time_sleep_ms", native_time_sleep_ms);
     env_register_native(g, "strftime", native_strftime);
     env_register_native(g, "get_tm_gmt", native_get_tm_gmt);
     env_register_native(g, "get_tm_local", native_get_tm_local);

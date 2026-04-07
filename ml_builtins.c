@@ -1316,7 +1316,7 @@ Value *native_time_sleep(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-void sleep_ms(uint64_t microseconds) {
+void sleep_micros(uint64_t microseconds) {
     struct timespec ts;
     ts.tv_sec = microseconds / 1000000;
     ts.tv_nsec = (microseconds % 1000000) * 1000;
@@ -1333,9 +1333,9 @@ Value *native_time_sleep_ms(Env *env, int argc, Value **argv)
         return verror("time_sleep_ms(time): invalid number of arguments given.\n");
     }
     if (MILA_GET_TYPE(argv[0]) == T_INT)
-        sleep_ms(GET_INTEGER(argv[0]) * 1000);
+        sleep_micros(GET_INTEGER(argv[0]) * 1000);
     else if (MILA_GET_TYPE(argv[0]) == T_UINT)
-        sleep_ms(GET_UINTEGER(argv[0]) * 1000);
+        sleep_micros(GET_UINTEGER(argv[0]) * 1000);
     return vnull();
 }
 

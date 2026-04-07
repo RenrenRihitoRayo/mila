@@ -1,9 +1,0 @@
-
-namespace test {
-    var .data = dict(
-        "name", "Ez",
-        "age", 17
-    );
-}
-
-println(test.data["name"], test.data["age"]);

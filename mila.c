@@ -1711,7 +1711,7 @@ void val_release(Value *v)
             }
             if (v->v.fn->body_src)
                 mila_free(v->v.fn->body_src);
-            if (v->v.fn->name != NULL)
+            if (v->v.fn->name)
                 mila_free(v->v.fn->name);
             env_free(v->v.fn->closure);
             mila_free(v->v.fn);
@@ -3064,6 +3064,73 @@ Value *parse_number(Src *s)
     }
 }
 
+char* strip(char* str) {
+    char* s = str;
+    int len = strlen(str);
+    while (isspace(*s)) s++;
+    while (isspace(*(s+len-1))) len--;
+    char* final = (char*)malloc(sizeof(char) * len + 1);
+    strncpy(final, s, len);
+    return final
+}
+
+char* dedent(char* str) {
+    if (str == NULL) {
+        return NULL;
+    }
+    size_t len = strlen(str);
+    if (len == 0) {
+        return calloc(1, sizeof(char));  // Return empty string
+    }
+    // Find the minimum indentation (leading spaces/tabs on non-empty lines)
+    size_t min_indent = SIZE_MAX;
+    size_t i = 0;
+    while (i < len) {
+        size_t line_indent = 0;
+        size_t line_start = i;
+        while (i < len && (str[i] == ' ' || str[i] == '\t')) {
+            line_indent++;
+            i++;
+        } 
+        if (i < len && str[i] != '\n' && str[i] != '\r') {
+            if (line_indent < min_indent) {
+                min_indent = line_indent;
+            }
+        }
+        while (i < len && str[i] != '\n') {
+            i++;
+        }
+        if (i < len && str[i] == '\n') {
+            i++;
+        }
+    }
+    if (min_indent == SIZE_MAX) {
+        min_indent = 0;
+    }
+    char* result = malloc(len + 1);
+    if (result == NULL) {
+        return NULL;
+    }
+    size_t result_pos = 0;
+    i = 0;
+    while (i < len) {
+        size_t spaces_to_skip = 0;
+        while (spaces_to_skip < min_indent && i < len && 
+               (str[i] == ' ' || str[i] == '\t')) {
+            spaces_to_skip++;
+            i++;
+        }
+        while (i < len && str[i] != '\n') {
+            result[result_pos++] = str[i++];
+        }
+        if (i < len && str[i] == '\n') {
+            result[result_pos++] = str[i++];
+        }
+    }
+    result[result_pos] = '\0';
+    return result;
+}
+
 // parse string literal (double quotes)
 Value *parse_string(Src *s)
 {
@@ -3071,6 +3138,7 @@ Value *parse_string(Src *s)
     if (src_peek(s) != '"')
         return verror("String unterminated!");
     src_get(s); // consume opening "
+    char do_dedent = 0;
 
     size_t cap = 256;
     size_t len = 0;
@@ -3137,7 +3205,7 @@ Value *parse_string(Src *s)
                 break;
             }
         }
-
+        if (c == '"') break;
         // Grow buffer if needed
         if (len + 1 >= cap)
         {
@@ -3150,16 +3218,22 @@ Value *parse_string(Src *s)
             }
             buf = tmp;
         }
-
         buf[len++] = c;
     }
+    if (src_peek(s) == '!') {
+        do_dedent = 1;
+        src_get(s);
+    }
+
     // shrink to exact size
     char *res = mila_realloc(buf, len + 1);
     if (!res)
         res = buf; // if mila_realloc fails, keep original buffer
 
     res[len] = '\0';
-    return vstring_take(res);
+    Value* str = vstring_take(!do_dedent ? res : dedent(res));
+    if (do_dedent) free(res);
+    return str;
 }
 
 void src_advance_by(Src *s, size_t amount) { s->pos += amount; }
@@ -3908,7 +3982,9 @@ Value *eval_primary(Src *s, Env *env)
         char *buffer = (char *)mila_malloc(sizeof(char) * (end - start) + 1);
         memcpy(buffer, s->src + start, end - start);
 
-        return vstring_take(buffer);
+        Value* res = vstring_take(dedent(buffer));
+        free(buffer);
+        return res;
     }
     // function literal
     if (is_keyword_at(s, "fn"))
@@ -4000,6 +4076,7 @@ Value *eval_primary(Src *s, Env *env)
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params, contextuals, closure, body);
+        fn->v.fn->name = mila_strdup("(lambda)");
         return fn;
     }
     // identifier or keyword like 'null', 'true', 'false', or bare native name
@@ -5178,7 +5255,7 @@ Value *eval_statement(Src *s, Env *env)
             v = (Value *)tmp->v.opaque;
             val_release(tmp);
         }
-        else if (v && v->type == T_FUNCTION)
+        else if (v && v->type == T_FUNCTION && !v->v.fn->name)
         {
             v->v.fn->name = mila_strdup(id);
         }
@@ -5227,7 +5304,7 @@ Value *eval_statement(Src *s, Env *env)
             v = (Value *)tmp->v.opaque;
             val_release(tmp);
         }
-        else if (v && v->type == T_FUNCTION)
+        else if (v && v->type == T_FUNCTION && !v->v.fn->name)
         {
             v->v.fn->name = mila_strdup(id);
         }
@@ -5852,7 +5929,8 @@ Value *eval_statement(Src *s, Env *env)
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params, contextuals, closure, body);
-        fn->v.fn->name = mila_strdup(name);
+        if (!fn->v.fn->name)
+            fn->v.fn->name = mila_strdup(name);
         env_set_local(env, name, fn);
         mila_free(name);
         return fn;
@@ -5994,6 +6072,7 @@ Value *vfunction(char **params, char **contextuals, Env *closure,
     v->v.fn->contextuals = contextuals;
     v->v.fn->body_src = body_src;
     v->v.fn->closure = closure;
+    v->v.fn->name = NULL;
     return v;
 }
 
@@ -6151,6 +6230,7 @@ Env *mila_init(void)
 void mila_deinit(Env *g)
 {
     // we might handle stuff here
+    mila_threads_cleanup();
     env_free(g);
 }
 
@@ -6267,7 +6347,6 @@ int main(int argc, char **argv)
         Src *S = src_new(src_text);
         Value *res = eval_source(S, g);
 
-        mila_threads_cleanup();
         path_list_free(search_path);
 
         // cleanup

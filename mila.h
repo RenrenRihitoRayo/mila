@@ -82,6 +82,7 @@ typedef enum
     E_TYPE_ERROR,   // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
     E_FATAL,        // Errors that should be fatal, like syntax errors
     E_GENERIC,      // Errors that cannot be classified as ones above
+    E_ASSERT,       // Errors triggered by a faulty assert
     E_THREAD_HALT
 } ErrorType;
 
@@ -144,6 +145,7 @@ const char *MILA_ERROR_NAMES[] = {
     "TypeError",
     "Fatal",
     "Generic",
+    "AssertionError",
     "ThreadHalt"
 };
 

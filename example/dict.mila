@@ -1,6 +1,0 @@
-var d = dict(
-    "name", "Darren",
-    "age", 17
-);
-
-println(d);

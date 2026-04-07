@@ -1,0 +1,16 @@
+var multiline = "\
+    this is a test!\
+";
+
+var multiline_dedented = "\
+    this is a test!
+    
+"!; // take note of the exclamation mark
+
+var string_block = !{
+    println("Hello, world!");
+}; // dedented by default
+
+println(multiline);
+println(multiline_dedented);
+println(string_block);

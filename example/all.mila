@@ -1,4 +1,3 @@
-
 // Variables can be any type
 var v = "string";
 var v = 90;
@@ -9,8 +8,8 @@ var v: "type" = value;
 
 // Using ID strings you can use anything
 // As a name
-var '🌟' = 90;
-println('🌟');
+var '' = 90;
+println('');
 
 // values
 println(
@@ -40,6 +39,22 @@ catch err {
 
 println(err);
 
+fn greet(name) {
+    println("Hello " + name + "!");
+}
+
+greet("Alexey");
+
+fn closure(name) {
+    fn greet():[name] {
+        println("Hello " + name + "!");
+    }
+    return greet;
+}
+
+var greet_alexey = closure("Alexey");
+greet_alexey();
+
 // MiLa also supports cooperative threading
 var threads = [];
 foreach num : range(3) {
@@ -47,13 +62,16 @@ foreach num : range(3) {
             thread.make(!{
             vars.bind("num");
             println("Working: thread #" + num);
-            time_sleep(5);
+            time_sleep(2);
         })
     );
     // So loop scope doesnt get freed too quickly
-    time_sleep_ms(1);
+    time_sleep_ms(10);
 }
 
+var start = get_time();
 foreach thread : threads {
     thread.join(thread);
 }
+var end = get_time() - start;
+println("Should be around 5s: " + end + "s");

@@ -17,6 +17,13 @@ typedef struct
     int status;          /* 0 = pending, 1 = running, 2 = done */
     int is_deamon;       /* Doesnt keep MiLa awake */
     int is_cancelled;    /* True if thread is cancelled. */
+    
+    /* Generator/Yield synchronization */
+    pthread_mutex_t yield_lock;
+    pthread_cond_t  yield_cond;
+    int has_value;       /* Flag: value is ready to consume */
+    int finished;        /* Flag: generator finished execution */
+    int is_generator;
 } ThreadContext;
 
 typedef struct
@@ -88,6 +95,58 @@ static ThreadContext *thread_registry_get(int id)
     return ctx;
 }
 
+void thread_yield(ThreadContext *ctx, Value *val)
+{
+    pthread_mutex_lock(&ctx->yield_lock);
+
+    /* Wait until any previously yielded value is consumed */
+    while (ctx->has_value && !ctx->is_cancelled)
+    {
+        pthread_cond_wait(&ctx->yield_cond, &ctx->yield_lock);
+    }
+
+    /* Check cancellation after wake-up */
+    if (ctx->is_cancelled)
+    {
+        pthread_mutex_unlock(&ctx->yield_lock);
+        return;
+    }
+
+    /* Store copy of value and signal readiness */
+    ctx->result = val_copy(val);
+    ctx->has_value = 1;
+    pthread_cond_signal(&ctx->yield_cond);
+
+    pthread_mutex_unlock(&ctx->yield_lock);
+}
+
+Value *thread_get_yield(ThreadContext *ctx)
+{
+    pthread_mutex_lock(&ctx->yield_lock);
+
+    /* Wait for a value to be yielded or generator to finish */
+    while (!ctx->has_value && !ctx->finished && !ctx->is_cancelled)
+    {
+        pthread_cond_wait(&ctx->yield_cond, &ctx->yield_lock);
+    }
+
+    /* No value available and generator is done or cancelled */
+    if ((ctx->finished || ctx->is_cancelled) && !ctx->has_value)
+    {
+        pthread_mutex_unlock(&ctx->yield_lock);
+        return NULL;
+    }
+
+    /* Retrieve the value and clear the flag */
+    Value *val = ctx->result;
+    ctx->has_value = 0;
+    pthread_cond_signal(&ctx->yield_cond);
+
+    pthread_mutex_unlock(&ctx->yield_lock);
+
+    return val;
+}
+
 static void *mila_thread_worker(void *arg)
 {
     ThreadContext *ctx = (ThreadContext *)arg;
@@ -109,36 +168,58 @@ static void *mila_thread_worker(void *arg)
         return NULL;
     }
 
-    Value* result = eval_source(S, ctx->env);
-    if (IS_ERROR_TAGGED(result) && MILA_GET_ERROR(result) == E_THREAD_HALT) {
+    Value *result = eval_source(S, ctx->env);
+    
+    /* Handle thread halt error */
+    if (IS_ERROR_TAGGED(result) && GET_ERROR(result) == E_THREAD_HALT)
+    {
         val_release(result);
         ctx->result = vnull();
-    } else {
-        ctx->result = result;
     }
+    else
+    {
+        if (ctx->is_generator) {
+            val_release(result);
+        }
+        else ctx->result = result;
+    }
+
+    ctx->finished = 1;
     ctx->status = 2;
+    pthread_cond_signal(&ctx->yield_cond);
 
     src_free(S);
     return NULL;
 }
 
-Value* native_make_mutex(Env* env, int argc, Value** argv) {
-    if (argc != 0) return verror("thread.mutex(): Expected no arguments");
-    pthread_mutex_t* mutex = malloc(sizeof(pthread_mutex_t));
+Value *native_make_mutex(Env *env, int argc, Value **argv)
+{
+    if (argc != 0)
+        return verror("thread.mutex(): Expected no arguments");
+
+    pthread_mutex_t *mutex = malloc(sizeof(pthread_mutex_t));
     pthread_mutex_init(mutex, NULL);
     return vowned_opaque_extra(mutex, NULL, MILA_LPREFIX "mutex");
 }
 
-Value* native_lock_mutex(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("thread.mutex_lock(mut): Expected 1 argument");
-    if (strcmp(MILA_GET_TYPENAME(argv[0]), MILA_LPREFIX "mutex") != 0) return verror("thread.mutex_lock(mut): Expected a " MILA_LPREFIX "mutex but got %s", MILA_GET_TYPENAME(argv[0]));
+Value *native_mutex_lock(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("thread.mutex_lock(mut): Expected 1 argument");
+    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "mutex") != 0)
+        return verror("thread.mutex_lock(mut): Expected a " MILA_LPREFIX "mutex but got %s", GET_TYPENAME(argv[0]));
+
     pthread_mutex_lock(GET_OPAQUE(argv[0]));
     return vnull();
 }
 
-Value* native_unlock_mutex(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("thread.mutex_unlock(mut): Expected 1 argument");
-    if (strcmp(MILA_GET_TYPENAME(argv[0]), MILA_LPREFIX "mutex") != 0) return verror("thread.mutex_unlock(mut): Expected a " MILA_LPREFIX "mutex but got %s", MILA_GET_TYPENAME(argv[0]));
+Value *native_mutex_unlock(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("thread.mutex_unlock(mut): Expected 1 argument");
+    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "mutex") != 0)
+        return verror("thread.mutex_unlock(mut): Expected a " MILA_LPREFIX "mutex but got %s", GET_TYPENAME(argv[0]));
+
     pthread_mutex_unlock(GET_OPAQUE(argv[0]));
     return vnull();
 }
@@ -164,10 +245,18 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
     ctx->status = 0;
     ctx->is_deamon = 0;
     ctx->on_kill = NULL;
-    if (argc == 2) {
+    ctx->is_cancelled = 0;
+    ctx->has_value = 0;
+    ctx->finished = 0;
+    ctx->is_generator = 0;
+    
+    pthread_mutex_init(&ctx->yield_lock, NULL);
+    pthread_cond_init(&ctx->yield_cond, NULL);
+    
+    if (argc == 2)
+    {
         ctx->on_kill = mila_strdup(argv[1]->v.s);
     }
-    ctx->is_cancelled = 0;
 
     int thread_id = thread_registry_add(ctx);
     if (thread_id < 0)
@@ -213,6 +302,7 @@ Value *native_thread_join(Env *env, int argc, Value **argv)
 
     pthread_join(ctx->thread_id, NULL);
 
+    /* Execute cleanup handler if registered */
     if (ctx->on_kill)
     {
         env_set_local_raw(ctx->env, "_reason", vstring_dup("normal"));
@@ -224,6 +314,84 @@ Value *native_thread_join(Env *env, int argc, Value **argv)
     Value *result = ctx->result ? val_retain(ctx->result) : vnull();
 
     return result;
+}
+
+Value *native_thread_yield(Env *env, int argc, Value **argv)
+{
+    if (argc < 2)
+    {
+        return verror("thread.yield(id, value): requires thread ID and a value");
+    }
+
+    if (argv[0]->type != T_INT)
+    {
+        return verror("thread.yield(id, value): requires integer thread ID");
+    }
+
+    int thread_id = (int)argv[0]->v.i;
+    ThreadContext *ctx = thread_registry_get(thread_id);
+
+    if (!ctx)
+    {
+        return verror("Invalid thread ID: %d", thread_id);
+    }
+    ctx->is_generator = 1;
+    thread_yield(ctx, argv[1]);
+    return vnull();
+}
+
+Value *native_thread_next(Env *env, int argc, Value **argv)
+{
+    if (argc < 1)
+    {
+        return verror("thread.next(id): requires thread ID");
+    }
+
+    if (argv[0]->type != T_INT)
+    {
+        return verror("thread.next(id): requires integer thread ID");
+    }
+
+    int thread_id = (int)argv[0]->v.i;
+    ThreadContext *ctx = thread_registry_get(thread_id);
+
+    if (!ctx)
+    {
+        return verror("Invalid thread ID: %d", thread_id);
+    }
+
+    Value *res = thread_get_yield(ctx);
+    return res ? res : vnull();
+}
+
+Value *native_thread_dump(Env *env, int argc, Value **argv)
+{
+    if (argc < 1)
+    {
+        return verror("thread.next(id): requires thread ID");
+    }
+
+    if (argv[0]->type != T_INT)
+    {
+        return verror("thread.next(id): requires integer thread ID");
+    }
+
+    int thread_id = (int)argv[0]->v.i;
+    ThreadContext *ctx = thread_registry_get(thread_id);
+
+    if (!ctx)
+    {
+        return verror("Invalid thread ID: %d", thread_id);
+    }
+
+    printf("Thread #%ld\n", GET_INTEGER(argv[0]));
+    printf("    is_cancelled = %s\n", ctx->is_cancelled ? "true" : "false");
+    printf("    has_value = %s\n", ctx->has_value ? "true" : "false");
+    printf("    finished = %s\n", ctx->finished ? "true" : "false");
+    printf("    status = %i\n", ctx->status);
+    printf("    result = "); print_value_debug(ctx->result);
+
+    return vnull();
 }
 
 Value *native_thread_id(Env *env, int argc, Value **argv)
@@ -266,8 +434,10 @@ Value *native_thread_cancel(Env *env, int argc, Value **argv)
     }
 
     ctx->is_cancelled = 1;
+    pthread_cond_signal(&ctx->yield_cond);  /* Wake up if blocked on yield */
     pthread_join(ctx->thread_id, NULL);
 
+    /* Execute cleanup handler if registered */
     if (ctx->on_kill)
     {
         env_set_local_raw(ctx->env, "_reason", vstring_dup("cancelled"));
@@ -281,7 +451,7 @@ Value *native_thread_cancel(Env *env, int argc, Value **argv)
     return result;
 }
 
-Value* native_thread_check_cancel(Env* env, int argc, Value** argv)
+Value *native_thread_check_cancel(Env *env, int argc, Value **argv)
 {
     if (argc < 1)
     {
@@ -296,7 +466,8 @@ Value* native_thread_check_cancel(Env* env, int argc, Value** argv)
         return verror("Invalid thread ID: %d", thread_id);
     }
 
-    if (ctx->is_cancelled) return vtagged_error(E_THREAD_HALT, "thread halted");
+    if (ctx->is_cancelled)
+        return vtagged_error(E_THREAD_HALT, "thread halted");
     return vnull();
 }
 
@@ -327,7 +498,10 @@ void mila_threads_cleanup(void)
     for (int i = 0; i < thread_registry.count; i++)
     {
         ThreadContext *ctx = thread_registry.threads[i];
-        if (ctx && ctx->status < 2 && !ctx->is_deamon)
+        if (!ctx) continue;
+
+        /* Non-daemon threads: join and cleanup normally */
+        if (ctx->status < 2 && !ctx->is_deamon)
         {
             pthread_join(ctx->thread_id, NULL);
             if (ctx->on_kill)
@@ -337,22 +511,21 @@ void mila_threads_cleanup(void)
                 free(ctx->on_kill);
                 ctx->on_kill = NULL;
             }
-            if (ctx->result)
-                val_release(ctx->result);
-            mila_free(ctx->src);
-            env_free(ctx->env);
-            mila_free(ctx);
         }
-        else if (ctx)
+        /* Daemon threads: execute cleanup handler on halt */
+        else if (ctx->on_kill)
         {
-            if (ctx->on_kill)
-            {
-                env_set_local_raw(ctx->env, "_reason", vstring_dup("interpreter halt"));
-                val_release(eval_str(ctx->on_kill, ctx->env));
-                free(ctx->on_kill);
-                ctx->on_kill = NULL;
-            }
+            env_set_local_raw(ctx->env, "_reason", vstring_dup("interpreter halt"));
+            val_release(eval_str(ctx->on_kill, ctx->env));
+            free(ctx->on_kill);
+            ctx->on_kill = NULL;
         }
+
+        pthread_mutex_destroy(&ctx->yield_lock);
+        pthread_cond_destroy(&ctx->yield_cond);
+        mila_free(ctx->src);
+        env_free(ctx->env);
+        mila_free(ctx);
     }
 
     pthread_mutex_unlock(&thread_registry.lock);
@@ -369,6 +542,9 @@ void register_thread_builtins(Env *env)
     env_register_native(env, "thread.get_id", native_thread_id);
     env_register_native(env, "thread.status", native_thread_status);
     env_register_native(env, "thread.mutex", native_make_mutex);
-    env_register_native(env, "thread.mutex_unlock", native_unlock_mutex);
-    env_register_native(env, "thread.mutex_lock", native_lock_mutex);
+    env_register_native(env, "thread.mutex_unlock", native_mutex_unlock);
+    env_register_native(env, "thread.mutex_lock", native_mutex_lock);
+    env_register_native(env, "thread.yield", native_thread_yield);
+    env_register_native(env, "thread.next", native_thread_next);
+    env_register_native(env, "dump_threads", native_thread_dump);
 }

@@ -302,8 +302,7 @@ Value *native_input(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1)
         print_value(argv[0]);
-    else if (argc == 0)
-        return vnull();
+    else if (argc == 0);
     else
         return verror("input(prompt): Expected 1 argument (prompt) string.\n");
 
@@ -499,7 +498,7 @@ Value *native_cast_int_to_uint(Env *env, int argc, Value **argv)
     else
     {
         return verror("cast.i2u(int): Expected 1 argument (int) int. Got %s\n",
-                      MILA_GET_TYPENAME(argv[0]));
+                      GET_TYPENAME(argv[0]));
     }
 }
 
@@ -513,7 +512,7 @@ Value *native_cast_uint_to_int(Env *env, int argc, Value **argv)
     else
     {
         return verror("cast.u2i(uint): Expected 1 argument (uint) uint. Got %s\n",
-                      MILA_GET_TYPENAME(argv[0]));
+                      GET_TYPENAME(argv[0]));
     }
 }
 
@@ -527,7 +526,7 @@ Value *native_cast_int_to_float(Env *env, int argc, Value **argv)
     else
     {
         return verror("cast.i2f(int): Expected 1 argument (int) int. Got %s\n",
-                      MILA_GET_TYPENAME(argv[0]));
+                      GET_TYPENAME(argv[0]));
     }
 }
 
@@ -542,7 +541,7 @@ Value *native_cast_float_to_int(Env *env, int argc, Value **argv)
     {
         return verror(
             "cast.f2i(float): Expected 1 argument (float) float. Got %s\n",
-            MILA_GET_TYPENAME(argv[0]));
+            GET_TYPENAME(argv[0]));
     }
 }
 
@@ -569,7 +568,7 @@ Value *native_type_of(Env *env, int argc, Value **argv)
     }
     if (argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
-    return vstring_dup(MILA_GET_TYPENAME(argv[0]));
+    return vstring_dup(GET_TYPENAME(argv[0]));
 }
 
 Value *native_is_numeric(Env *env, int argc, Value **argv)
@@ -1188,6 +1187,7 @@ Value *set_array(Value *self, Value *index, Value *val)
     if (old)
         val_release(old);
     arr->array[idx] = val_retain(val);
+    return NULL;
 }
 
 Value *native_free_array(Env *env, int argc, Value **argv)
@@ -1309,9 +1309,9 @@ Value *native_time_sleep(Env *env, int argc, Value **argv)
     {
         return verror("time_sleep(time): invalid number of arguments given.\n");
     }
-    if (MILA_GET_TYPE(argv[0]) == T_INT)
+    if (GET_TYPE(argv[0]) == T_INT)
         sleep(GET_INTEGER(argv[0]));
-    else if (MILA_GET_TYPE(argv[0]) == T_UINT)
+    else if (GET_TYPE(argv[0]) == T_UINT)
         sleep(GET_UINTEGER(argv[0]));
     return vnull();
 }
@@ -1332,9 +1332,9 @@ Value *native_time_sleep_ms(Env *env, int argc, Value **argv)
     {
         return verror("time_sleep_ms(time): invalid number of arguments given.\n");
     }
-    if (MILA_GET_TYPE(argv[0]) == T_INT)
+    if (GET_TYPE(argv[0]) == T_INT)
         sleep_micros(GET_INTEGER(argv[0]) * 1000);
-    else if (MILA_GET_TYPE(argv[0]) == T_UINT)
+    else if (GET_TYPE(argv[0]) == T_UINT)
         sleep_micros(GET_UINTEGER(argv[0]) * 1000);
     return vnull();
 }
@@ -1358,7 +1358,7 @@ Value *native_run(Env *env, int argc, Value **argv)
         Value *by = env_get(env, "__name__");
         env_set_local(frame, "__importer__", by ? by : vstring_dup("???"));
         Value *res = run_file_keep_res(path, frame);
-        if (MILA_GET_TYPE(res) == T_ERROR)
+        if (GET_TYPE(res) == T_ERROR)
         {
             return res;
         }
@@ -1735,7 +1735,7 @@ Value *env_free_builtins()
 Value *native_own(Env *e, int argc, Value **argv)
 {
     (void)e;
-    if (argc == 1 && MILA_GET_TYPE(argv[0]) == T_OPAQUE)
+    if (argc == 1 && GET_TYPE(argv[0]) == T_OPAQUE)
     {
         Value *ptr = argv[0];
         // NOTE: not recomended to directly access value fields!
@@ -1748,7 +1748,7 @@ Value *native_own(Env *e, int argc, Value **argv)
 Value *native_unown(Env *e, int argc, Value **argv)
 {
     (void)e;
-    if (argc == 1 && MILA_GET_TYPE(argv[0]) == T_OWNED_OPAQUE)
+    if (argc == 1 && GET_TYPE(argv[0]) == T_OWNED_OPAQUE)
     {
         Value *ptr = argv[0];
         // NOTE: not recomended to directly access value fields!
@@ -1797,14 +1797,14 @@ Value *native_rand(Env *e, int argc, Value **argv) { return vfloat(rand()); }
 
 Value *native_fabs(Env *e, int argc, Value **argv)
 {
-    if (argc != 1 || MILA_GET_TYPE(argv[0]) != T_FLOAT)
+    if (argc != 1 || GET_TYPE(argv[0]) != T_FLOAT)
         return verror("fabs(num): argument must be a float!");
     return vfloat(fabs(GET_FLOAT(argv[0])));
 }
 
 Value *native_abs(Env *e, int argc, Value **argv)
 {
-    if (argc != 1 || MILA_GET_TYPE(argv[0]) != T_INT)
+    if (argc != 1 || GET_TYPE(argv[0]) != T_INT)
         return verror("abs(num): argument must be an integer!");
     return vint(abs((int)GET_INTEGER(argv[0])));
 }
@@ -1814,7 +1814,7 @@ Value *native_as_opaque(Env *e, int argc, Value **argv)
     (void)e;
     if (argc != 1)
         return verror("as_opaque(v): Must have one argument!");
-    switch (MILA_GET_TYPE(argv[0]))
+    switch (GET_TYPE(argv[0]))
     {
     case T_INT:
     {
@@ -1856,7 +1856,7 @@ Value *native_as_opaque(Env *e, int argc, Value **argv)
     }
     break;
     }
-    return verror("Unsupported type %s!", MILA_GET_TYPENAME(argv[0]));
+    return verror("Unsupported type %s!", GET_TYPENAME(argv[0]));
 }
 
 // supports all C format specifiers (well at faking it well)
@@ -1872,7 +1872,7 @@ Value *native_printf(Env *e, int argc, Value **argv)
     }
     if (argc >= 2)
     {
-        if (MILA_GET_TYPE(argv[0]) != T_STRING)
+        if (GET_TYPE(argv[0]) != T_STRING)
             return verror("char_count += printf(fmt, ...): Requires first argument "
                           "to be a string!");
         char *fmt = GET_STRING(argv[0]);
@@ -1989,8 +1989,8 @@ Value *native_printf(Env *e, int argc, Value **argv)
                 {
                     Value *v = argv[count++];
 
-                    if (MILA_GET_TYPE(v) == T_OPAQUE ||
-                        MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                    if (GET_TYPE(v) == T_OPAQUE ||
+                        GET_TYPE(v) == T_OWNED_OPAQUE)
                     {
                         void *p = GET_OPAQUE(v);
                         switch (*fmt)
@@ -2117,8 +2117,8 @@ Value *native_printf(Env *e, int argc, Value **argv)
                 case 'x':
                 {
                     Value *v = argv[count++];
-                    if (MILA_GET_TYPE(v) == T_OPAQUE ||
-                        MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                    if (GET_TYPE(v) == T_OPAQUE ||
+                        GET_TYPE(v) == T_OWNED_OPAQUE)
                     {
                         void *p = GET_OPAQUE(v);
                         switch (length)
@@ -2151,7 +2151,7 @@ Value *native_printf(Env *e, int argc, Value **argv)
                     {
                         // non-opaque, just cast whatever numeric type we got
                         unsigned int value = 0;
-                        switch (MILA_GET_TYPE(v))
+                        switch (GET_TYPE(v))
                         {
                         case T_INT:
                             value = (unsigned int)GET_INTEGER(v);
@@ -2171,8 +2171,8 @@ Value *native_printf(Env *e, int argc, Value **argv)
                 case 'X':
                 {
                     Value *v = argv[count++];
-                    if (MILA_GET_TYPE(v) == T_OPAQUE ||
-                        MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                    if (GET_TYPE(v) == T_OPAQUE ||
+                        GET_TYPE(v) == T_OWNED_OPAQUE)
                     {
                         void *p = GET_OPAQUE(v);
                         switch (length)
@@ -2205,7 +2205,7 @@ Value *native_printf(Env *e, int argc, Value **argv)
                     {
                         // same as %x but uppercase, same casting logic
                         unsigned int value = 0;
-                        switch (MILA_GET_TYPE(v))
+                        switch (GET_TYPE(v))
                         {
                         case T_INT:
                             value = (unsigned int)GET_INTEGER(v);
@@ -2225,7 +2225,7 @@ Value *native_printf(Env *e, int argc, Value **argv)
                 case 's':
                 {
                     Value *v = argv[count++];
-                    switch (MILA_GET_TYPE(v))
+                    switch (GET_TYPE(v))
                     {
                     case T_STRING:
                         char_count += printf("%.*s", precision, GET_STRING(v));
@@ -2248,7 +2248,7 @@ Value *native_printf(Env *e, int argc, Value **argv)
                 {
                     Value *v = argv[count++];
                     char value = '?';
-                    switch (MILA_GET_TYPE(v))
+                    switch (GET_TYPE(v))
                     {
                     case T_STRING:
                         value = *GET_STRING(v);
@@ -2260,7 +2260,7 @@ Value *native_printf(Env *e, int argc, Value **argv)
                     default:
                         return verror("%%c format specifier only supports opaque pointers "
                                       "and strings but got %s!",
-                                      MILA_GET_TYPENAME(v));
+                                      GET_TYPENAME(v));
                     }
                     char_count += printf("%c", value);
                 }
@@ -2270,7 +2270,7 @@ Value *native_printf(Env *e, int argc, Value **argv)
                 {
                     Value *v = argv[count++];
                     void *ptr = NULL;
-                    switch (MILA_GET_TYPE(v))
+                    switch (GET_TYPE(v))
                     {
                     case T_OWNED_OPAQUE:
                         ptr = GET_OPAQUE(v);
@@ -2287,26 +2287,26 @@ Value *native_printf(Env *e, int argc, Value **argv)
                 {
                     // write back the number of characters printed so far,
                     Value *v = argv[count++];
-                    if (MILA_GET_TYPE(v) == T_INT)
+                    if (GET_TYPE(v) == T_INT)
                     {
                         v->type = T_UINT;
                         v->v.ui = char_count;
                     }
-                    else if (MILA_GET_TYPE(v) == T_UINT)
+                    else if (GET_TYPE(v) == T_UINT)
                     {
                         v->v.i = char_count;
                     }
-                    else if (MILA_GET_TYPE(v) == T_OPAQUE)
+                    else if (GET_TYPE(v) == T_OPAQUE)
                     {
                         v->type = T_UINT;
                         v->v.ui = char_count;
                     }
-                    else if (MILA_GET_TYPE(v) == T_NONE)
+                    else if (GET_TYPE(v) == T_NONE)
                     {
                         v->type = T_UINT;
                         v->v.ui = char_count;
                     }
-                    else if (MILA_GET_TYPE(v) == T_NULL)
+                    else if (GET_TYPE(v) == T_NULL)
                     {
                         v->type = T_UINT;
                         v->v.ui = char_count;
@@ -2354,7 +2354,7 @@ Value *native_assert(Env *env, int argc, Value **argv)
 
 Value *native_srandom(Env *env, int argc, Value **argv)
 {
-    if (argc != 1 || MILA_GET_TYPE(argv[0]) != T_INT)
+    if (argc != 1 || GET_TYPE(argv[0]) != T_INT)
         return verror("srandom(seed): Expected an integer argument!");
     srand(GET_INTEGER(argv[0]));
     return vnull();
@@ -2362,8 +2362,8 @@ Value *native_srandom(Env *env, int argc, Value **argv)
 
 Value *native_random(Env *env, int argc, Value **argv)
 {
-    if (argc == 2 && MILA_GET_TYPE(argv[0]) == T_INT &&
-        MILA_GET_TYPE(argv[1]) == T_INT)
+    if (argc == 2 && GET_TYPE(argv[0]) == T_INT &&
+        GET_TYPE(argv[1]) == T_INT)
     {
         long min = GET_INTEGER(argv[0]);
         long max = GET_INTEGER(argv[1]);
@@ -2483,6 +2483,17 @@ Value *native_from_opaque(Env *e, int argc, Value **argv)
     return verror("Unsupported type: %s", GET_STRING(argv[0]));
 }
 
+Value *native_copy(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+    {
+        return verror("copy(value): requires 1 arg");
+    }
+
+    return val_copy(argv[0]);
+}
+
 void env_register_builtins(Env *g)
 {
 #ifndef VMM_BUILD
@@ -2513,6 +2524,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "dump_vars", native_meep);
     env_register_native(g, "own", native_own);
     env_register_native(g, "unown", native_unown);
+    env_register_native(g, "copy", native_copy);
     env_register_native(g, "repr", native_repr);
     env_register_native(g, "repr_raw", native_repr_raw);
     env_register_native(g, "str", native_str);

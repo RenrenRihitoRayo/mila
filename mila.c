@@ -1,8 +1,10 @@
 #include "ml_dict.c"
 #include <sys/types.h>
 #if !(defined(__GNUC__) || defined(__clang__))
-#error "MiLa only supports GCC and Clang."
+#error "MiLa only supports GCC."
 #endif
+
+#include <stdatomic.h>
 
 /*
  * MiLa
@@ -18,7 +20,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
+#ifndef EXT_WEB
 #include <quadmath.h>
+#endif
 
 #ifdef _WIN32
 #include <direct.h>
@@ -251,7 +255,106 @@ void float_to_string(float f, char *buf, size_t bufsize)
         }
     }
 }
+Value* val_copy(Value *src)
+{
+    if (!src) return NULL;
 
+    Value *copy = mila_malloc(sizeof(Value));
+    if (!copy) return NULL;
+
+    /* Copy structure layout */
+    copy->type = src->type;
+    copy->refcount = 1;
+    copy->owns_table = src->owns_table;
+    copy->type_name = src->type_name;
+    copy->method_table = src->method_table;
+
+    /* Deep copy based on type */
+    switch (src->type)
+    {
+        case T_STRING:
+            /* Strings: duplicate the string buffer */
+            copy->v.s = mila_strdup(src->v.s);
+            break;
+
+        case T_BOOL:
+            /* Primitives: direct copy */
+            copy->v.b = src->v.b;
+            break;
+
+        case T_INT:
+            copy->v.i = src->v.i;
+            break;
+
+        case T_UINT:
+            copy->v.ui = src->v.ui;
+            break;
+
+        case T_FLOAT:
+            copy->v.f = src->v.f;
+            break;
+
+#ifndef EXT_WEB
+        case T_BFLOAT:
+            copy->v.bf = src->v.bf;
+            break;
+        case T_BINT:
+            copy->v.bi = src->v.bi;
+            break;
+#endif
+
+        case T_ERROR:
+            /* Error messages: duplicate the message */
+            if (src->v.message)
+            {
+                copy->v.message = mila_strdup(src->v.message);
+            }
+            break;
+
+        case T_TAGGED_ERROR:
+            /* Tagged errors: duplicate message and copy type */
+            copy->v.tagged_error.type = src->v.tagged_error.type;
+            if (src->v.tagged_error.message)
+            {
+                copy->v.tagged_error.message = mila_strdup(src->v.tagged_error.message);
+            }
+            break;
+
+        case T_FUNCTION:
+            /* Functions: retain reference (shared ownership) */
+            copy->v.fn = src->v.fn;
+            if (copy->v.fn)
+            {
+                val_retain((Value *)copy->v.fn);
+            }
+            break;
+
+        case T_NATIVE:
+            /* Native functions: retain reference */
+            copy->v.native = src->v.native;
+            if (copy->v.native)
+            {
+                val_retain((Value *)copy->v.native);
+            }
+            break;
+
+        case T_OPAQUE:
+            /* Opaques: share the pointer but increment if refcounted */
+            copy->v.opaque = src->v.opaque;
+            break;
+
+        case T_NULL:
+            /* Null: no-op */
+            break;
+
+        default:
+            /* Unknown type: best effort copy of union */
+            copy->v = src->v;
+            break;
+    }
+
+    return copy;
+}
 Value *val_new(ValueType t)
 {
     Value *p = mila_malloc(sizeof(Value));
@@ -608,8 +711,8 @@ int mila_printf(char *fmt, ...)
             {
                 Value *v = va_arg(args, Value *);
 
-                if (MILA_GET_TYPE(v) == T_OPAQUE ||
-                    MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                if (GET_TYPE(v) == T_OPAQUE ||
+                    GET_TYPE(v) == T_OWNED_OPAQUE)
                 {
                     void *p = GET_OPAQUE(v);
                     switch (*fmt)
@@ -736,8 +839,8 @@ int mila_printf(char *fmt, ...)
             case 'x':
             {
                 Value *v = va_arg(args, Value *);
-                if (MILA_GET_TYPE(v) == T_OPAQUE ||
-                    MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                if (GET_TYPE(v) == T_OPAQUE ||
+                    GET_TYPE(v) == T_OWNED_OPAQUE)
                 {
                     void *p = GET_OPAQUE(v);
                     switch (length)
@@ -769,7 +872,7 @@ int mila_printf(char *fmt, ...)
                 {
                     // non-opaque, just cast whatever numeric type we got
                     unsigned int value = 0;
-                    switch (MILA_GET_TYPE(v))
+                    switch (GET_TYPE(v))
                     {
                     case T_INT:
                         value = (unsigned int)GET_INTEGER(v);
@@ -789,8 +892,8 @@ int mila_printf(char *fmt, ...)
             case 'X':
             {
                 Value *v = va_arg(args, Value *);
-                if (MILA_GET_TYPE(v) == T_OPAQUE ||
-                    MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+                if (GET_TYPE(v) == T_OPAQUE ||
+                    GET_TYPE(v) == T_OWNED_OPAQUE)
                 {
                     void *p = GET_OPAQUE(v);
                     switch (length)
@@ -822,7 +925,7 @@ int mila_printf(char *fmt, ...)
                 {
                     // same as %x but uppercase, same casting logic
                     unsigned int value = 0;
-                    switch (MILA_GET_TYPE(v))
+                    switch (GET_TYPE(v))
                     {
                     case T_INT:
                         value = (unsigned int)GET_INTEGER(v);
@@ -842,7 +945,7 @@ int mila_printf(char *fmt, ...)
             case 's':
             {
                 Value *v = va_arg(args, Value *);
-                switch (MILA_GET_TYPE(v))
+                switch (GET_TYPE(v))
                 {
                 case T_STRING:
                     char_count += printf("%.*s", precision, GET_STRING(v));
@@ -865,7 +968,7 @@ int mila_printf(char *fmt, ...)
             {
                 Value *v = va_arg(args, Value *);
                 char value = '?';
-                switch (MILA_GET_TYPE(v))
+                switch (GET_TYPE(v))
                 {
                 case T_STRING:
                     value = *GET_STRING(v);
@@ -885,7 +988,7 @@ int mila_printf(char *fmt, ...)
             {
                 Value *v = va_arg(args, Value *);
                 void *ptr = NULL;
-                switch (MILA_GET_TYPE(v))
+                switch (GET_TYPE(v))
                 {
                 case T_OWNED_OPAQUE:
                     ptr = GET_OPAQUE(v);
@@ -902,26 +1005,26 @@ int mila_printf(char *fmt, ...)
             {
                 // write back the number of characters printed so far
                 Value *v = va_arg(args, Value *);
-                if (MILA_GET_TYPE(v) == T_INT)
+                if (GET_TYPE(v) == T_INT)
                 {
                     v->type = T_UINT;
                     v->v.ui = char_count;
                 }
-                else if (MILA_GET_TYPE(v) == T_UINT)
+                else if (GET_TYPE(v) == T_UINT)
                 {
                     v->v.i = char_count;
                 }
-                else if (MILA_GET_TYPE(v) == T_OPAQUE)
+                else if (GET_TYPE(v) == T_OPAQUE)
                 {
                     v->type = T_UINT;
                     v->v.ui = char_count;
                 }
-                else if (MILA_GET_TYPE(v) == T_NONE)
+                else if (GET_TYPE(v) == T_NONE)
                 {
                     v->type = T_UINT;
                     v->v.ui = char_count;
                 }
-                else if (MILA_GET_TYPE(v) == T_NULL)
+                else if (GET_TYPE(v) == T_NULL)
                 {
                     v->type = T_UINT;
                     v->v.ui = char_count;
@@ -987,12 +1090,6 @@ Value *vint(long x)
     v->v.i = x;
     return v;
 }
-Value *vbint(__int128 x)
-{
-    Value *v = val_new(T_BINT);
-    v->v.bi = x;
-    return v;
-}
 Value *vuint(unsigned long x)
 {
     Value *v = val_new(T_UINT);
@@ -1005,12 +1102,20 @@ Value *vfloat(double f)
     v->v.f = f;
     return v;
 }
+#ifndef EXT_WEB
+Value *vbint(__int128 x)
+{
+    Value *v = val_new(T_BINT);
+    v->v.bi = x;
+    return v;
+}
 Value *vbfloat(_Float128 f)
 {
     Value *v = val_new(T_BFLOAT);
     v->v.bf = f;
     return v;
 }
+#endif
 Value *vbool(int b)
 {
     Value *v = val_new(T_BOOL);
@@ -1048,6 +1153,7 @@ Value *vstring_slice(const char *src, size_t start, size_t len)
 
     return vstring_take(buf);
 }
+
 Value *vstring_index(const char *src, size_t index)
 {
     size_t n = strlen(src);
@@ -1063,6 +1169,7 @@ Value *vstring_index(const char *src, size_t index)
 
     return vstring_take(buf);
 }
+
 Value *vstring_replace(const char *src, const char *needle, const char *repl)
 {
     if (!*needle)
@@ -1244,8 +1351,8 @@ char *as_c_string(Value *v)
         our_asprintf(&buffer, "<error:%s>", v->v.message);
         break;
     case T_TAGGED_ERROR:
-        our_asprintf(&buffer, "<error[%s]:%s>", MILA_GET_ERRORNAME(v),
-                     GET_ERROR(v));
+        our_asprintf(&buffer, "<error[%s]:%s>", GET_ERRORNAME(v),
+                     GET_ERROR_MESSAGE(v));
         break;
     case T_INT:
         our_asprintf(&buffer, "%ld", v->v.i);
@@ -1293,6 +1400,7 @@ char *as_c_string(Value *v)
     case T_UINT:
         our_asprintf(&buffer, "%luu", v->v.ui);
         break;
+#ifndef EXT_WEB
     case T_BINT: {
         char* s = i128toa(v->v.bi);
         our_asprintf(&buffer, "%s~", s);
@@ -1305,6 +1413,7 @@ char *as_c_string(Value *v)
         free(s);
         break;
     }
+#endif
     case T_RETURN:
     {
         char *str = as_c_string_repr(v->v.opaque);
@@ -1475,28 +1584,34 @@ char *as_c_string_repr(Value *v)
     {
     case T_STRING:
         our_asprintf(&buffer, "\"");
-        char *temp = v->v.s ? v->v.s : "";
-        for (size_t i = 0; i < strlen(temp); ++i)
+        int len = strlen(GET_STRING(v));
+        for (size_t i = 0; i <  len; ++i)
         {
-            switch (temp[i])
+            switch (GET_STRING(v)[i])
             {
-            case 7:
+            case '\a':
                 our_asprintf(&buffer, "\\a");
                 break;
-            case 9:
+            case '\t':
                 our_asprintf(&buffer, "\\t");
                 break;
-            case 10:
+            case '\n':
                 our_asprintf(&buffer, "\\n");
                 break;
-            case 11:
+            case '\v':
                 our_asprintf(&buffer, "\\v");
                 break;
-            case 12:
+            case '\f':
                 our_asprintf(&buffer, "\\f");
                 break;
+            case '"':
+                our_asprintf(&buffer, "\\\"");
+                break;
             default:
-                our_asprintf(&buffer, "%c", temp[i]);
+                if (isprint(GET_STRING(v)[i]))
+                    our_asprintf(&buffer, "%c", GET_STRING(v)[i]);
+                else
+                    our_asprintf(&buffer, "\\x%02x", GET_STRING(v)[i]);
             }
         }
         our_asprintf(&buffer, "\"");
@@ -1513,7 +1628,6 @@ char *as_c_string_repr(Value *v)
 
 char *as_c_string_repr_raw(Value *v)
 {
-    char hex_buf[5];
     char *buffer = NULL;
     if (!v)
     {
@@ -1523,54 +1637,31 @@ char *as_c_string_repr_raw(Value *v)
     {
     case T_STRING:
         our_asprintf(&buffer, "\"");
-        char *temp = v->v.s ? v->v.s : "";
-        for (size_t i = 0; i < strlen(temp); ++i)
+        int len = strlen(GET_STRING(v));
+        for (size_t i = 0; i < len; ++i)
         {
-            switch (temp[i])
+            switch (GET_STRING(v)[i])
             {
-            case 7:
+            case '\a':
                 our_asprintf(&buffer, "\\a");
                 break;
-            case 9:
+            case '\t':
                 our_asprintf(&buffer, "\\t");
                 break;
-            case 10:
+            case '\n':
                 our_asprintf(&buffer, "\\n");
                 break;
-            case 11:
+            case '\v':
                 our_asprintf(&buffer, "\\v");
                 break;
-            case 12:
+            case '\f':
                 our_asprintf(&buffer, "\\f");
                 break;
-            case '\x01':
-            case '\x02':
-            case '\x03':
-            case '\x04':
-            case '\x05':
-            case '\x06':
-            case '\x0E':
-            case '\x0F':
-            case '\x10':
-            case '\x11':
-            case '\x12':
-            case '\x13':
-            case '\x14':
-            case '\x15':
-            case '\x16':
-            case '\x17':
-            case '\x18':
-            case '\x19':
-            case '\x1A':
-            case '\x1C':
-            case '\x1D':
-            case '\x1E':
-            case '\x1F':
-                snprintf(hex_buf, sizeof(hex_buf), "\\x%02X", (unsigned char)temp[i]);
-                our_asprintf(&buffer, "%s", hex_buf);
-                break;
             default:
-                our_asprintf(&buffer, "%c", temp[i]);
+                if (isprint(GET_STRING(v)[i]))
+                    our_asprintf(&buffer, "%c", GET_STRING(v)[i]);
+                else
+                    our_asprintf(&buffer, "\\x%02x", GET_STRING(v)[i]);
             }
         }
         our_asprintf(&buffer, "\"");
@@ -1593,7 +1684,7 @@ int print_value(Value *v)
         return printf("cnull");
     }
     char *txt;
-    if (MILA_GET_TYPE(v) == T_OPAQUE || MILA_GET_TYPE(v) == T_OWNED_OPAQUE)
+    if (GET_TYPE(v) == T_OPAQUE || GET_TYPE(v) == T_OWNED_OPAQUE)
         txt = as_c_string_repr(v);
     else
         txt = as_c_string(v);
@@ -1657,7 +1748,7 @@ Value *val_retain(Value *v)
 #endif
     if (!v)
         return NULL;
-    if (MILA_GET_TYPE(v) == T_WEAK_OPAQUE)
+    if (GET_TYPE(v) == T_WEAK_OPAQUE)
         return v;
     v->refcount++;
     return v;
@@ -1668,12 +1759,12 @@ void val_release(Value *v)
 {
     if (!v)
         return;
-    if (MILA_GET_TYPE(v) == T_WEAK_OPAQUE)
+    if (GET_TYPE(v) == T_WEAK_OPAQUE)
         return;
 #ifdef MILA_DEBUG
     printf("  -- val_release:\n     type: %s\n     refcount --%i -> %i\n     "
            "%s\n     value: ",
-           MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1,
+           GET_TYPENAME(v), v->refcount, v->refcount - 1,
            v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v);
     puts("");
@@ -1741,12 +1832,12 @@ void val_release_incomplete(Value *v)
 {
     if (!v)
         return;
-    if (MILA_GET_TYPE(v) == T_WEAK_OPAQUE)
+    if (GET_TYPE(v) == T_WEAK_OPAQUE)
         return;
 #ifdef MILA_DEBUG
     printf("  -- val_release_incomplete:\n     type: %s\n     refcount --%i -> "
            "%i\n     %s\n     value: ",
-           MILA_GET_TYPENAME(v), v->refcount, v->refcount - 1,
+           GET_TYPENAME(v), v->refcount, v->refcount - 1,
            v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v);
     puts("");
@@ -1815,7 +1906,7 @@ void val_kill(Value *v)
 #ifdef MILA_DEBUG
     printf("  -- val_kill:\n     type: %s\n     refcount %i -> 0 (forced)\n     "
            "%s\n     value: ",
-           MILA_GET_TYPENAME(v), v->refcount,
+           GET_TYPENAME(v), v->refcount,
            v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v);
     puts("");
@@ -1884,7 +1975,7 @@ void val_kill_incomplete(Value *v)
 #ifdef MILA_DEBUG
     printf("  -- val_kill_incomplete:\n     type: %s\n     refcount %i -> 0 "
            "(forced)\n     %s\n     value: ",
-           MILA_GET_TYPENAME(v), v->refcount,
+           GET_TYPENAME(v), v->refcount,
            v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v);
     puts("");
@@ -2563,7 +2654,7 @@ Src *src_new(const char *s)
     S->len = strlen(s);
     S->src = mila_strdup(s);
     S->pos = 0;
-    S->line = 0;
+    S->line = 1;
     return S;
 }
 void src_free(Src *s)
@@ -2576,7 +2667,11 @@ void src_free(Src *s)
 
 // helpers
 char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
-char src_get(Src *s) { return s->pos < s->len ? s->src[s->pos++] : '\0'; }
+char src_get(Src *s) {
+    char c = s->pos < s->len ? s->src[s->pos++] : '\0';
+    if (c == '\n') s->line++;
+    return c;
+}
 int src_eof(Src *s) { return s->pos >= s->len; }
 
 void skip_block(Src *s)
@@ -2681,6 +2776,10 @@ void skip_stmt(Src *s)
         {
             i++;
             break;
+        }
+        else if (ch == '\n')
+        {
+            s->line++;
         }
         else if (ch == '"')
         {
@@ -2862,6 +2961,7 @@ char *i128toa(__int128 value) {
     return str;
 }
 
+#ifndef EXT_WEB
 char *f128toa(_Float128 value) {
     if (isnanq(value)) {
         char *buf = malloc(4);
@@ -2953,6 +3053,7 @@ __int128 atoi128(char *s, char **end) {
     if (end) *end = (char *)p;
     return neg ? -result : result;
 }
+#endif
 
 // parse number (int or float)
 Value *parse_number(Src *s)
@@ -3040,6 +3141,7 @@ Value *parse_number(Src *s)
     }
     else
     {
+#ifndef EXT_WEB
         // implement arbritrarily sized integers in the future
         char *buf = mila_malloc(len + 1);
         memcpy(buf, s->src + st, len);
@@ -3061,6 +3163,9 @@ Value *parse_number(Src *s)
         }
         mila_free(buf);
         return r;
+#else
+        return verror("On line %llu: A very long integer was found, this build of MiLa does not support such big numbers.", s->line);
+#endif
     }
 }
 
@@ -3071,7 +3176,7 @@ char* strip(char* str) {
     while (isspace(*(s+len-1))) len--;
     char* final = (char*)malloc(sizeof(char) * len + 1);
     strncpy(final, s, len);
-    return final
+    return final;
 }
 
 char* dedent(char* str) {
@@ -3148,6 +3253,7 @@ Value *parse_string(Src *s)
 
     while (!src_eof(s))
     {
+        char b = 0;
         char c = src_get(s);
         if (c == '"')
             break;
@@ -3189,15 +3295,18 @@ Value *parse_string(Src *s)
                 char code[3] = {src_get(s), src_get(s), 0};
                 c = (char)strtol(code, NULL, 16);
             }
+                break;
             break;
             case '0':
             { // \0oo (octal) escape codes
                 char code[3] = {src_get(s), src_get(s), 0};
                 c = (char)strtol(code, NULL, 8);
             }
+                break;
             case '\n':
             {
                 c = src_get(s);
+                if (c == '"') b = 1;
             }
             break;
             default:
@@ -3205,7 +3314,7 @@ Value *parse_string(Src *s)
                 break;
             }
         }
-        if (c == '"') break;
+        if (b) break;
         // Grow buffer if needed
         if (len + 1 >= cap)
         {
@@ -3568,7 +3677,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
     if (fnval->type == T_NATIVE)
     {
         for (int t = 0; t < argc; ++t)
-            if (MILA_GET_TYPE(argv[t]) == T_ERROR)
+            if (GET_TYPE(argv[t]) == T_ERROR)
                 return argv[t];
         Value *result = fnval->v.native->fn(env, argc, argv);
         return result;
@@ -3592,7 +3701,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         for (; p && p[i]; ++i)
         {
             // if fewer args provided, bind null
-            if (i < argc && MILA_GET_TYPE(argv[i]) == T_ERROR)
+            if (i < argc && GET_TYPE(argv[i]) == T_ERROR)
             {
                 return argv[i];
             }
@@ -3638,6 +3747,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         }
         // Evaluate body: note body_src contains the body text e.g., "{ ... }"
         Src *child = src_new(fnval->v.fn->body_src);
+        child->line = fnval->v.fn->line;
         // position should start at 0 for the body; body is a block (starts with
         // '{') Evaluate block using the new frame
         Value *res = eval_block(child, frame);
@@ -3811,7 +3921,7 @@ Value *eval_primary(Src *s, Env *env)
                 val_release(args[i]);
             mila_free(args);
             val_release(expr);
-            if (MILA_GET_TYPE(res) == T_RETURN)
+            if (GET_TYPE(res) == T_RETURN)
             {
                 Value *tmp = (Value *)res->v.opaque;
                 val_release(res);
@@ -3856,7 +3966,7 @@ Value *eval_primary(Src *s, Env *env)
                     val_release(index);
                     val_release(obj);
                     return verror("Type %s does not support BMethodGetItem!",
-                                  MILA_GET_TYPENAME(obj));
+                                  GET_TYPENAME(obj));
                 }
             }
 
@@ -3894,7 +4004,7 @@ Value *eval_primary(Src *s, Env *env)
             {
                 val_release(attr);
                 return verror("Type %s does not support BMethodGetItem!",
-                              MILA_GET_TYPENAME(obj));
+                              GET_TYPENAME(obj));
             }
 
             if (src_peek(s) == '(')
@@ -4076,6 +4186,7 @@ Value *eval_primary(Src *s, Env *env)
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params, contextuals, closure, body);
+        fn->v.fn->line = s->line;
         fn->v.fn->name = mila_strdup("(lambda)");
         return fn;
     }
@@ -4116,6 +4227,11 @@ Value *eval_primary(Src *s, Env *env)
         {
             mila_free(id);
             return vcontinue();
+        }
+        if (strcmp(id, "__line") == 0)
+        {
+            mila_free(id);
+            return vint(s->line);
         }
         // look ahead: function call? subscript?
         skip_ws(s);
@@ -4189,6 +4305,9 @@ Value *eval_primary(Src *s, Env *env)
             }
             mila_free(id);
             // callp
+#ifdef MILA_DEBUG
+            printf("  ?? Call to %s\n", callee->v.native->name);
+#endif
             Value *res = call_function(callee, env, argc, args);
             for (int i = 0; i < argc; i++)
                 val_release(args[i]);
@@ -4233,7 +4352,7 @@ Value *eval_primary(Src *s, Env *env)
                     val_release(index);
                     val_release(obj);
                     return verror("Type %s does not support BMethodGetItem!",
-                                  MILA_GET_TYPENAME(obj));
+                                  GET_TYPENAME(obj));
                 }
             }
 
@@ -4275,7 +4394,7 @@ Value *eval_primary(Src *s, Env *env)
                 mila_free(id);
                 val_release(attr);
                 return verror("Type %s does not support BMethodGetItem!",
-                              MILA_GET_TYPENAME(obj));
+                              GET_TYPENAME(obj));
             }
 
             if (src_peek(s) == '(')
@@ -4367,10 +4486,17 @@ Value *eval_primary(Src *s, Env *env)
 }
 
 // helper to convert numeric types and do arithmetic
+#ifndef EXT_WEB
 static int is_number(Value *v)
 {
     return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT || v->type == T_BINT || v->type == T_BFLOAT);
 }
+#else
+static int is_number(Value *v)
+{
+    return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
+}
+#endif
 
 double to_double(Value *v)
 {
@@ -4382,13 +4508,16 @@ double to_double(Value *v)
         return v->v.f;
     if (v->type == T_UINT)
         return (double)v->v.ui;
+#ifndef EXT_WEB
     if (v->type == T_BINT)
         return (double)v->v.bi;
     if (v->type == T_BFLOAT)
         return (double)v->v.bi;
+#endif
     return 0.0;
 }
 
+#ifndef EXT_WEB
 _Float128 to_bdouble(Value *v)
 {
     if (!v)
@@ -4422,6 +4551,7 @@ __int128 to_bint(Value *v)
         return (__int128)v->v.bf;
     return 0.0;
 }
+#endif
 
 unsigned long to_uint(Value *v)
 {
@@ -4433,10 +4563,12 @@ unsigned long to_uint(Value *v)
         return (unsigned long)v->v.f;
     if (v->type == T_UINT)
         return v->v.ui;
+#ifndef EXT_WEB
     if (v->type == T_BINT)
         return (unsigned long)v->v.bi;
     if (v->type == T_BFLOAT)
         return (unsigned long)v->v.bf;
+#endif
     return 0.0;
 }
 
@@ -4478,6 +4610,7 @@ Value *binary_op(Value *a, MethodType op, Value *b)
     }
     else if (is_number(a) && is_number(b))
     {
+#ifndef EXT_WEB
         if (a->type == T_BFLOAT || b->type == T_BFLOAT)
         {
             _Float128 ra = to_bdouble(a), rb = to_bdouble(b);
@@ -4533,6 +4666,9 @@ Value *binary_op(Value *a, MethodType op, Value *b)
             return vnull();
         }
         else if (a->type == T_UINT || b->type == T_UINT)
+#else
+        if (a->type == T_UINT || b->type == T_UINT)
+#endif
         // treat both numbers as unsigned.
         {
             unsigned long ia = to_uint(a), ib = to_uint(b);
@@ -4700,6 +4836,7 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
 {
     if (is_number(a) && is_number(b))
     {
+#ifndef EXT_WEB
         if (a->type == T_BFLOAT || b->type == T_BFLOAT)
         {
             _Float128 ra = to_bdouble(a), rb = to_bdouble(b);
@@ -4743,6 +4880,9 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
             return a;
         }
         else if (a->type == T_UINT || b->type == T_UINT)
+#else
+        if (a->type == T_UINT || b->type == T_UINT)
+#endif
         // treat both numbers as unsigned.
         {
             unsigned long ia = to_uint(a), ib = to_uint(b);
@@ -5054,7 +5194,7 @@ Value *eval_statement(Src *s, Env *env)
                         {
                             Value *ret =
                                 verror("Type %s does not support subscripting at level %d!",
-                                       MILA_GET_TYPENAME(parent), i + 1);
+                                       GET_TYPENAME(parent), i + 1);
                             for (int j = 0; j < num_indices; j++)
                                 val_release(indices[j]);
                             mila_free(indices);
@@ -5088,7 +5228,7 @@ Value *eval_statement(Src *s, Env *env)
                     else
                     {
                         Value *ret = verror("Type %s does not support item assignment!",
-                                            MILA_GET_TYPENAME(parent));
+                                            GET_TYPENAME(parent));
                         for (int i = 0; i < num_indices; i++)
                             val_release(indices[i]);
                         mila_free(indices);
@@ -5153,7 +5293,7 @@ Value *eval_statement(Src *s, Env *env)
                 {
                     Value *ret =
                         verror("Type %s does not support subscripting at level %d!",
-                               MILA_GET_TYPENAME(parent), i + 1);
+                               GET_TYPENAME(parent), i + 1);
                     for (int j = 0; j < num_indices; j++)
                         val_release(indices[j]);
                     mila_free(indices);
@@ -5184,7 +5324,7 @@ Value *eval_statement(Src *s, Env *env)
             else
             {
                 Value *ret = verror("Type %s does not support item assignment!",
-                                    MILA_GET_TYPENAME(parent));
+                                    GET_TYPENAME(parent));
 
                 for (int i = 0; i < num_indices; i++)
                     val_release(indices[i]);
@@ -5367,7 +5507,7 @@ Value *eval_statement(Src *s, Env *env)
         }
         val_kill_incomplete(a);
         a->type = val->type;
-        switch (MILA_GET_TYPE(val))
+        switch (GET_TYPE(val))
         {
         case T_INT:
             a->v.i = GET_INTEGER(val);
@@ -5387,7 +5527,7 @@ Value *eval_statement(Src *s, Env *env)
             break;
         default:
             return vtagged_error(E_FATAL, "Type %s cannot be synced!",
-                                 MILA_GET_TYPENAME(val));
+                                 GET_TYPENAME(val));
         }
         mila_free(val);
         mila_free(id);
@@ -5571,7 +5711,7 @@ Value *eval_statement(Src *s, Env *env)
                 else if (!is_truthy(cond))
                 {
                     val_release(cond);
-                    if (MILA_GET_TYPE(bod) == T_RETURN)
+                    if (GET_TYPE(bod) == T_RETURN)
                     {
                         return bod;
                     }
@@ -5617,8 +5757,88 @@ Value *eval_statement(Src *s, Env *env)
         s->pos += strlen("foreach");
         skip_ws(s);
         char *id = parse_ident(s);
-        if (id)
-        {
+        if (!id) return vnull();
+        if (strcmp(id, "expect") == 0) {
+            free(id);
+            id = parse_ident(s);
+            if (!match_char(s, ':'))
+            {
+                mila_free(id);
+                return verror("Foreach lacking ':'");
+            }
+            Value *iter_obj = eval_expr(s, env);
+
+            if (IS_ERROR(iter_obj))
+            {
+                mila_free(id);
+                return iter_obj;
+            }
+
+            uint64_t body_start_pos = s->pos;
+            skip_block(s);
+            uint64_t body_end_pos = s->pos;
+            Value *bod = NULL;
+            ThreadContext* ctx = thread_registry_get(GET_INTEGER(iter_obj));
+            if (!ctx) {return verror("On line %ld: Expected an integer thread ID!", s->line);}
+            Value* v = thread_get_yield(ctx);
+            for (;v;v = thread_get_yield(ctx))
+            {
+                // reset the position to the start of the body for execution
+                s->pos = body_start_pos;
+                Env *frame = env_new(env);
+                env_set_local_raw(frame, id, v);
+                bod = eval_block_raw(s, frame);
+                val_release(v);
+                env_remove(frame, id);
+
+                env_free(frame);
+                // --- Handle body result ---
+                if (bod)
+                {
+                    if (bod->type == T_BREAK)
+                    {
+                        s->pos = body_end_pos;
+                        val_release(bod);
+                        mila_free(id);
+                        s->pos = body_end_pos;
+                        return vnull();
+                    }
+                    else if (bod->type == T_CONTINUE)
+                    {
+                        s->pos = body_start_pos;
+                        if (bod)
+                            val_release(bod);
+                        mila_free(id);
+                        continue;
+                    }
+                    else if (IS_ERROR(bod))
+                    {
+                        s->pos = body_end_pos;
+                        mila_free(id);
+                        return bod;
+                    }
+                    else if (bod->type == T_RETURN)
+                    {
+                        s->pos = body_end_pos;
+                        mila_free(id);
+                        return bod;
+                    }
+                    else if (bod->type == T_ERROR)
+                    {
+                        s->pos = body_end_pos;
+                        mila_free(id);
+                        return bod;
+                    }
+                }
+
+                val_release(bod);
+            }
+            s->pos = body_end_pos;
+            val_release(v);
+            val_release(iter_obj);
+            mila_free(id);
+            return vnull();
+        } else {
             if (!match_char(s, ':'))
             {
                 mila_free(id);
@@ -5660,7 +5880,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 mila_free(id);
                 Value *err = verror("Type %s does not implement UMethodToIter",
-                                    MILA_GET_TYPENAME(iter_obj));
+                                    GET_TYPENAME(iter_obj));
                 val_release(iter_obj);
                 return err;
             }
@@ -5803,7 +6023,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 if (IS_ERROR_TAGGED(res)) {
                     Value* msg = vstring_dup(res->v.tagged_error.message);
-                    Value* type = vstring_dup(MILA_GET_ERRORNAME(res));
+                    Value* type = vstring_dup(GET_ERRORNAME(res));
                     Value* dict = call_function_str(env, "dict", vstring_dup("error"), type, vstring_dup("message"), msg, NULL);
                     val_release(res);
                     env_set_local(env, id, dict);
@@ -5931,6 +6151,7 @@ Value *eval_statement(Src *s, Env *env)
         Value *fn = vfunction(params, contextuals, closure, body);
         if (!fn->v.fn->name)
             fn->v.fn->name = mila_strdup(name);
+        fn->v.fn->line = s->line;
         env_set_local(env, name, fn);
         mila_free(name);
         return fn;
@@ -6073,6 +6294,7 @@ Value *vfunction(char **params, char **contextuals, Env *closure,
     v->v.fn->body_src = body_src;
     v->v.fn->closure = closure;
     v->v.fn->name = NULL;
+    v->v.fn->line = 0;
     return v;
 }
 
@@ -6099,10 +6321,10 @@ Value *eval_source(Src *s, Env *env)
             {
                 if (last->v.tagged_error.type == E_THREAD_HALT) return last;
                 if (IS_FATAL(last))
-                    printf("\n= FATAL ERROR[%s]: %s\n", MILA_GET_ERRORNAME(last),
+                    printf("\n= FATAL ERROR[%s]: %s\n", GET_ERRORNAME(last),
                            last->v.tagged_error.message);
                 else
-                    printf("\n= Error[%s]: %s\n", MILA_GET_ERRORNAME(last),
+                    printf("\n= Error[%s]: %s\n", GET_ERRORNAME(last),
                            last->v.tagged_error.message);
                 return last;
             }
@@ -6450,7 +6672,7 @@ int main(int argc, char **argv)
                 Src *S = src_new(buffer);
                 Value *res = eval_source(S, g);
 
-                if (MILA_GET_TYPE(res) != T_NULL && !IS_ERROR(res))
+                if (GET_TYPE(res) != T_NULL && !IS_ERROR(res))
                 {
                     printf("  : ");
                     print_value_repr(res);

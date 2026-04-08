@@ -1,0 +1,16 @@
+// Generators using threads.
+
+var gen = thread.make(!{
+    var n = 0;
+    var gen = copy(gen);
+    while (n < 20) {
+        set n += 1;
+        thread.yield(gen, n);
+    }
+});
+
+foreach expect n : gen {
+    println(n);
+    break;
+}
+

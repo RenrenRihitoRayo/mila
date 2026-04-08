@@ -1,0 +1,14 @@
+/*
+    This is a test!
+*/
+
+fn closure(name) {
+    fn greet():[name] {
+        println("Hello " + name + ", I am on line " + __line);
+    }
+    return greet;
+}
+
+
+var greet = closure("Alexey");
+greet();

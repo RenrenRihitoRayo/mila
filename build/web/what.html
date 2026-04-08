@@ -75,17 +75,12 @@
     
     <!-- Load WASM module FIRST -->
     <script src="mila.js"></script>
-    
-    <!-- Now define and run MiLa scripts -->
-    <script type="text/mila">
-println("Hello, world!");
-println("MiLa is running in the browser!");
-    </script>
-    
+
     <script type="text/mila">
 var x = 42;
 println("The answer is: " + x);
 dom.setText("#header", "test");
+alert("Woah");
     </script>
     
     <script>

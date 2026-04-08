@@ -82,4 +82,4 @@ var read = thread.make(!{
 	}
 });
 
-while (true){}
+while(true){}

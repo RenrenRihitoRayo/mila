@@ -1,0 +1,10 @@
+// This is a brainf*ck interpreter in MiLa
+// To systematically prove its turing completeness
+
+var '🏃' = fn('👨‍💻'){
+    foreach '🔥' : istring('👨‍💻') {
+        println('🔥');
+    }
+}
+
+'🏃'("Hello, world");

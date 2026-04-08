@@ -12,9 +12,9 @@
 // when collections' item amounts exceed this number
 #define MAX_ITEMS_DISPLAYED 1000
 
-#define IS_ERROR(v) (MILA_GET_TYPE(v) == T_ERROR || MILA_GET_TYPE(v) == T_TAGGED_ERROR)
-#define IS_ERROR_TAGGED(v) (MILA_GET_TYPE(v) == T_TAGGED_ERROR)
-#define IS_FATAL(v) ((MILA_GET_ERROR(v) == E_FATAL || MILA_GET_ERROR(v) == E_SYNTAX_ERROR || MILA_GET_ERROR(v) == E_THREAD_HALT))
+#define IS_ERROR(v) (GET_TYPE(v) == T_ERROR || GET_TYPE(v) == T_TAGGED_ERROR)
+#define IS_ERROR_TAGGED(v) (GET_TYPE(v) == T_TAGGED_ERROR)
+#define IS_FATAL(v) ((GET_ERROR(v) == E_FATAL || GET_ERROR(v) == E_SYNTAX_ERROR || GET_ERROR(v) == E_THREAD_HALT))
 #define GET_STRING(val) (val ? val->v.s : NULL)
 #define GET_INTEGER(val) (val ? val->v.i : 0)
 #define GET_BINTEGER(val) (val ? val->v.bi : 0)
@@ -24,16 +24,16 @@
 #define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
 #define GET_FUNCTION(val) (val ? val->v.fn : NULL)
 #define GET_NATIVE(val) (val ? val->v.native : NULL)
-#define GET_ERROR(val) (val ? val->v.message : NULL)
+#define GET_ERROR_MESSAGE(val) (val ? val->v.message : NULL)
 #define GET_ERROR_TAGGED(val) (val ? val->v.tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 #define WEAK(val) (val->type = T_WEAK_OPAQUE)
 
-#define MILA_GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
-#define MILA_GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
-#define MILA_GET_ERROR(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
-#define MILA_GET_TYPE(v) (v ? v->type : -1 )
+#define GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
+#define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
+#define GET_ERROR(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
+#define GET_TYPE(v) (v ? v->type : -1 )
 
 #define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
 
@@ -90,10 +90,12 @@ typedef enum
 {
     T_NULL = 0,
     T_INT,
-    T_BINT,
     T_UINT,
     T_FLOAT,
+#ifndef EXT_WEB
+    T_BINT,
     T_BFLOAT,
+#endif
     T_STRING,
     T_BOOL,
     T_FUNCTION,
@@ -116,10 +118,12 @@ typedef struct path_list path_list;
 const char *MILA_TYPE_NAMES[] = {
     "null",
     "int",
-    "bint",
     "uint",
     "float",
+#ifndef EXT_WEB
+    "bint",
     "bfloat",
+#endif
     "string",
     "bool",
     "function",
@@ -157,8 +161,8 @@ path_list *search_path;
 extern path_list *search_path;
 extern char **MILA_TYPE_NAMES;
 extern char **MILA_ERROR_NAMES;
-const int MILA_ERROR_COUNT;
-const int MILA_TYPE_COUNT;
+extern int MILA_ERROR_COUNT;
+extern int MILA_TYPE_COUNT;
 #endif
 
 // each of these methods may be reffered to as
@@ -216,6 +220,7 @@ typedef struct
     char *body_src; // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
     char *name;
+    uint64_t line;
     Env* closure;
 } FunctionV;
 
@@ -240,11 +245,13 @@ struct Value
         char *message;
         _Bool b;
         double f;
+#ifndef EXT_WEB
         _Float128 bf;
+        __int128 bi;
+#endif
         void *opaque;
         long i;
         unsigned long ui;
-        __int128 bi;
         // function
         FunctionV *fn;
         NativeFunctionV *native;
@@ -303,6 +310,8 @@ void env_register_builtins(Env *g);
 int is_truthy(Value *value);
 // Make a new value with a type
 Value *val_new(ValueType t);
+// Copy a value
+Value* val_copy(Value *src);
 // Allocate a method table for a value
 void val_allocate_table(Value *v);
 // Make a standalone method table
@@ -344,6 +353,19 @@ Value *vint(long i);
 Value *vuint(unsigned long i);
 // Float constructor
 Value *vfloat(double f);
+#ifndef EXT_WEB
+// Bool constructor
+Value *vbint(__int128 i);
+// Float constructor
+Value *vbfloat(_Float128 f);
+// Turn any numeric type to a _Float128
+_Float128 to_bdouble(Value *v);
+// Turn any numeric type into a __int128
+__int128 to_bint(Value *v);
+// Turn a _Float128 into a string
+char *f128toa(_Float128 value);
+// Turn any numeric type to an unsigned long
+#endif
 // Bool constructor
 Value *vbool(int b);
 // Duplicate a string
@@ -374,14 +396,7 @@ Value *vfunction(char **params, char** contextuals, Env* closure, char *body_src
 static int is_number(Value *v);
 // Turn any numeric type to a double
 double to_double(Value *v);
-// Turn any numeric type to a _Float128
-_Float128 to_bdouble(Value *v);
-// Turn any numeric type into a __int128
-__int128 to_bint(Value *v);
-// Turn any numeric type to an unsigned long
 unsigned long to_uint(Value *v);
-// Turn a _Float128 into a string
-char *f128toa(_Float128 value);
 // Turn a value into its c string equivalent
 char *as_c_string(Value *v);
 // Turn a value into its c string representation equivalent
@@ -392,6 +407,7 @@ char *as_c_string_raw(Value *v);
 char *as_c_string_repr_raw(Value *v);
 // Print a value
 int print_value(Value *v);
+int print_value_debug(Value *v);
 // Print a value (numeric types get a thousands operator)
 int print_value_fancy(Value *v);
 // Print a values representation
@@ -402,8 +418,10 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Create an owned opaque
 Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+#ifndef EXT_WEB
 __int128 atoi128(char* num, char** end);
 char* i128toa(__int128 num);
+#endif
 
 // == Parsing
 
@@ -417,7 +435,7 @@ typedef struct Src
     char *src;    // full source string (null-terminated)
     char *cur_namespace; // current namespace
     uint64_t pos; // current position
-    int line;
+    uint64_t line; // Can never be sure
     int len;
 } Src;
 

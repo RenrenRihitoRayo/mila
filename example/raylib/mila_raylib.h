@@ -207,3 +207,4 @@ Texture2D LoadTexture(const char *fileName);
 bool IsWindowResized(void);
 void UnloadTexture(Texture2D texture);
 void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color tint);
+void DrawCircle(int centerX, int centerY, float radius, Color color);

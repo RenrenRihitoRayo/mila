@@ -1,16 +1,23 @@
 // Generators using threads.
 
+foreach n : istring("hello this is a test") {
+    println(n);
+}
+
+println(range(0, 10, 2));
+
+exit();
+
 var gen = thread.make(!{
     var n = 0;
     var gen = copy(gen);
-    while (n < 20) {
-        set n += 1;
-        thread.yield(gen, n);
-    }
+    while (n<1000000) {set n+=1;thread.yield(gen,n);}
 });
 
+// Implicitly calls thread.next
+var time = get_time();
 foreach expect n : gen {
     println(n);
-    break;
 }
-
+var end = get_time() - time;
+println("Seconds "+end);

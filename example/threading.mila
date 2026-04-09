@@ -56,9 +56,9 @@ var write = thread.make(!{
 		thread.mutex_lock(mut);
 		var num = random(0, 10);
 		println("?? Random 1: " + num);
-		time_sleep(random(1, 2));
 		set v = num;
 		thread.mutex_unlock(mut);
+		time_sleep(random(1, 2));
 	}
 });
 
@@ -67,9 +67,9 @@ var write2 = thread.make(!{
 		thread.mutex_lock(mut);
 		var num = random(0, 10);
 		println("!! Random 2: " + num);
-		time_sleep(random(0, 1));
 		set v = num;
 		thread.mutex_unlock(mut);
+		time_sleep(random(0, 1));
 	}
 });
 
@@ -77,8 +77,8 @@ var read = thread.make(!{
 	while (true) {
 		thread.mutex_lock(mut);
 		println("   Read: " + v);
-		time_sleep(1);
 		thread.mutex_unlock(mut);
+		time_sleep_ms(100);
 	}
 });
 

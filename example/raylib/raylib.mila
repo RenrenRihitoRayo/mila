@@ -1,5 +1,10 @@
 load("./raylib.so");
 
+var start = get_time();
+Rectangle(0, 0, 100, 100);
+var end = get_time() - start;
+println(end+" Seconds");
+
 var screen_w = 800;
 var screen_h = 400;
 
@@ -91,7 +96,7 @@ var peak_fps = fps;
 
 var auto = false;
 
-// 1500 FPS spike is 1700 FPS
+// 1500 FPS spike is 1700 FPSw
 while (not(WindowShouldClose()))
 {
     set screen_w = GetScreenWidth();
@@ -128,22 +133,13 @@ while (not(WindowShouldClose()))
         }
     }
 
-    if (IsWindowResized()) {
-        foreach food : foods {
-            random_place(food);
-            DrawRectangleRec(food, MARIGOLD);
-        }
-        random_place(player);
-    }
-
     foreach food : foods {
-        DrawRectangleRec(food, MARIGOLD);
+        DrawCircle(cast.f2i(Rectangle.get_x(food)+10), cast.f2i(Rectangle.get_y(food)+10), 10.0, MARIGOLD);
         if (CheckCollisionRecs(player, food)) {
             random_place(food);
             set score += 1;
         }
     }
-
 
     DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, BLACK);
 

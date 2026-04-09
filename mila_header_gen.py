@@ -3,6 +3,7 @@
 from clang import cindex
 import sys
 import os
+import re
 
 # If libclang cannot be found automatically, uncomment and set path
 # cindex.Config.set_library_file("/usr/lib/libclang.so.21.1.8")
@@ -15,7 +16,12 @@ type_maps = {}
 
 enums_value = {}
 
+array_normalize_pattern = re.compile(
+    r"\d+"
+)
+
 mila_to_c = {
+    "char[]": "{value}->v.s",
     "char *": "{value}->v.s",
     "const char *": "{value}->v.s",
     "int": "((int){value}->v.i)",
@@ -44,7 +50,8 @@ c_to_mila = {
     "_Bool": "vbool({value})",
     "bool": "vbool({value})",
     "unsigned char": "vint({value})",
-    "Value *": "(Value*){value}"
+    "Value *": "(Value*){value}",
+    "char[]": "vstring_dup({value})"
 }
 
 # -------------------
@@ -68,23 +75,35 @@ def make_struct_constructor(cursor):
     lines = [f"Value* mila_{struct_name}_new(Env* e, int argc, Value** argv) {{",
              f"    (void)e;",
              f"    if(argc != {len(fields)}) return verror(\"{struct_name}_new: expected {len(fields)} arguments, got %i\", argc);",
-             f"    {struct_name} tmp;"]
+             f"    {struct_name}* tmp = ({struct_name}*)malloc(sizeof({struct_name}));"]
 
     for i, (ftype, fname) in enumerate(fields):
+        if ftype.kind == cindex.TypeKind.CONSTANTARRAY:
+            ftype = type("cindex.Type", (object,), {
+                "kind": ftype.kind,
+                "get_array_size": ftype.get_array_size,
+                "get_array_element_type": ftype.get_array_element_type,
+                "spelling": remove_array_sizes(ftype.spelling)
+            })
         fname_access = f"(({struct_name}*)(argv[0]->v.opaque))->"
         names.append((f"{struct_name}.get_{fname}", f"mila_{struct_name}_get_{fname}"))
         names.append((f"{struct_name}.set_{fname}", f"mila_{struct_name}_set_{fname}"))
         pre_lines.extend([
             f"Value* mila_{struct_name}_get_{fname}(Env* env, int argc, Value** argv) {{",
             f"    if (argc != 1) verror(\"{struct_name}.get_{fname}({struct_name} s): Expected 1 argument!\");",
-            f"    return {c_to_mila.get(ftype.spelling, 'vopaque(' + ('&' if not ftype.spelling.endswith('*') else '' ) + '{value})').format(value=fname_access+fname)};",
+            f"    return {c_to_mila.get(ftype.spelling, 'vopaque(' + ('&' if not ftype.spelling.endswith('*') else '' ) + '{value})').format(value=fname_access+fname)};"
              "}",
              ""
         ])
         pre_lines.extend([
             f"Value* mila_{struct_name}_set_{fname}(Env* env, int argc, Value** argv) {{",
             f"    if (argc != 2) verror(\"{struct_name}.get_{fname}({struct_name} s, {ftype.spelling} {fname}): Expected 2 arguments!\");",
-            f"    {fname_access+fname} = {mila_to_c.get(ftype.spelling, '{value}').format(value='argv[1]')};",
+            f"    {fname_access+fname} = {mila_to_c.get(ftype.spelling, '{value}').format(value=f'argv[1]')};"
+            if ftype.kind != cindex.TypeKind.CONSTANTARRAY else
+            (   f"    memcpy({fname_access+fname}, {mila_to_c.get(ftype.spelling, '{value}').format(value=f'argv[1]')}, sizeof({fname_access+fname}));"
+                if not ftype.spelling.startswith("char") else
+                f"    strncpy({fname_access+fname}, {mila_to_c.get(ftype.spelling, '{value}').format(value=f'argv[1]')}, sizeof({fname_access+fname}));"
+            ),
              "    return vnull();",
              "}",
              ""
@@ -95,21 +114,26 @@ def make_struct_constructor(cursor):
             str_ftype = normalize_arrays(ftype).spelling
             str_ftype = mila_to_c.get(str_ftype, f"{{value}}->v.opaque").format(value=f"argv[{i}]")
             # Use memcpy from argv[i] opaque value
-            lines.append(f"    memcpy(tmp.{fname}, {str_ftype}, sizeof(tmp.{fname}));")
+            if ftype.spelling.startswith("char"):
+                lines.append(f"    strncpy(tmp->{fname}, {str_ftype}, sizeof(tmp->{fname}));")
+            else:
+                lines.append(f"    memcpy(tmp->{fname}, {str_ftype}, sizeof(tmp->{fname}));")
+
 
         # Handle nested structs
         elif ftype.kind == cindex.TypeKind.RECORD and ftype.get_declaration().kind == cindex.CursorKind.STRUCT_DECL:
             nested_name = ftype.spelling or ftype.get_declaration().spelling
-            lines.append(f"    tmp.{fname} = *({nested_name}*)argv[{i}]->v.opaque;")
+            lines.append(f"    tmp->{fname} = *({nested_name}*)argv[{i}]->v.opaque;")
 
         # Handle numeric / pointer types
         else:
             conv = mila_to_c.get(ftype.spelling, f"*(({ftype.spelling}*)argv[{i}]->v.opaque)")
-            lines.append(f"    tmp.{fname} = {conv.format(value=f'argv[{i}]')};")
+            if ftype.spelling == "char *":
+                lines.append(f"    tmp->{fname} = mila_strdup({conv.format(value=f'argv[{i}]')});")
+            else:
+                lines.append(f"    tmp->{fname} = {conv.format(value=f'argv[{i}]')};")
 
-    lines.append(f"    {struct_name}* ret = ({struct_name}*)mila_malloc(sizeof({struct_name}));")
-    lines.append("    memcpy(ret, &tmp, sizeof(tmp));")
-    lines.append(f"    return vowned_opaque_extra(ret, NULL, \"struct {struct_name}\");")
+    lines.append(f"    return vowned_opaque_extra(tmp, NULL, \"struct {struct_name}\");")
     lines.append("}")
     
     return "\n".join(pre_lines + lines + [""]), names
@@ -156,6 +180,9 @@ def collect_types(cursor, tu):
 
     visit(cursor)
     return enums
+
+def remove_array_sizes(text):
+    return re.sub(array_normalize_pattern, "", text)
 
 def normalize_arrays(t):
     if t.kind in (cindex.TypeKind.CONSTANTARRAY, cindex.TypeKind.INCOMPLETEARRAY):

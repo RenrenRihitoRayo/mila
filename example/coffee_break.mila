@@ -1,0 +1,18 @@
+
+system(!{clear; figlet "Coffee Break" | lolcat});
+println("Break Started:");
+var start = get_time();
+var tm = get_tm_local();
+var ltime = strftime("Local %A %Y-%m-%d %I:%M:%S %p", tm);
+println(ltime);
+var tm = get_tm_gmt();
+var gtime = strftime("  GMT %A %Y-%m-%d %I:%M:%S %p", tm);
+println(gtime);
+println("Elapsed Time:");
+while (true) {
+    var tm = get_tm_gmt(cast.f2i(get_time()-start));
+    var time = strftime("  %M:%S", tm);
+    println(time+"\r\033[A");
+    time_sleep_ms(100); // dont hog cpu time
+}
+system(!{read -p ""});

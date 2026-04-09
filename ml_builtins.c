@@ -1425,6 +1425,7 @@ Value *native_new_dict(Env *env, int argc, Value **argv)
     {
         Value *v = vopaque(d);
         val_set_table(v, dict_meta);
+        v->type_name = mila_strdup(MILA_LPREFIX "dict");
         return v;
     }
     return verror("couldnt make a dict.");
@@ -1783,6 +1784,27 @@ Value *istring_to_iter(Value *self)
     }
     iter[slen] = NULL;
     return vopaque(iter);
+}
+
+Value* string_genth_worker(CGenData* cgen_data)
+{
+    ThreadContext* ctx = cgen_data->ctx;
+    char* data = GET_STRING(cgen_data->data);
+    size_t len = strlen(data);
+    for (size_t i=0; i<len; ++i)
+    {
+        Value* tmp = vstring_dup((char[]){data[i], 0});
+        thread_yield(ctx, tmp);
+        val_kill(tmp);
+    }
+    thread_yield(ctx, NULL);
+    return NULL;
+}
+
+Value *istring_to_gen(Value *self)
+{
+    int th_id = make_cgen(string_genth_worker, self);
+    return vint(th_id);
 }
 
 Value *istring_get(Value *self, Value *index)
@@ -2517,6 +2539,9 @@ void env_register_builtins(Env *g)
     // heres its canon since this is the base implementation.
     env_set_raw(g, "__mila_codename", vstring_dup("vmm"));
 #endif
+    env_set_raw(g, "INF", vfloat(INFINITY));
+    env_set_raw(g, "NINF", vfloat(-INFINITY));
+
     // === Misc
     env_register_native(g, "range", native_range);
     env_register_native(g, "as_opaque", native_as_opaque);
@@ -2599,6 +2624,7 @@ void env_register_builtins(Env *g)
     val_set_method_table(istring_meta, UMethodToIter, istring_to_iter);
     val_set_method_table(istring_meta, BMethodGetItem, istring_get);
     val_set_method_table(istring_meta, UMethodToString, istring_to_str);
+    val_set_method_table(istring_meta, UMethodToGen, istring_to_gen);
 
     env_register_native(g, "list", native_list_new);
     env_register_native(g, "list.set", native_list_set);

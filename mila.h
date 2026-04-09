@@ -21,6 +21,7 @@
 #define GET_UINTEGER(val) (val ? val->v.ui : 0)
 #define GET_FLOAT(val) (val ? val->v.f : 0.0)
 #define GET_BFLOAT(val) (val ? val->v.bf : 0.0)
+#define GET_BOOL(val) (val ? val->v.b : 0)
 #define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
 #define GET_FUNCTION(val) (val ? val->v.fn : NULL)
 #define GET_NATIVE(val) (val ? val->v.native : NULL)
@@ -189,6 +190,7 @@ typedef enum __attribute__((packed))
     BMethodAnd,
     BMethodOr,
     BMethodDefault,
+    BMethodGlob,
 
     BMethodGetItem, // name[...] syntax
     TMethodSetItem, // var name[...] or set name[...] syntax
@@ -203,7 +205,8 @@ typedef enum __attribute__((packed))
     UMethodFree,
     UMethodKill,
 
-    BMethodGlob,
+    UMethodToGen,  // Method to turn collections into generators
+
     MethodTotalCount
 } MethodType;
 
@@ -327,63 +330,65 @@ void val_unset_method_table(MethodTable *v, MethodType t);
 // Unset the method of a value
 void val_unset_method(Value *v, MethodType t);
 // Own a value
-Value *val_retain(Value *v);
+extern Value *val_retain(Value *v);
 // Disown a value
-void val_release(Value *v);
+extern void val_release(Value *v);
 // Disown a value, doesnt free value instance, only the inner data
 void val_release_incomplete(Value *v);
 // Printf but support `%?` to print values.
 int mila_printf(char *fmt, ...);
 // Generates a string from an fmt
 __attribute__((format(printf, 1, 2)))
-Value *vstring_fmt(char *fmt, ...);
+extern Value *vstring_fmt(char *fmt, ...);
 // Slice a string
-Value *vstring_slice(const char *src, size_t start, size_t len);
+extern Value *vstring_slice(const char *src, size_t start, size_t len);
 // Index a string
-Value *vstring_index(const char *src, size_t index);
+extern Value *vstring_index(const char *src, size_t index);
 // Replace some path of a string (used string.patch)
-Value *vstring_replace(const char *src,
+extern Value *vstring_replace(const char *src,
                        const char *needle,
                        const char *repl);
 // Free a value regardless of refcount
 void val_kill(Value *v);
 // Integer contructor
-Value *vint(long i);
+extern Value *vint(long i);
 // Uint constructor
-Value *vuint(unsigned long i);
+extern Value *vuint(unsigned long i);
 // Float constructor
-Value *vfloat(double f);
+extern Value *vfloat(double f);
 #ifndef EXT_WEB
 // Bool constructor
-Value *vbint(__int128 i);
+extern Value *vbint(__int128 i);
 // Float constructor
-Value *vbfloat(_Float128 f);
+extern Value *vbfloat(_Float128 f);
+extern Value *vbreak();
+extern Value *vcontinue();
 // Turn any numeric type to a _Float128
-_Float128 to_bdouble(Value *v);
+extern _Float128 to_bdouble(Value *v);
 // Turn any numeric type into a __int128
-__int128 to_bint(Value *v);
+extern __int128 to_bint(Value *v);
 // Turn a _Float128 into a string
 char *f128toa(_Float128 value);
 // Turn any numeric type to an unsigned long
 #endif
 // Bool constructor
-Value *vbool(int b);
+extern Value *vbool(int b);
 // Duplicate a string
-Value *vstring_dup(const char *s);
+extern Value *vstring_dup(const char *s);
 // Take a string (assuming MiLa can free it)
-Value *vstring_take(char *s);
+extern Value *vstring_take(char *s);
 // Opaque pointer constructor
-Value *vopaque(void *p);
+extern Value *vopaque(void *p);
 // Owned opaque pointer constructor (MiLa takes ownership)
-Value *vowned_opaque(void *p);
+extern Value *vowned_opaque(void *p);
 // Create a native function
-Value *vnative(NativeFn fn, const char *name);
+extern Value *vnative(NativeFn fn, const char *name);
 // Create a bool if a value is truthy
-Value *vtruthy(Value *value);
+extern Value *vtruthy(Value *value);
 // Null
-Value *vnull();
+extern Value *vnull();
 // None
-Value *vnone();
+extern Value *vnone();
 // Error
 __attribute__((format(printf, 1, 2)))
 Value *verror(char *message, ...);
@@ -393,10 +398,10 @@ Value *vtagged_error(ErrorType type, char *message, ...);
 // Create a function
 Value *vfunction(char **params, char** contextuals, Env* closure, char *body_src);
 // Check if a value is any numeric type
-static int is_number(Value *v);
+extern int is_number(Value *v);
 // Turn any numeric type to a double
-double to_double(Value *v);
-unsigned long to_uint(Value *v);
+extern double to_double(Value *v);
+extern unsigned long to_uint(Value *v);
 // Turn a value into its c string equivalent
 char *as_c_string(Value *v);
 // Turn a value into its c string representation equivalent
@@ -441,23 +446,26 @@ typedef struct Src
 
 Src *src_new(const char *s);
 void src_free(Src *s);
-void skip_ws(Src *s);
-char src_peek(Src *s);
-char src_get(Src *s);
-int src_eof(Src *s);
+extern void skip_ws(Src *s);
+extern char src_peek(Src *s);
+extern void skip_expr(Src *s);
+extern void skip_block(Src *s);
+extern char src_get(Src *s);
+extern int src_eof(Src *s);
 void src_advance_by(Src* s, size_t amount);
 int is_ident_start(char c);
 uint64_t get_line_pos(Src *src);
 int report(Src *src, FILE *fp, const char *fmt, ...);
 int match_char(Src *s, char c);
-char *parse_ident(Src *s);
-Value *parse_number(Src *s);
-Value *parse_string(Src *s);
-int is_keyword_at(Src *s, const char *kw);
+extern char *parse_ident_string(Src *s);
+extern char *parse_ident(Src *s);
+extern Value *parse_number(Src *s);
+extern Value *parse_string(Src *s);
+extern int is_keyword_at(Src *s, const char *kw);
 char *dup_substr(Src *s, int a, int b);
 char **parse_param_list(Src *s);
 Value *eval_block(Src *s, Env *env);
-Value *eval_primary(Src *s, Env *env);
+extern Value *eval_primary(Src *s, Env *env);
 Value *binary_op(Value *a, MethodType op, Value *b);
 int precedence_of(MethodType op);
 MethodType parse_op(Src *s);
@@ -485,6 +493,6 @@ void mila_add_atexit(Value* fn);
 Env* mila_init(void);
 void mila_deinit(Env* env);
 
-void* mila_malloc(size_t size);
-void* mila_realloc(void* ptr, size_t size);
-void mila_free(void* ptr);
+extern void* mila_malloc(size_t size);
+extern void* mila_realloc(void* ptr, size_t size);
+extern void mila_free(void* ptr);

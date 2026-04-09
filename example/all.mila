@@ -21,15 +21,17 @@ println(
 
 // types
 println(
-    typeof(1),        // "int"    c long
-    typeof(1.0),      // "float"  c double
-    typeof(1u),       // "uint"   c unsigned long
-    typeof(0x1),      // "int"    c long
-    typeof(0x1u),     // "uint"   c unsigned long
-    typeof(1~),       // "bint"   c 128 bit int
-    typeof(0x1~),     // "bint"   c 128 bit int
-    typeof(1.0~),     // "bfloat" c 128 bit float
-    typeof("string"), // "string" c string
+    typeof(1),        // "int"        c long
+    typeof(1.0),      // "float"      c double
+    typeof(1u),       // "uint"       c unsigned long
+    typeof(0x1),      // "int"        c long
+    typeof(0x1u),     // "uint"       c unsigned long
+    typeof(1~),       // "bint"       c 128 bit int
+    typeof(0x1~),     // "bint"       c 128 bit int
+    typeof(1.0~),     // "bfloat"     c 128 bit float
+    typeof("string"), // "string"     c string
+    typeof([1, 2, 3]),// "canon:list" c linked list
+    typeof([@ 1 = 2]) // "canon:dict" c hash table (djb2 hash)
 );
 
 // Asserts are also available

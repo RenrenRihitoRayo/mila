@@ -83,17 +83,17 @@ path_list *search_path = NULL;
 #include <stdio.h>
 #include <string.h>
 
-void *mila_malloc(size_t size)
+inline void *mila_malloc(size_t size)
 {
     void *ptr = malloc(size);
     memset(ptr, 0, size);
     return ptr;
 }
-void *mila_realloc(void *ptr, size_t size)
+inline void *mila_realloc(void *ptr, size_t size)
 {
     return realloc(ptr, size);
 }
-void mila_free(void *ptr)
+inline void mila_free(void *ptr)
 {
     free(ptr);
 }
@@ -240,6 +240,8 @@ void float_to_string(float f, char *buf, size_t bufsize)
 {
     // Step 1: try %g with max precision
     snprintf(buf, bufsize, "%.10g", f); // 9 digits for float
+
+    if (!isdigit(buf[strlen(buf)-1])) return;
 
     // Step 2: check if there's a decimal point or exponent
     if (strchr(buf, '.') == NULL && strchr(buf, 'e') == NULL &&
@@ -407,22 +409,21 @@ void val_unset_method_table(MethodTable *v, MethodType t) { v[t] = NULL; }
 
 // Helpers to create typed values or check their truthiness
 
-int is_truthy(Value *value)
+inline int is_truthy(Value *value)
 {
-    _Bool truth = 0;
-    if (value->type == T_BOOL)
-        truth = value->v.b;
-    else if (value->type == T_INT)
-        truth = value->v.i != 0;
-    else if (value->type == T_FLOAT)
-        truth = value->v.f != 0.0;
-    else if (value->type == T_STRING)
-        truth = value->v.s != NULL && strlen(value->v.s);
-    else if (value->type == T_OPAQUE)
-        truth = value->v.opaque;
-    else
-        truth = (value->type != T_NULL && value->type != T_NONE);
-    return truth;
+    switch (GET_TYPE(value)) {
+    case T_INT: return GET_INTEGER(value) ? 1 : 0;
+    case T_FLOAT: return GET_FLOAT(value) ? 1 : 0;
+    case T_UINT: return GET_UINTEGER(value) ? 1 : 0;
+#ifndef EXT_WEB
+    case T_BINT: return GET_BINTEGER(value) ? 1 : 0;
+    case T_BFLOAT: return GET_BFLOAT(value) ? 1 : 0;
+#endif
+    case T_OPAQUE: return GET_OPAQUE(value) ? 1 : 0;
+    case T_BOOL: return GET_BOOL(value) ? 1 : 0;
+    case T_STRING: return strlen(GET_STRING(value)) ? 1 : 0;
+    }
+    return 1;
 }
 
 int match_range(const char **pat, char c)
@@ -499,10 +500,10 @@ int match(const char *pattern, const char *str)
     return !*str;
 }
 
-Value *vnull() { return val_new(T_NULL); }
-Value *vnone() { return val_new(T_NONE); }
-Value *vbreak() { return val_new(T_BREAK); }
-Value *vcontinue() { return val_new(T_CONTINUE); }
+inline Value *vnull() { return val_new(T_NULL); }
+inline Value *vnone() { return val_new(T_NONE); }
+inline Value *vbreak() { return val_new(T_BREAK); }
+inline Value *vcontinue() { return val_new(T_CONTINUE); }
 
 #ifndef VMM_BUILD
 __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
@@ -1052,7 +1053,9 @@ int mila_printf(char *fmt, ...)
     va_end(args);
     return (int)char_count;
 }
-__attribute__((format(printf, 1, 2))) Value *vstring_fmt(char *fmt, ...)
+
+__attribute__((format(printf, 1, 2)))
+inline Value *vstring_fmt(char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1084,58 +1087,68 @@ __attribute__((format(printf, 1, 2))) Value *vstring_fmt(char *fmt, ...)
     v->v.message = buf;
     return v;
 }
-Value *vint(long x)
+
+inline Value *vint(long x)
 {
     Value *v = val_new(T_INT);
     v->v.i = x;
     return v;
 }
-Value *vuint(unsigned long x)
+
+inline Value *vuint(unsigned long x)
 {
     Value *v = val_new(T_UINT);
     v->v.ui = x;
     return v;
 }
-Value *vfloat(double f)
+
+inline Value *vfloat(double f)
 {
     Value *v = val_new(T_FLOAT);
     v->v.f = f;
     return v;
 }
+
 #ifndef EXT_WEB
-Value *vbint(__int128 x)
+
+inline Value *vbint(__int128 x)
 {
     Value *v = val_new(T_BINT);
     v->v.bi = x;
     return v;
 }
-Value *vbfloat(_Float128 f)
+
+inline Value *vbfloat(_Float128 f)
 {
     Value *v = val_new(T_BFLOAT);
     v->v.bf = f;
     return v;
 }
 #endif
-Value *vbool(int b)
+
+inline Value *vbool(int b)
 {
     Value *v = val_new(T_BOOL);
     v->v.b = b ? 1 : 0;
     return v;
 }
-Value *vstring_dup(const char *s)
+
+inline Value *vstring_dup(const char *s)
 {
     Value *v = val_new(T_STRING);
     v->v.s = mila_strdup(s ? s : "");
     return v;
 }
-Value *vstring_take(char *s)
+
+inline Value *vstring_take(char *s)
 {
     Value *v = val_new(T_STRING);
     v->v.s = s;
     return v;
 }
+
 // String
-Value *vstring_slice(const char *src, size_t start, size_t len)
+inline Value *vstring_slice(const char *src, size_t start, size_t len)
 {
     size_t n = strlen(src);
     if (start > n)
@@ -1154,7 +1167,7 @@ Value *vstring_slice(const char *src, size_t start, size_t len)
     return vstring_take(buf);
 }
 
-Value *vstring_index(const char *src, size_t index)
+inline Value *vstring_index(const char *src, size_t index)
 {
     size_t n = strlen(src);
     if (index >= n)
@@ -1170,7 +1183,7 @@ Value *vstring_index(const char *src, size_t index)
     return vstring_take(buf);
 }
 
-Value *vstring_replace(const char *src, const char *needle, const char *repl)
+inline Value *vstring_replace(const char *src, const char *needle, const char *repl)
 {
     if (!*needle)
         return vstring_dup(src); // can't match empty substring
@@ -1219,25 +1232,25 @@ Value *vstring_replace(const char *src, const char *needle, const char *repl)
 
     return vstring_take(buf);
 }
-Value *vowned_opaque(void *p)
+inline Value *vowned_opaque(void *p)
 {
     Value *v = val_new(T_OWNED_OPAQUE);
     v->v.opaque = p;
     return v;
 }
-Value *vopaque(void *p)
+inline Value *vopaque(void *p)
 {
     Value *v = val_new(T_OPAQUE);
     v->v.opaque = p;
     return v;
 }
-Value *vweak_opaque(void *p)
+inline Value *vweak_opaque(void *p)
 {
     Value *v = val_new(T_WEAK_OPAQUE);
     v->v.opaque = p;
     return v;
 }
-Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type_name)
+inline Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type_name)
 {
     Value *v = vopaque(p);
     if (dis && v)
@@ -1248,7 +1261,7 @@ Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type_name)
     v->type_name = mila_strdup(type_name);
     return v;
 }
-Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *),
+inline Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *),
                            const char *type_name)
 {
     Value *v = vowned_opaque(p);
@@ -1260,7 +1273,7 @@ Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *),
     v->type_name = mila_strdup(type_name);
     return v;
 }
-Value *vnative(NativeFn fn, const char *name)
+inline Value *vnative(NativeFn fn, const char *name)
 {
     Value *v = val_new(T_NATIVE);
     v->v.native = (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
@@ -1269,7 +1282,21 @@ Value *vnative(NativeFn fn, const char *name)
     v->v.native->name = name ? mila_strdup(name) : NULL;
     return v;
 }
-Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
+// vfunction creation
+inline Value *vfunction(char **params, char **contextuals, Env *closure,
+                 char *body_src)
+{
+    Value *v = val_new(T_FUNCTION);
+    v->v.fn = (FunctionV *)mila_malloc(sizeof(FunctionV));
+    v->v.fn->params = params;
+    v->v.fn->contextuals = contextuals;
+    v->v.fn->body_src = body_src;
+    v->v.fn->closure = closure;
+    v->v.fn->name = NULL;
+    v->v.fn->line = 0;
+    return v;
+}
+inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
 
 int our_asprintf(char **strp, const char *fmt, ...)
 {
@@ -1723,14 +1750,14 @@ int print_value_debug(Value *v)
     {
         return printf("cnull");
     }
-    char *txt = as_c_string_repr(v);
+    char *txt = as_c_string_repr_raw(v);
     int i = printf("%s", txt);
     mila_free(txt);
     printf(" (%i)\n", v->refcount);
     return i;
 }
 
-Value *val_retain(Value *v)
+inline Value *val_retain(Value *v)
 {
 #ifdef MILA_DEBUG
     if (v)
@@ -1755,7 +1782,7 @@ Value *val_retain(Value *v)
 }
 
 // release
-void val_release(Value *v)
+inline void val_release(Value *v)
 {
     if (!v)
         return;
@@ -2666,15 +2693,15 @@ void src_free(Src *s)
 }
 
 // helpers
-char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
-char src_get(Src *s) {
+inline char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
+inline char src_get(Src *s) {
     char c = s->pos < s->len ? s->src[s->pos++] : '\0';
     if (c == '\n') s->line++;
     return c;
 }
-int src_eof(Src *s) { return s->pos >= s->len; }
+inline int src_eof(Src *s) { return s->pos >= s->len; }
 
-void skip_block(Src *s)
+inline void skip_block(Src *s)
 {
     skip_ws(s);
     // body is block; extract substring from '{' to matching '}'
@@ -2702,17 +2729,7 @@ void skip_block(Src *s)
         }
         else if (ch == '"')
         {
-            // skip string literal
-            i++;
-            while (i < s->len && s->src[i] != '"')
-            {
-                if (s->src[i] == '\n')
-                    s->line++;
-                if (s->src[i] == '\\' && i + 1 < s->len)
-                    i += 2;
-                else
-                    i++;
-            }
+            val_release(parse_string(s));
         }
         else if (ch == '/' && src_peek(s) == '/')
         {
@@ -2721,13 +2738,29 @@ void skip_block(Src *s)
             while (i < s->len && s->src[i] != '\n')
                 i++;
         }
+        if (ch == '/' && s->pos + 1 < s->len && s->src[s->pos + 1] == '*')
+        {
+            // block comment
+            src_get(s);
+            src_get(s);
+            while (!src_eof(s))
+            {
+                char a = src_get(s);
+                if (a == '*' && src_peek(s) == '/')
+                {
+                    src_get(s);
+                    break;
+                }
+            }
+            continue;
+        }
     }
     if (i > s->len)
         i = s->len;
     s->pos = i;
 }
 
-void skip_expr(Src *s)
+inline void skip_expr(Src *s)
 {
     skip_ws(s);
     // body is block; extract substring from '{' to matching '}'
@@ -2749,15 +2782,7 @@ void skip_expr(Src *s)
         }
         else if (ch == '"')
         {
-            // skip string literal
-            i++;
-            while (i < s->len && s->src[i] != '"')
-            {
-                if (s->src[i] == '\\' && i + 1 < s->len)
-                    i += 2;
-                else
-                    i++;
-            }
+            val_release(parse_string(s));
         }
     }
     if (i > s->len)
@@ -2765,7 +2790,7 @@ void skip_expr(Src *s)
     s->pos = i;
 }
 
-void skip_stmt(Src *s)
+inline void skip_stmt(Src *s)
 {
     skip_ws(s);
     int i = s->pos;
@@ -2799,7 +2824,7 @@ void skip_stmt(Src *s)
     s->pos = i;
 }
 
-void skip_ws(Src *s)
+inline void skip_ws(Src *s)
 {
     for (;;)
     {
@@ -2857,7 +2882,7 @@ int is_ident_start(char c)
     return isalpha((unsigned char)c) || c == '_' || c == '.' || c == '\'';
 }
 
-char *parse_ident_string(Src *s)
+inline char *parse_ident_string(Src *s)
 {
     skip_ws(s);
     if (src_peek(s) != '\'')
@@ -2901,7 +2926,7 @@ char *parse_ident_string(Src *s)
 }
 
 // parse identifier
-char *parse_ident(Src *s)
+inline char *parse_ident(Src *s)
 {
     skip_ws(s);
     int st = s->pos;
@@ -3056,7 +3081,7 @@ __int128 atoi128(char *s, char **end) {
 #endif
 
 // parse number (int or float)
-Value *parse_number(Src *s)
+inline Value *parse_number(Src *s)
 {
     skip_ws(s);
     int st = s->pos;
@@ -3237,7 +3262,7 @@ char* dedent(char* str) {
 }
 
 // parse string literal (double quotes)
-Value *parse_string(Src *s)
+inline Value *parse_string(Src *s)
 {
     skip_ws(s);
     if (src_peek(s) != '"')
@@ -3348,7 +3373,7 @@ Value *parse_string(Src *s)
 void src_advance_by(Src *s, size_t amount) { s->pos += amount; }
 
 // parse function literal: fn(a,b){ ... }
-int is_keyword_at(Src *s, const char *kw)
+inline int is_keyword_at(Src *s, const char *kw)
 {
     skip_ws(s);
     int p = s->pos;
@@ -3412,7 +3437,6 @@ char **parse_param_list(Src *s)
         arr = mila_realloc(arr, sizeof(char *) * (cnt + 2));
         arr[cnt++] = id;
         arr[cnt] = NULL;
-        skip_ws(s);
         if (match_char(s, ','))
             continue;
         if (match_char(s, ')'))
@@ -3453,7 +3477,6 @@ char **parse_context_list(Src *s)
         arr = mila_realloc(arr, sizeof(char *) * (cnt + 2));
         arr[cnt++] = id;
         arr[cnt] = NULL;
-        skip_ws(s);
         if (match_char(s, ','))
             continue;
         if (match_char(s, ']'))
@@ -3470,9 +3493,7 @@ Value *parse_subscript(Src *s, Env *e)
     {
         return verror("Subscript was expected!");
     }
-
     Value *res = eval_expr(s, e);
-
     if (!match_char(s, ']'))
     {
         return verror("Closing square bracket was expected!");
@@ -3484,7 +3505,6 @@ Value *parse_subscript(Src *s, Env *e)
 // parse block: {...}
 Value *eval_block(Src *s, Env *env)
 {
-    skip_ws(s);
     if (!match_char(s, '{'))
     {
         return verror("Expected a block!");
@@ -3522,7 +3542,6 @@ Value *eval_block(Src *s, Env *env)
 
 Value *eval_block_raw(Src *s, Env *frame)
 {
-    skip_ws(s);
     if (!match_char(s, '{'))
     {
         return verror("Block was expected!");
@@ -3801,7 +3820,6 @@ Value *eval_primary(Src *s, Env *env)
         if (src_peek(s) != ']') {
             for (;;)
             {
-                skip_ws(s);
                 Value *a = eval_expr(s, env);
                 if (IS_ERROR(a))
                 {
@@ -3884,7 +3902,6 @@ Value *eval_primary(Src *s, Env *env)
                     }
                     args = mila_realloc(args, sizeof(Value *) * (argc + 1));
                     args[argc++] = a;
-                    skip_ws(s);
                     if (match_char(s, ','))
                         continue;
                     if (match_char(s, ')'))
@@ -4075,9 +4092,7 @@ Value *eval_primary(Src *s, Env *env)
     if (c == '{')
     {
         Value *v = eval_block(s, env);
-        skip_ws(s);
         match_char(s, '}');
-
         HANDLE_RETURN(v);
         return v;
     }
@@ -4087,11 +4102,8 @@ Value *eval_primary(Src *s, Env *env)
         size_t start = s->pos + 1;
         skip_block(s);
         size_t end = s->pos - 1; // avoid the closing }
-        skip_ws(s);
-
         char *buffer = (char *)mila_malloc(sizeof(char) * (end - start) + 1);
         memcpy(buffer, s->src + start, end - start);
-
         Value* res = vstring_take(dedent(buffer));
         free(buffer);
         return res;
@@ -4487,18 +4499,18 @@ Value *eval_primary(Src *s, Env *env)
 
 // helper to convert numeric types and do arithmetic
 #ifndef EXT_WEB
-static int is_number(Value *v)
+inline int is_number(Value *v)
 {
     return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT || v->type == T_BINT || v->type == T_BFLOAT);
 }
 #else
-static int is_number(Value *v)
+inline int is_number(Value *v)
 {
     return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
 }
 #endif
 
-double to_double(Value *v)
+inline double to_double(Value *v)
 {
     if (!v)
         return 0.0;
@@ -4518,7 +4530,7 @@ double to_double(Value *v)
 }
 
 #ifndef EXT_WEB
-_Float128 to_bdouble(Value *v)
+inline _Float128 to_bdouble(Value *v)
 {
     if (!v)
         return 0.0;
@@ -4535,7 +4547,7 @@ _Float128 to_bdouble(Value *v)
     return 0.0;
 }
 
-__int128 to_bint(Value *v)
+inline __int128 to_bint(Value *v)
 {
     if (!v)
         return 0.0;
@@ -4553,7 +4565,7 @@ __int128 to_bint(Value *v)
 }
 #endif
 
-unsigned long to_uint(Value *v)
+inline unsigned long to_uint(Value *v)
 {
     if (!v)
         return 0.0;
@@ -4573,7 +4585,7 @@ unsigned long to_uint(Value *v)
 }
 
 // binary ops
-Value *binary_op(Value *a, MethodType op, Value *b)
+inline Value *binary_op(Value *a, MethodType op, Value *b)
 {
     if (a->method_table && a->method_table[op])
     {
@@ -4945,7 +4957,7 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
 }
 
 // evaluate expression with precedence climbing
-int precedence_of(MethodType op)
+inline int precedence_of(MethodType op)
 {
     if (BMethodAnd == op)
         return 1;
@@ -4969,7 +4981,7 @@ int precedence_of(MethodType op)
     return 0;
 }
 
-MethodType parse_op(Src *s)
+inline MethodType parse_op(Src *s)
 {
     skip_ws(s);
     char a = src_peek(s);
@@ -5055,7 +5067,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec)
     skip_ws(s);
     Value *lhs = eval_primary(s, env);
     if (!lhs)
-        return verror("Invalid expression!");
+        return vnull();
     for (;;)
     {
         int saved_pos = s->pos;
@@ -5083,7 +5095,6 @@ Value *eval_expr(Src *s, Env *env) { return eval_expr_prec(s, env, 1); }
 
 void clean_elif_chain(Src *s)
 {
-    skip_ws(s);
     while (is_keyword_at(s, "elif"))
     {
         s->pos += strlen("elif");
@@ -5101,7 +5112,6 @@ void clean_elif_chain(Src *s)
 
 Value *eval_statement(Src *s, Env *env)
 {
-    skip_ws(s);
     if (is_keyword_at(s, "set"))
     {
         s->pos += strlen("set");
@@ -5399,7 +5409,6 @@ Value *eval_statement(Src *s, Env *env)
         {
             v->v.fn->name = mila_strdup(id);
         }
-        skip_ws(s);
         env_set(env, id, v);
         mila_free(id);
         return v;
@@ -5600,7 +5609,6 @@ Value *eval_statement(Src *s, Env *env)
 
         mila_free(id);
 
-        skip_ws(s);
         match_char(s, ';');
         return vnull();
     }
@@ -5618,14 +5626,12 @@ Value *eval_statement(Src *s, Env *env)
     if (is_keyword_at(s, "if"))
     {
         s->pos += strlen("if");
-        skip_ws(s);
         if (match_char(s, '('))
         {
             Value *cond = eval_expr(s, env);
             match_char(s, ')');
             int truth = is_truthy(cond);
             val_release(cond);
-            skip_ws(s);
             if (truth)
             {
                 Value *res = NULL;
@@ -5638,7 +5644,6 @@ Value *eval_statement(Src *s, Env *env)
                 // skip then clause
                 skip_block(s);
                 // check elifs
-                skip_ws(s);
                 while (is_keyword_at(s, "elif"))
                 {
                     s->pos += strlen("elif");
@@ -5662,14 +5667,12 @@ Value *eval_statement(Src *s, Env *env)
                             skip_block(s);
                         }
                     }
-                    skip_ws(s);
                 }
                 // run else if it exists
                 if (is_keyword_at(s, "else"))
                 {
                     s->pos += strlen("else");
                     Value *res = NULL;
-                    skip_ws(s);
                     res = eval_block_raw(s, env);
                     // check for return propagation
                     HANDLE_CONTROL(res);
@@ -5726,26 +5729,29 @@ Value *eval_statement(Src *s, Env *env)
                 bod = eval_block(s, env);
 
                 // --- Handle body result ---
-                if (bod->type == T_BREAK)
+                switch (GET_TYPE(bod)) {
+                case T_BREAK:
                 {
                     s->pos = body_end_pos;
                     val_release(bod);
                     return vnull();
-                }
-                else if (bod->type == T_CONTINUE)
+                } break;
+                case T_CONTINUE:
                 {
                     s->pos = cond_start_pos;
                     continue;
-                }
-                else if (bod->type == T_RETURN)
+                } break;
+                case T_RETURN:
                 {
                     s->pos = body_end_pos;
                     return bod;
-                }
-                else if (IS_ERROR(bod))
+                } break;
+                case T_TAGGED_ERROR:
+                case T_ERROR:
                 {
                     s->pos = body_end_pos;
                     return bod;
+                } break;
                 }
             }
             return bod;
@@ -5755,6 +5761,7 @@ Value *eval_statement(Src *s, Env *env)
     if (is_keyword_at(s, "foreach"))
     {
         s->pos += strlen("foreach");
+        uint64_t body_start_line = s->line;
         skip_ws(s);
         char *id = parse_ident(s);
         if (!id) return vnull();
@@ -5766,7 +5773,14 @@ Value *eval_statement(Src *s, Env *env)
                 mila_free(id);
                 return verror("Foreach lacking ':'");
             }
+            Value *dummy = NULL;
             Value *iter_obj = eval_expr(s, env);
+            if (iter_obj->method_table && iter_obj->method_table[UMethodToGen]) {
+                Value *res = ((unary_method)iter_obj->method_table[UMethodToGen])(iter_obj);
+                dummy = iter_obj;
+                iter_obj = res;
+            }
+            print_value_debug(iter_obj);
 
             if (IS_ERROR(iter_obj))
             {
@@ -5778,63 +5792,67 @@ Value *eval_statement(Src *s, Env *env)
             skip_block(s);
             uint64_t body_end_pos = s->pos;
             Value *bod = NULL;
+            if (GET_TYPE(iter_obj) != T_INT) {
+                free(id);
+                val_release(iter_obj);
+                return verror("On line %ld: Expected an integer for the thread ID!", body_start_line);
+            }
             ThreadContext* ctx = thread_registry_get(GET_INTEGER(iter_obj));
-            if (!ctx) {return verror("On line %ld: Expected an integer thread ID!", s->line);}
+            if (!ctx) {
+                val_release(iter_obj);
+                free(id);
+                return verror("On line %ld: Thread ID %ld does not exist!", body_start_line, GET_INTEGER(iter_obj));
+            }
             Value* v = thread_get_yield(ctx);
             for (;v;v = thread_get_yield(ctx))
             {
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
-                Env *frame = env_new(env);
-                env_set_local_raw(frame, id, v);
-                bod = eval_block_raw(s, frame);
-                val_release(v);
-                env_remove(frame, id);
+                // Env *env = env_new(env);
+                env_set_local_raw(env, id, v);
+                bod = eval_block_raw(s, env);
+                // val_release(v);
+                // env_remove(frame, id);
 
-                env_free(frame);
+                // env_free(frame);
                 // --- Handle body result ---
-                if (bod)
+                switch (GET_TYPE(bod))
                 {
-                    if (bod->type == T_BREAK)
+                   case T_BREAK:
                     {
                         s->pos = body_end_pos;
                         val_release(bod);
                         mila_free(id);
                         s->pos = body_end_pos;
                         return vnull();
-                    }
-                    else if (bod->type == T_CONTINUE)
+                    } break;
+                    case T_CONTINUE:
                     {
                         s->pos = body_start_pos;
                         if (bod)
                             val_release(bod);
                         mila_free(id);
                         continue;
-                    }
-                    else if (IS_ERROR(bod))
+                    } break;
+                    case T_RETURN:
                     {
                         s->pos = body_end_pos;
                         mila_free(id);
                         return bod;
-                    }
-                    else if (bod->type == T_RETURN)
+                    } break;
+                    case T_TAGGED_ERROR:
+                    case T_ERROR:
                     {
                         s->pos = body_end_pos;
                         mila_free(id);
                         return bod;
-                    }
-                    else if (bod->type == T_ERROR)
-                    {
-                        s->pos = body_end_pos;
-                        mila_free(id);
-                        return bod;
-                    }
+                    } break;
                 }
-
                 val_release(bod);
             }
             s->pos = body_end_pos;
             val_release(v);
+            val_release(dummy);
             val_release(iter_obj);
             mila_free(id);
             return vnull();
@@ -6281,21 +6299,6 @@ int match_types(Value **args, ...)
 f:
     va_end(types);
     return 0;
-}
-
-// vfunction creation
-Value *vfunction(char **params, char **contextuals, Env *closure,
-                 char *body_src)
-{
-    Value *v = val_new(T_FUNCTION);
-    v->v.fn = (FunctionV *)mila_malloc(sizeof(FunctionV));
-    v->v.fn->params = params;
-    v->v.fn->contextuals = contextuals;
-    v->v.fn->body_src = body_src;
-    v->v.fn->closure = closure;
-    v->v.fn->name = NULL;
-    v->v.fn->line = 0;
-    return v;
 }
 
 // top-level eval of source - runs sequential statements in global env
@@ -6786,7 +6789,7 @@ int repr()
             Src *S = src_new(buffer);
             Value *res = eval_source(S, g);
 
-            if (MILA_GET_TYPE(res) != T_NULL && !IS_ERROR(res))
+            if (GET_TYPE(res) != T_NULL && !IS_ERROR(res))
             {
                 printf("  : ");
                 print_value_repr(res);

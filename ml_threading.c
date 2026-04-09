@@ -6,9 +6,15 @@
 #include "ml_builtins.c"
 #include "ml_string.c"
 
+
+typedef struct CGenData CGenData;
+typedef Value*(*Generator)(CGenData*);
+
 /* Thread context for language-level threads */
 typedef struct
 {
+    int is_cgen;
+    Generator c_gen;     /* either src or this is set at a time */
     char *src;           /* Source code to execute */
     char *on_kill;       /* ran when thread dies */
     Env *env;            /* Environment (child of creator's env) */
@@ -26,6 +32,16 @@ typedef struct
     int is_generator;
 } ThreadContext;
 
+struct CGenData
+{
+    int is_cgen;
+    ThreadContext* ctx;
+    Value* data;
+};
+
+// TODO: Change into a linked list to be able to clean
+// Dead threads to avoid build up across program
+// lifetime
 typedef struct
 {
     ThreadContext **threads;
@@ -149,46 +165,48 @@ Value *thread_get_yield(ThreadContext *ctx)
 
 static void *mila_thread_worker(void *arg)
 {
-    ThreadContext *ctx = (ThreadContext *)arg;
-
-    if (!ctx || !ctx->src || !ctx->env)
-    {
-        if (ctx)
-            ctx->status = 2;
-        return NULL;
-    }
-
-    ctx->status = 1;
-
-    Src *S = src_new(ctx->src);
-    if (!S)
-    {
-        ctx->result = verror("Failed to create source");
-        ctx->status = 2;
-        return NULL;
-    }
-
-    Value *result = eval_source(S, ctx->env);
-    
-    /* Handle thread halt error */
-    if (IS_ERROR_TAGGED(result) && GET_ERROR(result) == E_THREAD_HALT)
-    {
-        val_release(result);
-        ctx->result = vnull();
-    }
-    else
-    {
-        if (ctx->is_generator) {
-            val_release(result);
+    Value *result;
+    if (!((ThreadContext*)arg)->is_cgen) {
+        // ctx here is ThreadContext
+        ThreadContext *ctx = (ThreadContext *)arg;
+        if (!ctx || !ctx->src || !ctx->env)
+        {
+            if (ctx)
+                ctx->status = 2;
+            return NULL;
         }
-        else ctx->result = result;
+        ctx->status = 1;
+        Src *S = src_new(ctx->src);
+        if (!S)
+        {
+            ctx->result = verror("Failed to create source");
+            ctx->status = 2;
+            return NULL;
+        }
+        result = eval_source(S, ctx->env);
+        src_free(S);
+        if (IS_ERROR_TAGGED(result) && GET_ERROR(result) == E_THREAD_HALT)
+        {
+            val_release(result);
+            ctx->result = vnull();
+        }
+        else
+        {
+            if (ctx->is_generator) {
+                val_release(result);
+            }
+            else ctx->result = result;
+        }
+        ctx->finished = 1;
+        ctx->status = 2;
+        pthread_cond_signal(&ctx->yield_cond);
+    } else {
+        // ctx here is actually a CGenData
+        result = (((CGenData*)arg)->ctx)->c_gen((CGenData*)arg);
+        free(arg);
     }
-
-    ctx->finished = 1;
-    ctx->status = 2;
-    pthread_cond_signal(&ctx->yield_cond);
-
-    src_free(S);
+    /* Handle thread halt error */
+    
     return NULL;
 }
 
@@ -224,6 +242,40 @@ Value *native_mutex_unlock(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+int make_cgen(Generator c_gen, Value* val) {
+    ThreadContext *ctx = mila_malloc(sizeof(ThreadContext));
+    ctx->src = NULL;
+    ctx->env = NULL;
+    ctx->c_gen = c_gen;
+    ctx->result = NULL;
+    ctx->status = 0;
+    ctx->is_deamon = 1;
+    ctx->on_kill = NULL;
+    ctx->is_cancelled = 0;
+    ctx->has_value = 0;
+    ctx->finished = 0;
+    ctx->is_generator = 0;
+    ctx->is_cgen = 1;
+
+    CGenData* cgen_data = (CGenData*)malloc(sizeof(CGenData));
+    cgen_data->ctx = ctx;
+    cgen_data->data = val;
+
+    pthread_mutex_init(&ctx->yield_lock, NULL);
+    pthread_cond_init(&ctx->yield_cond, NULL);
+
+    int thread_id = thread_registry_add(ctx);
+
+    int pth_result = pthread_create(&ctx->thread_id, NULL,
+                                mila_thread_worker, cgen_data);
+    if (thread_id < 0)
+    {
+        mila_free(ctx);
+        return -1;
+    }
+    return thread_id;
+}
+
 Value *native_thread_create(Env *env, int argc, Value **argv)
 {
     if (argc < 1)
@@ -241,6 +293,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
     ThreadContext *ctx = mila_malloc(sizeof(ThreadContext));
     ctx->src = mila_strdup(argv[0]->v.s);
     ctx->env = child_env;
+    ctx->c_gen = NULL;
     ctx->result = NULL;
     ctx->status = 0;
     ctx->is_deamon = 0;
@@ -249,6 +302,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
     ctx->has_value = 0;
     ctx->finished = 0;
     ctx->is_generator = 0;
+    ctx->is_cgen = 0;
     
     pthread_mutex_init(&ctx->yield_lock, NULL);
     pthread_cond_init(&ctx->yield_cond, NULL);
@@ -523,8 +577,8 @@ void mila_threads_cleanup(void)
 
         pthread_mutex_destroy(&ctx->yield_lock);
         pthread_cond_destroy(&ctx->yield_cond);
-        mila_free(ctx->src);
-        env_free(ctx->env);
+        if (ctx->src) mila_free(ctx->src);
+        if (ctx->env) env_free(ctx->env);
         mila_free(ctx);
     }
 
@@ -546,5 +600,5 @@ void register_thread_builtins(Env *env)
     env_register_native(env, "thread.mutex_lock", native_mutex_lock);
     env_register_native(env, "thread.yield", native_thread_yield);
     env_register_native(env, "thread.next", native_thread_next);
-    env_register_native(env, "dump_threads", native_thread_dump);
+    env_register_native(env, "thread.dump", native_thread_dump);
 }

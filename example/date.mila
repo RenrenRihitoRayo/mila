@@ -1,0 +1,7 @@
+
+system(!{clear; figment "Coffee Break"; read -p ""});
+while (true) {
+    var tm = get_tm_local();
+    var time = strftime("%A %Y-%m-%d %I:%M:%S %p", tm);
+    print(time+"\r");
+}

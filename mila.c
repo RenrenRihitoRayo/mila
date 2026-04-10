@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
-#ifndef EXT_WEB
+#if (!defined(EXT_WEB)) && (!defined(__clang__)) && (!defined(__arm__))
 #include <quadmath.h>
 #endif
 

@@ -5,6 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if defined(__x86_64__)
+  typedef __float128 mila_float128;
+#else
+  typedef long double mila_float128;
+  #warning Using long double for float128!
+#endif
+
 #define MAX_NUMBER_DIGITS 250
 #define MAX_PATH_LENGTH 1028
 
@@ -248,7 +255,7 @@ struct Value
         _Bool b;
         double f;
 #ifndef EXT_WEB
-        _Float128 bf;
+        mila_float128 bf;
         __int128 bi;
 #endif
         void *opaque;
@@ -355,15 +362,15 @@ extern Value *vfloat(double f);
 // Bool constructor
 extern Value *vbint(__int128 i);
 // Float constructor
-extern Value *vbfloat(_Float128 f);
+extern Value *vbfloat(mila_float128 f);
 extern Value *vbreak();
 extern Value *vcontinue();
-// Turn any numeric type to a _Float128
-extern _Float128 to_bdouble(Value *v);
+// Turn any numeric type to a mila_float128
+extern mila_float128 to_bdouble(Value *v);
 // Turn any numeric type into a __int128
 extern __int128 to_bint(Value *v);
-// Turn a _Float128 into a string
-char *f128toa(_Float128 value);
+// Turn a mila_float128 into a string
+char *f128toa(mila_float128 value);
 // Turn any numeric type to an unsigned long
 #endif
 // Bool constructor

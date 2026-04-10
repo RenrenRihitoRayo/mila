@@ -544,7 +544,7 @@ inline Value *vbint(__int128 x)
     return v;
 }
 
-inline Value *vbfloat(_Float128 f)
+inline Value *vbfloat(mila_float128 f)
 {
     Value *v = val_new(T_BFLOAT);
     v->v.bf = f;
@@ -2433,7 +2433,7 @@ char *i128toa(__int128 value) {
 }
 
 #ifndef EXT_WEB
-char *f128toa(_Float128 value) {
+char *f128toa(mila_float128 value) {
     if (isnanq(value)) {
         char *buf = malloc(4);
         if (buf) strcpy(buf, "nan");
@@ -2620,7 +2620,7 @@ inline Value *parse_number(Src *s)
         Value *r;
         if (seen_dot)
         {
-            _Float128 f = strtoflt128(buf, NULL);
+            mila_float128 f = strtoflt128(buf, NULL);
             if (is_percent)
                 f /= 100.0;
             r = vbfloat(f);
@@ -2629,7 +2629,7 @@ inline Value *parse_number(Src *s)
         {
             long tmp = atoi128(buf, NULL);
             if (is_percent)
-                return vbfloat((_Float128)tmp / 100.0);
+                return vbfloat((mila_float128)tmp / 100.0);
             r = vbint(tmp);
         }
         mila_free(buf);
@@ -3969,18 +3969,18 @@ inline double to_double(Value *v)
 }
 
 #ifndef EXT_WEB
-inline _Float128 to_bdouble(Value *v)
+inline mila_float128 to_bdouble(Value *v)
 {
     if (!v)
         return 0.0;
     if (v->type == T_INT)
-        return (_Float128)v->v.i;
+        return (mila_float128)v->v.i;
     if (v->type == T_FLOAT)
-        return (_Float128)v->v.f;
+        return (mila_float128)v->v.f;
     if (v->type == T_UINT)
-        return (_Float128)v->v.ui;
+        return (mila_float128)v->v.ui;
     if (v->type == T_BINT)
-        return (_Float128)v->v.bi;
+        return (mila_float128)v->v.bi;
     if (v->type == T_BFLOAT)
         return v->v.bf;
     return 0.0;
@@ -4064,7 +4064,7 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
 #ifndef EXT_WEB
         if (a->type == T_BFLOAT || b->type == T_BFLOAT)
         {
-            _Float128 ra = to_bdouble(a), rb = to_bdouble(b);
+            mila_float128 ra = to_bdouble(a), rb = to_bdouble(b);
             if (op == BMethodAdd)
                 return vbfloat(ra + rb);
             if (op == BMethodSub)
@@ -4290,7 +4290,7 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
 #ifndef EXT_WEB
         if (a->type == T_BFLOAT || b->type == T_BFLOAT)
         {
-            _Float128 ra = to_bdouble(a), rb = to_bdouble(b);
+            mila_float128 ra = to_bdouble(a), rb = to_bdouble(b);
             if (op == BMethodAdd)
                 return vbfloat(ra + rb);
             if (op == BMethodSub)

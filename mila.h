@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifndef __arm__
+#ifdef __x86_64__
   typedef __float128 mila_float128;
 #else
   typedef long double mila_float128;

@@ -13,7 +13,7 @@ typedef Value*(*Generator)(CGenData*);
 /* Thread context for language-level threads */
 typedef struct
 {
-    int is_cgen;
+    int is_cgen; // creepy type shenanigans
     Generator c_gen;     /* either src or this is set at a time */
     char *src;           /* Source code to execute */
     char *on_kill;       /* ran when thread dies */
@@ -34,7 +34,7 @@ typedef struct
 
 struct CGenData
 {
-    int is_cgen;
+    int is_cgen; // creepy type shenanigans
     ThreadContext* ctx;
     Value* data;
 };
@@ -240,6 +240,40 @@ Value *native_mutex_unlock(Env *env, int argc, Value **argv)
 
     pthread_mutex_unlock(GET_OPAQUE(argv[0]));
     return vnull();
+}
+
+int make_cthread(Generator c_gen) {
+    ThreadContext *ctx = mila_malloc(sizeof(ThreadContext));
+    ctx->src = NULL;
+    ctx->env = NULL;
+    ctx->c_gen = c_gen;
+    ctx->result = NULL;
+    ctx->status = 0;
+    ctx->is_deamon = 1;
+    ctx->on_kill = NULL;
+    ctx->is_cancelled = 0;
+    ctx->has_value = 0;
+    ctx->finished = 0;
+    ctx->is_generator = 0;
+    ctx->is_cgen = 1;
+
+    CGenData* cgen_data = (CGenData*)malloc(sizeof(CGenData));
+    cgen_data->ctx = ctx;
+    cgen_data->data = NULL;
+
+    pthread_mutex_init(&ctx->yield_lock, NULL);
+    pthread_cond_init(&ctx->yield_cond, NULL);
+
+    int thread_id = thread_registry_add(ctx);
+
+    int pth_result = pthread_create(&ctx->thread_id, NULL,
+                                mila_thread_worker, cgen_data);
+    if (thread_id < 0)
+    {
+        mila_free(ctx);
+        return -1;
+    }
+    return thread_id;
 }
 
 int make_cgen(Generator c_gen, Value* val) {

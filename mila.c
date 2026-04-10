@@ -140,102 +140,6 @@ static void insert_commas(char *buf, size_t bufsize)
     }
 }
 
-void float_to_string_fancy(float f, char *buf, size_t bufsize)
-{
-    // Step 1: format without locale tricks
-    snprintf(buf, bufsize, "%.10g", f);
-
-    // Step 2: ensure .0 if integer-like
-    if (strchr(buf, '.') == NULL && strchr(buf, 'e') == NULL &&
-        strchr(buf, 'E') == NULL)
-    {
-        size_t len = strlen(buf);
-        if (len + 2 < bufsize)
-        {
-            buf[len] = '.';
-            buf[len + 1] = '0';
-            buf[len + 2] = '\0';
-        }
-    }
-
-    // Step 3: insert commas into integer part
-    insert_commas(buf, bufsize);
-}
-
-void long_to_string_fancy(long value, char *buf, size_t bufsize)
-{
-    char temp[64];
-    snprintf(temp, sizeof(temp), "%ld", value);
-
-    bool negative = temp[0] == '-';
-    char *num = negative ? temp + 1 : temp;
-
-    int len = strlen(num);
-    int commas = (len - 1) / 3;
-    int new_len = len + commas + (negative ? 1 : 0);
-
-    if ((size_t)new_len + 1 > bufsize)
-    {
-        if (bufsize > 0)
-            buf[0] = '\0';
-        return;
-    }
-
-    int i = len - 1;
-    int j = new_len - 1;
-    int count = 0;
-
-    buf[new_len] = '\0';
-
-    while (i >= 0)
-    {
-        buf[j--] = num[i--];
-        if (++count == 3 && i >= 0)
-        {
-            buf[j--] = ',';
-            count = 0;
-        }
-    }
-
-    if (negative)
-    {
-        buf[0] = '-';
-    }
-}
-
-void ulong_to_string_fancy(unsigned long value, char *buf, size_t bufsize)
-{
-    char temp[64];
-    snprintf(temp, sizeof(temp), "%lu", value);
-
-    int len = strlen(temp);
-    int commas = (len - 1) / 3;
-    int new_len = len + commas;
-
-    if ((size_t)new_len + 1 > bufsize)
-    {
-        if (bufsize > 0)
-            buf[0] = '\0';
-        return;
-    }
-
-    int i = len - 1;
-    int j = new_len - 1;
-    int count = 0;
-
-    buf[new_len] = '\0';
-
-    while (i >= 0)
-    {
-        buf[j--] = temp[i--];
-        if (++count == 3 && i >= 0)
-        {
-            buf[j--] = ',';
-            count = 0;
-        }
-    }
-}
-
 void float_to_string(float f, char *buf, size_t bufsize)
 {
     // Step 1: try %g with max precision
@@ -257,6 +161,7 @@ void float_to_string(float f, char *buf, size_t bufsize)
         }
     }
 }
+
 Value* val_copy(Value *src)
 {
     if (!src) return NULL;
@@ -575,485 +480,6 @@ __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...)
 }
 #endif
 
-// __attribute__((format(printf, 1, 2)))
-int mila_printf(char *fmt, ...)
-{
-    if (fmt == NULL)
-    {
-        fprintf(stderr, "Error: printf(fmt, ...): Format string is NULL\n");
-        return 0;
-    }
-
-    va_list args;
-    va_start(args, fmt);
-
-    _Bool is_comma = 0;
-    int count = 0;
-    unsigned long char_count = 0;
-    int precision = -1;
-    char tmp[20] = {0};
-
-    while (*fmt)
-    {
-        if ((*fmt) == '%')
-        {
-            fmt++;
-
-            // skip over any flags like -, +, space, #, 0
-            while (*fmt == '-' || *fmt == '+' || *fmt == ' ' || *fmt == '#' ||
-                   *fmt == '0')
-                fmt++;
-
-            // skip over a numeric width if present, skip * and coresponding argument
-            if (*fmt == '.')
-            {
-                fmt++;
-                if (*fmt == '*')
-                {
-                    Value *v = va_arg(args, Value *);
-                    precision = (int)GET_INTEGER(v);
-                    fmt++;
-                }
-                else
-                {
-                    char *start = fmt;
-                    while (*fmt >= '0' && *fmt <= '9')
-                        fmt++;
-                    int len = fmt - start;
-                    sprintf(tmp, "%.*s", len, start);
-                    precision = atoi(tmp);
-                    tmp[0] = '\0'; // reset buffer
-                }
-            }
-
-            // check for our custom ' comma-separator extension
-            _Bool local_comma = is_comma;
-            is_comma = 0;
-            if (*fmt == '\'')
-            {
-                local_comma = 1;
-                fmt++;
-            }
-
-            // figure out the length modifier so we know how wide to read
-            // from an opaque pointer. 0=none 1=h 2=hh 3=l 4=ll 5=z 6=t 7=j
-            int length = 0;
-            if (*fmt == 'h')
-            {
-                fmt++;
-                if (*fmt == 'h')
-                {
-                    length = 2;
-                    fmt++;
-                } // hh - signed/unsigned char
-                else
-                    length = 1; // h  - short
-            }
-            else if (*fmt == 'l')
-            {
-                fmt++;
-                if (*fmt == 'l')
-                {
-                    length = 4;
-                    fmt++;
-                } // ll - long long
-                else
-                    length = 3; // l  - long / double
-            }
-            else if (*fmt == 'z')
-            {
-                length = 5;
-                fmt++;
-            } // size_t
-            else if (*fmt == 't')
-            {
-                length = 6;
-                fmt++;
-            } // ptrdiff_t
-            else if (*fmt == 'j')
-            {
-                length = 7;
-                fmt++;
-            } // intmax_t
-
-            switch (*fmt)
-            {
-            case '\'':
-                // comma modifier showed up after the length modifier, handle it
-                local_comma = 1;
-                fmt++;
-                goto reparse_specifier;
-
-            reparse_specifier:;
-
-            case '?':
-            {
-                Value *v = va_arg(args, Value *);
-                if (__builtin_expect(local_comma, 0))
-                {
-                    char_count += print_value_fancy(v);
-                }
-                else
-                {
-                    char_count += print_value(v);
-                }
-            }
-            break;
-
-            case 'd':
-            case 'i':
-            case 'u':
-            case 'f':
-            case 'g':
-            case 'e':
-            case 'E':
-            case 'G':
-            case 'o':
-            {
-                Value *v = va_arg(args, Value *);
-
-                if (GET_TYPE(v) == T_OPAQUE ||
-                    GET_TYPE(v) == T_OWNED_OPAQUE)
-                {
-                    void *p = GET_OPAQUE(v);
-                    switch (*fmt)
-                    {
-                    case 'f':
-                    case 'e':
-                    case 'E':
-                        if (length == 3)
-                            char_count += printf("%.*lf", precision, *(double *)p);
-                        else if (length == 4)
-                            char_count += printf("%.*Lf", precision, *(long double *)p);
-                        else
-                            char_count += printf("%.*f", precision, *(float *)p);
-                        break;
-                    case 'g':
-                    case 'G':
-                        if (length == 3)
-                            char_count += printf("%.*lg", precision, *(double *)p);
-                        else if (length == 4)
-                            char_count += printf("%.*Lg", precision, *(long double *)p);
-                        else
-                            char_count += printf("%.*g", precision, *(float *)p);
-                        break;
-                    case 'd':
-                    case 'i':
-                        switch (length)
-                        {
-                        case 0:
-                            char_count += printf("%.*d", precision, *(int *)p);
-                            break;
-                        case 1:
-                            char_count += printf("%.*d", precision, *(short *)p);
-                            break;
-                        case 2:
-                            char_count += printf("%.*d", precision, *(signed char *)p);
-                            break;
-                        case 3:
-                            char_count += printf("%.*ld", precision, *(long *)p);
-                            break;
-                        case 4:
-                            char_count += printf("%.*lld", precision, *(long long *)p);
-                            break;
-                        case 5:
-                            char_count += printf("%.*zd", precision, *(ssize_t *)p);
-                            break;
-                        case 6:
-                            char_count += printf("%.*td", precision, *(ptrdiff_t *)p);
-                            break;
-                        case 7:
-                            char_count += printf("%.*jd", precision, *(intmax_t *)p);
-                            break;
-                        }
-                        break;
-                    case 'u':
-                        switch (length)
-                        {
-                        case 0:
-                            char_count += printf("%.*u", precision, *(unsigned int *)p);
-                            break;
-                        case 1:
-                            char_count += printf("%.*u", precision, *(unsigned short *)p);
-                            break;
-                        case 2:
-                            char_count += printf("%.*u", precision, *(unsigned char *)p);
-                            break;
-                        case 3:
-                            char_count += printf("%.*lu", precision, *(unsigned long *)p);
-                            break;
-                        case 4:
-                            char_count +=
-                                printf("%.*llu", precision, *(unsigned long long *)p);
-                            break;
-                        case 5:
-                            char_count += printf("%.*zu", precision, *(size_t *)p);
-                            break;
-                        case 6:
-                            char_count += printf("%.*tu", precision, *(ptrdiff_t *)p);
-                            break;
-                        case 7:
-                            char_count += printf("%.*ju", precision, *(uintmax_t *)p);
-                            break;
-                        }
-                        break;
-                    case 'o':
-                        switch (length)
-                        {
-                        case 0:
-                            char_count += printf("%.*o", precision, *(unsigned int *)p);
-                            break;
-                        case 1:
-                            char_count += printf("%.*o", precision, *(unsigned short *)p);
-                            break;
-                        case 2:
-                            char_count += printf("%.*o", precision, *(unsigned char *)p);
-                            break;
-                        case 3:
-                            char_count += printf("%.*lo", precision, *(unsigned long *)p);
-                            break;
-                        case 4:
-                            char_count +=
-                                printf("%.*llo", precision, *(unsigned long long *)p);
-                            break;
-                        case 5:
-                            char_count += printf("%.*zo", precision, *(size_t *)p);
-                            break;
-                        case 7:
-                            char_count += printf("%.*jo", precision, *(uintmax_t *)p);
-                            break;
-                        }
-                        break;
-                    }
-                }
-                else
-                {
-                    // not an opaque pointer, just let our value printer handle it
-                    if (__builtin_expect(local_comma, 0))
-                        char_count += print_value_fancy(v);
-                    else
-                        char_count += print_value(v);
-                }
-            }
-            break;
-
-            case 'x':
-            {
-                Value *v = va_arg(args, Value *);
-                if (GET_TYPE(v) == T_OPAQUE ||
-                    GET_TYPE(v) == T_OWNED_OPAQUE)
-                {
-                    void *p = GET_OPAQUE(v);
-                    switch (length)
-                    {
-                    case 0:
-                        char_count += printf("%.*x", precision, *(unsigned int *)p);
-                        break;
-                    case 1:
-                        char_count += printf("%.*x", precision, *(unsigned short *)p);
-                        break;
-                    case 2:
-                        char_count += printf("%.*x", precision, *(unsigned char *)p);
-                        break;
-                    case 3:
-                        char_count += printf("%.*lx", precision, *(unsigned long *)p);
-                        break;
-                    case 4:
-                        char_count += printf("%.*llx", precision, *(unsigned long long *)p);
-                        break;
-                    case 5:
-                        char_count += printf("%.*zx", precision, *(size_t *)p);
-                        break;
-                    case 7:
-                        char_count += printf("%.*jx", precision, *(uintmax_t *)p);
-                        break;
-                    }
-                }
-                else
-                {
-                    // non-opaque, just cast whatever numeric type we got
-                    unsigned int value = 0;
-                    switch (GET_TYPE(v))
-                    {
-                    case T_INT:
-                        value = (unsigned int)GET_INTEGER(v);
-                        break;
-                    case T_UINT:
-                        value = (unsigned int)GET_UINTEGER(v);
-                        break;
-                    case T_FLOAT:
-                        value = (unsigned int)GET_FLOAT(v);
-                        break;
-                    }
-                    char_count += printf("%.*x", precision, value);
-                }
-            }
-            break;
-
-            case 'X':
-            {
-                Value *v = va_arg(args, Value *);
-                if (GET_TYPE(v) == T_OPAQUE ||
-                    GET_TYPE(v) == T_OWNED_OPAQUE)
-                {
-                    void *p = GET_OPAQUE(v);
-                    switch (length)
-                    {
-                    case 0:
-                        char_count += printf("%.*X", precision, *(unsigned int *)p);
-                        break;
-                    case 1:
-                        char_count += printf("%.*X", precision, *(unsigned short *)p);
-                        break;
-                    case 2:
-                        char_count += printf("%.*X", precision, *(unsigned char *)p);
-                        break;
-                    case 3:
-                        char_count += printf("%.*lX", precision, *(unsigned long *)p);
-                        break;
-                    case 4:
-                        char_count += printf("%.*llX", precision, *(unsigned long long *)p);
-                        break;
-                    case 5:
-                        char_count += printf("%.*zX", precision, *(size_t *)p);
-                        break;
-                    case 7:
-                        char_count += printf("%.*jX", precision, *(uintmax_t *)p);
-                        break;
-                    }
-                }
-                else
-                {
-                    // same as %x but uppercase, same casting logic
-                    unsigned int value = 0;
-                    switch (GET_TYPE(v))
-                    {
-                    case T_INT:
-                        value = (unsigned int)GET_INTEGER(v);
-                        break;
-                    case T_UINT:
-                        value = (unsigned int)GET_UINTEGER(v);
-                        break;
-                    case T_FLOAT:
-                        value = (unsigned int)GET_FLOAT(v);
-                        break;
-                    }
-                    char_count += printf("%.*X", precision, value);
-                }
-            }
-            break;
-
-            case 's':
-            {
-                Value *v = va_arg(args, Value *);
-                switch (GET_TYPE(v))
-                {
-                case T_STRING:
-                    char_count += printf("%.*s", precision, GET_STRING(v));
-                    break;
-                case T_OPAQUE:
-                case T_OWNED_OPAQUE:
-                    char_count += printf("%.*s", precision, (char *)GET_OPAQUE(v));
-                    break;
-                default:
-                    if (__builtin_expect(local_comma, 0))
-                        char_count += print_value_fancy(v);
-                    else
-                        char_count += print_value(v);
-                    break;
-                }
-            }
-            break;
-
-            case 'c':
-            {
-                Value *v = va_arg(args, Value *);
-                char value = '?';
-                switch (GET_TYPE(v))
-                {
-                case T_STRING:
-                    value = *GET_STRING(v);
-                    break; // just grab the first character
-                case T_OPAQUE:
-                case T_OWNED_OPAQUE:
-                    value = *(char *)GET_OPAQUE(v);
-                    break;
-                default:
-                    return -1;
-                }
-                char_count += printf("%c", value);
-            }
-            break;
-
-            case 'p':
-            {
-                Value *v = va_arg(args, Value *);
-                void *ptr = NULL;
-                switch (GET_TYPE(v))
-                {
-                case T_OWNED_OPAQUE:
-                    ptr = GET_OPAQUE(v);
-                    break;
-                default:
-                    ptr = v;
-                    break; // print the Value* itself as an address
-                }
-                char_count += printf("%p", ptr);
-            }
-            break;
-
-            case 'n':
-            {
-                // write back the number of characters printed so far
-                Value *v = va_arg(args, Value *);
-                if (GET_TYPE(v) == T_INT)
-                {
-                    v->type = T_UINT;
-                    v->v.ui = char_count;
-                }
-                else if (GET_TYPE(v) == T_UINT)
-                {
-                    v->v.i = char_count;
-                }
-                else if (GET_TYPE(v) == T_OPAQUE)
-                {
-                    v->type = T_UINT;
-                    v->v.ui = char_count;
-                }
-                else if (GET_TYPE(v) == T_NONE)
-                {
-                    v->type = T_UINT;
-                    v->v.ui = char_count;
-                }
-                else if (GET_TYPE(v) == T_NULL)
-                {
-                    v->type = T_UINT;
-                    v->v.ui = char_count;
-                }
-            }
-            break;
-
-            case '%':
-                putchar('%');
-                char_count++;
-                break;
-
-            default:
-                return -1;
-            }
-        }
-        else
-        {
-            putchar(*fmt);
-            char_count++;
-        }
-        fmt++;
-    }
-
-    va_end(args);
-    return (int)char_count;
-}
-
 __attribute__((format(printf, 1, 2)))
 inline Value *vstring_fmt(char *fmt, ...)
 {
@@ -1293,7 +719,6 @@ inline Value *vfunction(char **params, char **contextuals, Env *closure,
     v->v.fn->body_src = body_src;
     v->v.fn->closure = closure;
     v->v.fn->name = NULL;
-    v->v.fn->line = 0;
     return v;
 }
 inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
@@ -1343,6 +768,12 @@ int our_asprintf(char **strp, const char *fmt, ...)
 
     va_end(args);
     return (int)(old_len + add_size);
+}
+
+Value *to_string(Value *v)
+{
+    char *s = as_c_string(v);
+    return vstring_take(s);
 }
 
 char *as_c_string(Value *v)
@@ -1454,6 +885,249 @@ char *as_c_string(Value *v)
     return buffer;
 }
 
+char *as_c_string_repr(Value *v)
+{
+    char *buffer = NULL;
+    if (!v)
+    {
+        return mila_strdup("cnull");
+    }
+    if (v->method_table && v->method_table[UMethodToRepr])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        return res;
+    }
+    if (v->method_table && v->method_table[UMethodToString])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        return res;
+    }
+    switch (v->type)
+    {
+    case T_STRING:
+        our_asprintf(&buffer, "\"");
+        int len = strlen(GET_STRING(v));
+        for (size_t i = 0; i <  len; ++i)
+        {
+            switch (GET_STRING(v)[i])
+            {
+            case '\a':
+                our_asprintf(&buffer, "\\a");
+                break;
+            case '\t':
+                our_asprintf(&buffer, "\\t");
+                break;
+            case '\n':
+                our_asprintf(&buffer, "\\n");
+                break;
+            case '\v':
+                our_asprintf(&buffer, "\\v");
+                break;
+            case '\f':
+                our_asprintf(&buffer, "\\f");
+                break;
+            case '"':
+                our_asprintf(&buffer, "\\\"");
+                break;
+            default:
+                if (isprint(GET_STRING(v)[i]))
+                    our_asprintf(&buffer, "%c", GET_STRING(v)[i]);
+                else
+                    our_asprintf(&buffer, "\\x%02x", GET_STRING(v)[i]);
+            }
+        }
+        our_asprintf(&buffer, "\"");
+        break;
+    default:
+    {
+        char *tmp = as_c_string(v);
+        our_asprintf(&buffer, "%s", tmp);
+        mila_free(tmp);
+    }
+    }
+    return buffer;
+}
+
+int raw_print_value(Value *v)
+{
+    if (!v)
+    {
+        return printf("cnull");
+    }
+    if (v->method_table && v->method_table[UMethodToString])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        int i = printf("%s", res);
+        free(res);
+        return i;
+    }
+    if (v->method_table && v->method_table[UMethodToRepr])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        int i = printf("%s", res);
+        free(res);
+        return i;
+    }
+    switch (v->type)
+    {
+    case T_NULL:
+        return printf("null");
+        break;
+    case T_NONE:
+        return printf("none");
+        break;
+    case T_ERROR:
+        return printf("<error:%s>", v->v.message);
+        break;
+    case T_TAGGED_ERROR:
+        return printf("<error[%s]:%s>", GET_ERRORNAME(v),
+                     GET_ERROR_MESSAGE(v));
+        break;
+    case T_INT:
+        return printf("%ld", v->v.i);
+        break;
+    case T_FLOAT:
+    {
+        char buf[MAX_NUMBER_DIGITS] = {0};
+        float_to_string(v->v.f, buf, sizeof(buf));
+        return printf("%s", buf);
+        break;
+    }
+    case T_STRING:
+        return printf("%s", v->v.s ? v->v.s : "");
+        break;
+    case T_BOOL:
+        return printf("%s", v->v.b ? "true" : "false");
+        break;
+    case T_FUNCTION:
+        return printf("<function:%s at %p>",
+                     v->v.fn->name ? v->v.fn->name : "(lambda)", v->v.fn);
+        break;
+    case T_NATIVE:
+        return printf("<native:%s at %p>",
+                     v->v.native->name ? v->v.native->name : "???",
+                     v->v.native->fn);
+        break;
+    case T_OPAQUE:
+        if (v->type_name)
+            return printf("<opaque:%p %s>", v->v.opaque, v->type_name);
+        else
+            return printf("<opaque:%p>", v->v.opaque);
+        break;
+    case T_WEAK_OPAQUE:
+        if (v->type_name)
+            return printf("<weak opaque:%p %s>", v->v.opaque, v->type_name);
+        else
+            return printf("<weak opaque:%p>", v->v.opaque);
+        break;
+    case T_OWNED_OPAQUE:
+        if (v->type_name)
+            return printf("<owned opaque:%p %s>", v->v.opaque, v->type_name);
+        else
+            return printf("<owned opaque:%p>", v->v.opaque);
+        break;
+    case T_UINT:
+        return printf("%luu", v->v.ui);
+        break;
+#ifndef EXT_WEB
+    case T_BINT: {
+        char* s = i128toa(v->v.bi);
+        return printf("%s~", s);
+        free(s);
+        break;
+    }
+    case T_BFLOAT: {
+        char* s = f128toa(v->v.bf);
+        return printf("%s~", s);
+        free(s);
+        break;
+    }
+#endif
+    case T_RETURN:
+    {
+        printf("<return:"); raw_print_value((Value*)v->v.opaque); return printf(">");
+    }
+    break;
+    default:
+        return printf("???");
+    }
+}
+
+int raw_print_value_repr(Value *v)
+{
+    if (!v)
+    {
+        return printf("cnull");
+    }
+    if (v->method_table && v->method_table[UMethodToRepr])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        int i = printf("%s", res);
+        free(res);
+        return i;
+    }
+    if (v->method_table && v->method_table[UMethodToString])
+    {
+        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
+        char *res = mila_strdup(str->v.s);
+        val_kill(str);
+        int i = printf("%s", res);
+        free(res);
+        return i;
+    }
+    switch (v->type)
+    {
+    case T_STRING:
+        return printf("\"");
+        int len = strlen(GET_STRING(v));
+        for (size_t i = 0; i <  len; ++i)
+        {
+            switch (GET_STRING(v)[i])
+            {
+            case '\a':
+                return printf("\\a");
+                break;
+            case '\t':
+                return printf("\\t");
+                break;
+            case '\n':
+                return printf("\\n");
+                break;
+            case '\v':
+                return printf("\\v");
+                break;
+            case '\f':
+                return printf("\\f");
+                break;
+            case '"':
+                return printf("\\\"");
+                break;
+            default:
+                if (isprint(GET_STRING(v)[i]))
+                    return printf("%c", GET_STRING(v)[i]);
+                else
+                    return printf("\\x%02x", GET_STRING(v)[i]);
+            }
+        }
+        return printf("\"");
+        break;
+    default:
+    {
+        return raw_print_value(v);
+    }
+    }
+}
+
 char *as_c_string_raw(Value *v)
 {
     char *buffer = NULL;
@@ -1526,133 +1200,6 @@ char *as_c_string_raw(Value *v)
     return buffer;
 }
 
-Value *to_c_string(Value *v)
-{
-    char *s = as_c_string(v);
-    return vstring_take(s);
-}
-
-char *as_c_string_fancy(Value *v)
-{
-    char *buffer = NULL;
-    if (!v)
-    {
-        return mila_strdup("cnull");
-    }
-    if (v->method_table && v->method_table[UMethodToRepr])
-    {
-        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
-        char *res = mila_strdup(str->v.s);
-        val_kill(str);
-        return res;
-    }
-    if (v->method_table && v->method_table[UMethodToString])
-    {
-        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
-        char *res = mila_strdup(str->v.s);
-        val_kill(str);
-        return res;
-    }
-    switch (v->type)
-    {
-    case T_UINT:
-    {
-        char out[MAX_NUMBER_DIGITS] = {0};
-        ulong_to_string_fancy(v->v.ui, out, sizeof(out));
-        our_asprintf(&buffer, "%s", out);
-    }
-    break;
-    case T_INT:
-    {
-        char out[MAX_NUMBER_DIGITS] = {0};
-        long_to_string_fancy(v->v.i, out, sizeof(out));
-        our_asprintf(&buffer, "%s", out);
-    }
-    break;
-    case T_FLOAT:
-    {
-        char out[MAX_NUMBER_DIGITS] = {0};
-        float_to_string_fancy(v->v.f, out, sizeof(out));
-        our_asprintf(&buffer, "%s", out);
-    }
-    break;
-    default:
-    {
-        char *tmp = as_c_string(v);
-        our_asprintf(&buffer, "%s", tmp);
-        mila_free(tmp);
-    }
-    }
-    return buffer;
-}
-
-char *as_c_string_repr(Value *v)
-{
-    char *buffer = NULL;
-    if (!v)
-    {
-        return mila_strdup("cnull");
-    }
-    if (v->method_table && v->method_table[UMethodToRepr])
-    {
-        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
-        char *res = mila_strdup(str->v.s);
-        val_kill(str);
-        return res;
-    }
-    if (v->method_table && v->method_table[UMethodToString])
-    {
-        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
-        char *res = mila_strdup(str->v.s);
-        val_kill(str);
-        return res;
-    }
-    switch (v->type)
-    {
-    case T_STRING:
-        our_asprintf(&buffer, "\"");
-        int len = strlen(GET_STRING(v));
-        for (size_t i = 0; i <  len; ++i)
-        {
-            switch (GET_STRING(v)[i])
-            {
-            case '\a':
-                our_asprintf(&buffer, "\\a");
-                break;
-            case '\t':
-                our_asprintf(&buffer, "\\t");
-                break;
-            case '\n':
-                our_asprintf(&buffer, "\\n");
-                break;
-            case '\v':
-                our_asprintf(&buffer, "\\v");
-                break;
-            case '\f':
-                our_asprintf(&buffer, "\\f");
-                break;
-            case '"':
-                our_asprintf(&buffer, "\\\"");
-                break;
-            default:
-                if (isprint(GET_STRING(v)[i]))
-                    our_asprintf(&buffer, "%c", GET_STRING(v)[i]);
-                else
-                    our_asprintf(&buffer, "\\x%02x", GET_STRING(v)[i]);
-            }
-        }
-        our_asprintf(&buffer, "\"");
-        break;
-    default:
-    {
-        char *tmp = as_c_string(v);
-        our_asprintf(&buffer, "%s", tmp);
-        mila_free(tmp);
-    }
-    }
-    return buffer;
-}
-
 char *as_c_string_repr_raw(Value *v)
 {
     char *buffer = NULL;
@@ -1711,25 +1258,7 @@ int print_value(Value *v)
         return printf("cnull");
     }
     char *txt;
-    if (GET_TYPE(v) == T_OPAQUE || GET_TYPE(v) == T_OWNED_OPAQUE)
-        txt = as_c_string_repr(v);
-    else
-        txt = as_c_string(v);
-    int i = printf("%s", txt);
-    mila_free(txt);
-    return i;
-}
-
-int print_value_fancy(Value *v)
-{
-    if (!v)
-    {
-        return printf("cnull");
-    }
-    char *txt = as_c_string_fancy(v);
-    int i = printf("%s", txt);
-    mila_free(txt);
-    return i;
+    return raw_print_value(v);
 }
 
 int print_value_repr(Value *v)
@@ -1738,10 +1267,7 @@ int print_value_repr(Value *v)
     {
         return printf("cnull");
     }
-    char *txt = as_c_string_repr(v);
-    int i = printf("%s", txt);
-    mila_free(txt);
-    return i;
+    return raw_print_value_repr(v);
 }
 
 int print_value_debug(Value *v)
@@ -1851,78 +1377,6 @@ inline void val_release(Value *v)
         if (v->method_table && v->owns_table)
             mila_free(v->method_table);
         mila_free(v);
-    }
-}
-
-// only release the data IN the value, not the value instance
-void val_release_incomplete(Value *v)
-{
-    if (!v)
-        return;
-    if (GET_TYPE(v) == T_WEAK_OPAQUE)
-        return;
-#ifdef MILA_DEBUG
-    printf("  -- val_release_incomplete:\n     type: %s\n     refcount --%i -> "
-           "%i\n     %s\n     value: ",
-           GET_TYPENAME(v), v->refcount, v->refcount - 1,
-           v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
-    print_value_repr(v);
-    puts("");
-#endif
-    v->refcount--;
-    if (v->refcount <= 0)
-    {
-        if (v->method_table && v->method_table[UMethodFree])
-        {
-            ((unary_method)v->method_table[UMethodFree])(v);
-            goto cleanup;
-        }
-        // mila_free internals
-        if (v->type == T_STRING && v->v.s)
-            mila_free(v->v.s);
-        if (v->type == T_ERROR && v->v.message)
-            mila_free(v->v.message);
-        if (v->type == T_TAGGED_ERROR && v->v.tagged_error.message)
-            mila_free(v->v.tagged_error.message);
-        if (v->type == T_FUNCTION)
-        {
-            if (v->v.fn->params)
-            {
-                char **p = v->v.fn->params;
-                for (int i = 0; p[i]; ++i)
-                    mila_free(p[i]);
-                mila_free(p);
-            }
-            if (v->v.fn->contextuals)
-            {
-                char **p = v->v.fn->contextuals;
-                for (int i = 0; p[i]; ++i)
-                    mila_free(p[i]);
-                mila_free(p);
-            }
-            if (v->v.fn->body_src)
-                mila_free(v->v.fn->body_src);
-            if (v->v.fn->name)
-                mila_free(v->v.fn->name);
-            env_free(v->v.fn->closure);
-            mila_free(v->v.fn);
-        }
-        if (v->type == T_NATIVE)
-        {
-            if (v->v.native->name)
-                mila_free(v->v.native->name);
-            mila_free(v->v.native);
-        }
-        if (v->type == T_OWNED_OPAQUE)
-        {
-            if (v->v.opaque)
-                mila_free(v->v.opaque);
-        }
-    cleanup:;
-        if (v->type_name)
-            mila_free(v->type_name);
-        if (v->method_table && v->owns_table)
-            mila_free(v->method_table);
     }
 }
 
@@ -2681,7 +2135,6 @@ Src *src_new(const char *s)
     S->len = strlen(s);
     S->src = mila_strdup(s);
     S->pos = 0;
-    S->line = 1;
     return S;
 }
 void src_free(Src *s)
@@ -2696,7 +2149,6 @@ void src_free(Src *s)
 inline char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
 inline char src_get(Src *s) {
     char c = s->pos < s->len ? s->src[s->pos++] : '\0';
-    if (c == '\n') s->line++;
     return c;
 }
 inline int src_eof(Src *s) { return s->pos >= s->len; }
@@ -2714,8 +2166,6 @@ inline void skip_block(Src *s)
     for (; i < s->len; ++i)
     {
         char ch = s->src[i];
-        if (ch == '\n')
-            s->line++;
         if (ch == '{')
             depth++;
         else if (ch == '}')
@@ -2801,10 +2251,6 @@ inline void skip_stmt(Src *s)
         {
             i++;
             break;
-        }
-        else if (ch == '\n')
-        {
-            s->line++;
         }
         else if (ch == '"')
         {
@@ -3189,7 +2635,7 @@ inline Value *parse_number(Src *s)
         mila_free(buf);
         return r;
 #else
-        return verror("On line %llu: A very long integer was found, this build of MiLa does not support such big numbers.", s->line);
+        return verror("A very long integer was found, this build of MiLa does not support such big numbers.");
 #endif
     }
 }
@@ -3766,7 +3212,6 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         }
         // Evaluate body: note body_src contains the body text e.g., "{ ... }"
         Src *child = src_new(fnval->v.fn->body_src);
-        child->line = fnval->v.fn->line;
         // position should start at 0 for the body; body is a block (starts with
         // '{') Evaluate block using the new frame
         Value *res = eval_block(child, frame);
@@ -4198,7 +3643,6 @@ Value *eval_primary(Src *s, Env *env)
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params, contextuals, closure, body);
-        fn->v.fn->line = s->line;
         fn->v.fn->name = mila_strdup("(lambda)");
         return fn;
     }
@@ -4239,11 +3683,6 @@ Value *eval_primary(Src *s, Env *env)
         {
             mila_free(id);
             return vcontinue();
-        }
-        if (strcmp(id, "__line") == 0)
-        {
-            mila_free(id);
-            return vint(s->line);
         }
         // look ahead: function call? subscript?
         skip_ws(s);
@@ -5761,11 +5200,10 @@ Value *eval_statement(Src *s, Env *env)
     if (is_keyword_at(s, "foreach"))
     {
         s->pos += strlen("foreach");
-        uint64_t body_start_line = s->line;
         skip_ws(s);
         char *id = parse_ident(s);
         if (!id) return vnull();
-        if (strcmp(id, "expect") == 0) {
+        if (strcmp(id, "yield") == 0) {
             free(id);
             id = parse_ident(s);
             if (!match_char(s, ':'))
@@ -5795,13 +5233,13 @@ Value *eval_statement(Src *s, Env *env)
             if (GET_TYPE(iter_obj) != T_INT) {
                 free(id);
                 val_release(iter_obj);
-                return verror("On line %ld: Expected an integer for the thread ID!", body_start_line);
+                return verror("Expected an integer for the thread ID!");
             }
             ThreadContext* ctx = thread_registry_get(GET_INTEGER(iter_obj));
             if (!ctx) {
                 val_release(iter_obj);
                 free(id);
-                return verror("On line %ld: Thread ID %ld does not exist!", body_start_line, GET_INTEGER(iter_obj));
+                return verror("Thread ID %ld does not exist!", GET_INTEGER(iter_obj));
             }
             Value* v = thread_get_yield(ctx);
             for (;v;v = thread_get_yield(ctx))
@@ -6169,7 +5607,6 @@ Value *eval_statement(Src *s, Env *env)
         Value *fn = vfunction(params, contextuals, closure, body);
         if (!fn->v.fn->name)
             fn->v.fn->name = mila_strdup(name);
-        fn->v.fn->line = s->line;
         env_set_local(env, name, fn);
         mila_free(name);
         return fn;
@@ -6663,7 +6100,7 @@ int main(int argc, char **argv)
                 fflush(stdout);
                 continue;
             }
-            else if (strncmp(buffer, ".quit", 4) == 0)
+            else if (strncmp(buffer, ".quit", 5) == 0)
             {
                 break;
             }

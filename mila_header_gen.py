@@ -5,20 +5,30 @@ import sys
 import os
 import re
 
-# If libclang cannot be found automatically, uncomment and set path
-# cindex.Config.set_library_file("/usr/lib/libclang.so.21.1.8")
-
 typedefs = set()
 enums = set()
 structs = set()
 
 type_maps = {}
-
 enums_value = {}
+use_libffi = False
 
-array_normalize_pattern = re.compile(
-    r"\d+"
-)
+array_normalize_pattern = re.compile(r"\d+")
+
+def normalize_arrays(t):
+    if t.kind in (cindex.TypeKind.CONSTANTARRAY, cindex.TypeKind.INCOMPLETEARRAY):
+        elem_type = t.get_array_element_type()
+        # create a pointer type by getting canonical and adding pointer
+        # Note: clang.cindex does not allow creating a new Type object, so 
+        # in practice, you just treat it as "elem_type*" in spelling
+        # For the purpose of wrapper generation, returning the element type
+        # with an annotation works:
+        class PointerType:
+            def __init__(self, base):
+                self.base = base
+                self.spelling = base.spelling + " *"
+        return PointerType(elem_type)
+    return t
 
 mila_to_c = {
     "char[]": "{value}->v.s",
@@ -35,6 +45,23 @@ mila_to_c = {
     "bool": "{value}->v.b",
     "unsigned char": "(unsigned char)({value}->v.i)",
     "Value *": "{value}"
+}
+
+mila_to_c_ptr = {
+    "char[]": "&{value}->v.s",
+    "char *": "&{value}->v.s",
+    "const char *": "&{value}->v.s",
+    "int": "((int*)&{value}->v.i)",
+    "long": "&{value}->v.i",
+    "float": "&{value}->v.f",
+    "double": "&{value}->v.f",
+    "void *": "&{value}->v.opaque",
+    "const void*": "&{value}->v.opaque",
+    "unsigned int": "&{value}->v.i",
+    "_Bool": "&{value}->v.b",
+    "bool": "&{value}->v.b",
+    "unsigned char": "&(unsigned char)({value}->v.i)",
+    "Value *": "&{value}"
 }
 
 c_to_mila = {
@@ -54,8 +81,59 @@ c_to_mila = {
     "char[]": "vstring_dup({value})"
 }
 
-# -------------------
-# STRUCT CONSTRUCTOR
+c_to_ffi = {
+    "char *": "ffi_type_pointer",
+    "long": "ffi_type_slong",
+    "unsigned long": "ffi_type_ulong",
+    "double": "ffi_type_double",
+    "_Bool": "ffi_type_int",
+    "bool": "ffi_type_int",
+    "void *": "ffi_type_pointer",
+    "int": "ffi_type_sint",
+    "unsigned int": "ffi_type_uint",
+}
+
+# --------------------------------------------------
+# HELPERS
+# --------------------------------------------------
+
+def remove_array_sizes(text):
+    return re.sub(array_normalize_pattern, "", text)
+
+def normalize_type(t):
+    return type_maps.get(t, t).replace("const ", "").replace("restrict", "")
+
+def collect_types(cursor):
+    def visit(node):
+
+        # typedefs
+        if node.kind == cindex.CursorKind.TYPEDEF_DECL and node.spelling:
+            decl_type = node.underlying_typedef_type
+            decl_cursor = decl_type.get_declaration()
+
+            if decl_cursor.spelling:
+                typedefs.add(node.spelling)
+                type_maps[node.spelling] = decl_cursor.spelling
+            else:
+                typedefs.add(node.spelling)
+                type_maps[node.spelling] = "void*"
+
+        # structs
+        elif node.kind == cindex.CursorKind.STRUCT_DECL and node.spelling:
+            structs.add(node.spelling)
+
+        # enums
+        elif node.kind == cindex.CursorKind.ENUM_DECL and node.spelling:
+            enums.add(node.spelling)
+            for const in node.get_children():
+                if const.kind == cindex.CursorKind.ENUM_CONSTANT_DECL:
+                    enums_value[f"{node.spelling}.{const.spelling}"] = const.enum_value
+
+        for c in node.get_children():
+            visit(c)
+
+    visit(cursor)
+
 def make_struct_constructor(cursor):
     if cursor.kind != cindex.CursorKind.STRUCT_DECL:
         raise ValueError("Cursor must be a struct declaration")
@@ -70,9 +148,9 @@ def make_struct_constructor(cursor):
         if child.kind == cindex.CursorKind.FIELD_DECL:
             fields.append((child.type, child.spelling))
 
-    names = [(struct_name, f"mila_{struct_name}_new")]
+    names = [(struct_name, f"_type_mila_{struct_name}_new")]
     pre_lines = []
-    lines = [f"Value* mila_{struct_name}_new(Env* e, int argc, Value** argv) {{",
+    lines = [f"Value* _type_mila_{struct_name}_new(Env* e, int argc, Value** argv) {{",
              f"    (void)e;",
              f"    if(argc != {len(fields)}) return verror(\"{struct_name}_new: expected {len(fields)} arguments, got %i\", argc);",
              f"    {struct_name}* tmp = ({struct_name}*)malloc(sizeof({struct_name}));"]
@@ -86,17 +164,17 @@ def make_struct_constructor(cursor):
                 "spelling": remove_array_sizes(ftype.spelling)
             })
         fname_access = f"(({struct_name}*)(argv[0]->v.opaque))->"
-        names.append((f"{struct_name}.get_{fname}", f"mila_{struct_name}_get_{fname}"))
-        names.append((f"{struct_name}.set_{fname}", f"mila_{struct_name}_set_{fname}"))
+        names.append((f"{struct_name}.get_{fname}", f"_type_mila_{struct_name}_get_{fname}"))
+        names.append((f"{struct_name}.set_{fname}", f"_type_mila_{struct_name}_set_{fname}"))
         pre_lines.extend([
-            f"Value* mila_{struct_name}_get_{fname}(Env* env, int argc, Value** argv) {{",
+            f"Value* _type_mila_{struct_name}_get_{fname}(Env* env, int argc, Value** argv) {{",
             f"    if (argc != 1) verror(\"{struct_name}.get_{fname}({struct_name} s): Expected 1 argument!\");",
             f"    return {c_to_mila.get(ftype.spelling, 'vopaque(' + ('&' if not ftype.spelling.endswith('*') else '' ) + '{value})').format(value=fname_access+fname)};"
              "}",
              ""
         ])
         pre_lines.extend([
-            f"Value* mila_{struct_name}_set_{fname}(Env* env, int argc, Value** argv) {{",
+            f"Value* _type_mila_{struct_name}_set_{fname}(Env* env, int argc, Value** argv) {{",
             f"    if (argc != 2) verror(\"{struct_name}.get_{fname}({struct_name} s, {ftype.spelling} {fname}): Expected 2 arguments!\");",
             f"    {fname_access+fname} = {mila_to_c.get(ftype.spelling, '{value}').format(value=f'argv[1]')};"
             if ftype.kind != cindex.TypeKind.CONSTANTARRAY else
@@ -137,106 +215,170 @@ def make_struct_constructor(cursor):
     lines.append("}")
     
     return "\n".join(pre_lines + lines + [""]), names
-# -------------------
-# TYPE COLLECTION
-# -------------------
+def gen_variadic_wrapper(func):
+    global use_libffi
+    use_libffi = True
+    name = func["name"]
+    ret = func["return"]
+    fixed_amount = len(func["params"])
 
-def collect_types(cursor, tu):
-    def visit(node):
-        # Typedefs
-        if node.kind == cindex.CursorKind.TYPEDEF_DECL and node.spelling:
-            decl_type = node.underlying_typedef_type
-            decl_cursor = decl_type.get_declaration()
-            
-            # Function pointer typedef
-            if decl_type.kind == cindex.TypeKind.POINTER and decl_type.get_pointee().kind == cindex.TypeKind.FUNCTIONPROTO:
-                typedefs.add(node.spelling)
-                print(node.spelling)
-                mila_to_c[node.spelling] = "(void*){value}->v.opaque"
-                c_to_mila[node.spelling] = "vopaque((void*){value})"
-                type_maps[node.spelling] = "void*"  # treat function pointers as opaque
-            # Normal typedef
-            elif decl_cursor.spelling:
-                type_maps[node.spelling] = decl_cursor.spelling
-                typedefs.add(node.spelling)
-            else:
-                typedefs.add(node.spelling)
-                type_maps[node.spelling] = "void*"
+    types = []
+    lines = []
 
-        # Structs
-        elif node.kind == cindex.CursorKind.STRUCT_DECL and node.spelling:
-            structs.add(node.spelling)
+    for i, p in enumerate(func["params"]):
+        t = p["type"]
+        types.append(f"{t} {p['name']}")
 
-        # Enums
-        elif node.kind == cindex.CursorKind.ENUM_DECL and node.spelling:
-            enums.add(node.spelling)
-            for const in node.get_children():
-                if const.kind == cindex.CursorKind.ENUM_CONSTANT_DECL:
-                    enums_value[f"{node.spelling}.{const.spelling}"] = const.enum_value
+        if t in typedefs or t in structs:
+            lines.append(f"(({t}*)argv[{i}]->v.opaque)")
+        elif t in enums:
+            lines.append(f"({t}*)&argv[{i}]->v.i")
+        else:
+            lines.append(
+                mila_to_c_ptr.get(t, "{value}->v.opaque").format(value=f"argv[{i}]")
+            )
+        lines[-1] = f"types[{i}] = &{c_to_ffi.get(t, 'ffi_type_pointer')};\n    values[{i}] = "\
+        + lines[-1] + ";"
 
-        # Recurse
-        for c in node.get_children():
-            visit(c)
+    return f"""
+Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
+    (void)e;
 
-    visit(cursor)
-    return enums
+    if (argc < {fixed_amount})
+        return verror("{name}({', '.join(types)}, ...): missing required arguments");
 
-def remove_array_sizes(text):
-    return re.sub(array_normalize_pattern, "", text)
+    ffi_cif cif;
 
-def normalize_arrays(t):
-    if t.kind in (cindex.TypeKind.CONSTANTARRAY, cindex.TypeKind.INCOMPLETEARRAY):
-        elem_type = t.get_array_element_type()
-        # create a pointer type by getting canonical and adding pointer
-        # Note: clang.cindex does not allow creating a new Type object, so 
-        # in practice, you just treat it as "elem_type*" in spelling
-        # For the purpose of wrapper generation, returning the element type
-        # with an annotation works:
-        class PointerType:
-            def __init__(self, base):
-                self.base = base
-                self.spelling = base.spelling + " *"
-        return PointerType(elem_type)
-    return t
-def normalize_type(t):
-    t = type_maps.get(t, t)
-    return t
+    int fixed = {fixed_amount};
+    int total = argc;
 
-def parse_functions(filename):
-    index = cindex.Index.create()
-    tu = index.parse(filename,
-    args=[
-        "-nostdinc",
-        "-I.",
-    ],
-    options=cindex.TranslationUnit.PARSE_INCOMPLETE)
+    ffi_type *types[total];
+    void *values[total];
 
-    collect_types(tu.cursor, tu)
-    functions = []
+    {(chr(10)+'    ').join(lines)}
 
-    def visit(node):
-        if node.kind == cindex.CursorKind.FUNCTION_DECL:
-            func = {
-                "name": node.spelling,
-                "return": normalize_type(node.result_type.spelling),
-                "params": []
-            }
-            for arg in node.get_arguments():
-                t = arg.type.spelling
-                func["params"].append({
-                    "name": arg.spelling,
-                    "type": normalize_type(t)
-                })
-            functions.append(func)
-        for child in node.get_children():
-            visit(child)
+    for (int i = fixed; i < argc; i++) {{
+        Value *v = argv[i];
 
-    visit(tu.cursor)
-    return functions
+        switch(v->type) {{
+            case T_INT:
+                types[i] = &ffi_type_slong;
+                values[i] = &v->v.i;
+                break;
 
-# -------------------
-# WRAPPER GENERATION
-# -------------------
+            case T_UINT:
+                types[i] = &ffi_type_ulong;
+                values[i] = &v->v.ui;
+                break;
+
+            case T_FLOAT:
+                types[i] = &ffi_type_double;
+                values[i] = &v->v.f;
+                break;
+
+            case T_BOOL:
+                types[i] = &ffi_type_sint;
+                values[i] = &v->v.b;
+                break;
+
+            case T_OWNED_OPAQUE:
+            case T_OPAQUE:
+                types[i] = &ffi_type_pointer;
+                values[i] = &v->v.opaque;
+                break;
+
+            case T_STRING:
+                types[i] = &ffi_type_pointer;
+                values[i] = &v->v.s;
+                break;
+
+            default:
+                return verror("Passed an unsuported type `%s` to `{name}`", GET_TYPENAME(argv[i]));
+        }}
+    }}
+
+    {(ret + ' res;') if ret != "void" else ""}
+
+    ffi_prep_cif_var(
+        &cif,
+        FFI_DEFAULT_ABI,
+        fixed,
+        total,
+        &{c_to_ffi.get(ret, "ffi_type_void")},
+        types
+    );
+
+    ffi_call(
+        &cif,
+        FFI_FN({name}),
+        {"&res" if ret != "void" else "NULL"},
+        values
+    );
+
+    return {c_to_mila.get(ret, "vopaque({value})").format(value="res") if ret != "void" else "vnull()"};
+}}
+"""
+
+def gen_normal_wrapper(func):
+    name = func["name"]
+    ret = func["return"]
+    params = func["params"]
+
+    arg_list = []
+    types = []
+
+    for i, p in enumerate(params):
+        t = p["type"]
+        types.append(f"{t} {p['name']}")
+
+        if t in typedefs or t in structs:
+            arg_list.append(f"*(({t}*)argv[{i}]->v.opaque)")
+        elif t in enums:
+            arg_list.append(f"({t})argv[{i}]->v.i")
+        else:
+            arg_list.append(
+                mila_to_c.get(t, "{value}->v.opaque").format(value=f"argv[{i}]")
+            )
+
+    if ret == "void":
+        return f"""
+Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
+    (void)e;
+    if(argc != {len(params)})
+        return verror("{name}: wrong arg count");
+
+    {name}({', '.join(arg_list)});
+    return vnull();
+}}
+"""
+    elif ret in structs or ret in typedefs:
+        return f"""
+Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
+    (void)e;
+    if(argc != {len(params)})
+        return verror("{name}: wrong arg count");
+    {ret}* res = ({ret}*)malloc(sizeof({ret})); 
+    {ret} tmp = {name}({', '.join(arg_list)});
+    memcpy(res, &tmp, sizeof({ret}));
+    return vopaque(res);
+}}
+"""
+    return f"""
+Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
+    (void)e;
+    if(argc != {len(params)})
+        return verror("{name}: wrong arg count");
+
+    {ret} res = {name}({', '.join(arg_list)});
+    return {c_to_mila.get(ret, "vopaque({value})").format(value="res")};
+}}
+"""
+
+def gen_wrapper(func):
+    if func["variadic"]:
+        return gen_variadic_wrapper(func)
+    return gen_normal_wrapper(func)
+
 def gen_wrap(file_path, module_name=None):
     functions = parse_functions(file_path)
 
@@ -245,68 +387,28 @@ def gen_wrap(file_path, module_name=None):
 
     # generate function wrappers
     for func in functions:
-        if func["name"].startswith("_"): continue
-        func_name = func["name"]
-        ret = func["return"]
-        param = []
-        types = []
-        for pos, p in enumerate(func["params"]):
-            type_ = p["type"]
-            types.append(f"{type_} {p['name']}")
-            if type_ == "va_list":
-                print("WHAT")
-            elif type_ in typedefs or type_ in structs:
-                param.append(f"*(({type_}*)(argv[{pos}]->v.opaque))")
-            elif type_ in enums:
-                param.append(f"({type_})(argv[{pos}]->v.i)")
-            else:
-                param.append(mila_to_c.get(type_, f"*(({type_}*){{value}}->v.opaque)").format(value=f"argv[{pos}]"))
+        if func["name"].startswith("_"):
+            continue
 
-        # function body generation (kept from your existing code)
-        if ret == "void":
-            code.append(
-f"""Value* mila_{func_name}(Env* e, int argc, Value** argv) {{
-    (void)e;
-    if (argc != {len(param)})
-        return verror("{func_name}({', '.join(types)}): Expected {len(param)} arguments but got %i", argc);
-    {func_name}({', '.join(param)});
-    return vnull();
-}}
-""")
-        elif ret in structs:
-            code.append(
-f"""Value* mila_{func_name}(Env* e, int argc, Value** argv) {{
-    (void)e;
-    if (argc != {len(param)})
-        return verror("{func_name}({', '.join(types)}): Expected {len(param)} arguments but got %i", argc);
-    {ret} res = {func_name}({', '.join(param)});
-    {ret}* tmp = ({ret}*)mila_malloc(sizeof({ret}));
-    memcpy(tmp, &res, sizeof({ret}));
-    return vopaque(tmp);
-}}
-""")
+        func_name = func["name"]
+        if func["variadic"]:
+            code.append(gen_variadic_wrapper(func))
         else:
-            code.append(f"""\
-Value* mila_{func_name}(Env* e, int argc, Value** argv) {{
-    (void)e;
-    if (argc != {len(param)})
-        return verror("{func_name}({', '.join(types)}): Expected {len(param)} arguments but got %i", argc);
-    {ret} res = {func_name}({', '.join(param)});
-    return {c_to_mila.get(ret, "vopaque({value})").format(value='res')};
-}}
-""")
-        names.append((func_name, f"mila_{func_name}"))
+            code.append(gen_normal_wrapper(func))
+
+        names.append((func_name, f"native_mila_{func_name}"))
 
     # generate struct constructors
     index = cindex.Index.create()
     tu = index.parse(file_path, args=["-I."])
     for cursor in tu.cursor.get_children():
         if cursor.kind == cindex.CursorKind.STRUCT_DECL and cursor.spelling in structs:
-            constructor_code, export_names = make_struct_constructor(cursor)
-            code.append(constructor_code)
-            names.extend(export_names)
 
-    # generate native entries
+            ctor_code, ctor_exports = make_struct_constructor(cursor)
+            code.append(ctor_code)
+            names.extend(ctor_exports)
+
+    # emit native table
     res = "\n".join(code)
     res += "\nconst NativeEntry lib_function_entries[] = {\n"
     for name, alias in names:
@@ -315,7 +417,7 @@ Value* mila_{func_name}(Env* e, int argc, Value** argv) {{
         res += f'    {{"{name}", {alias}}},\n'
     res += "    {NULL, NULL}\n};\n"
 
-    # generate enum constants
+    # emit enum constants
     res += "\nvoid _mila_lib_init(Env* e) {\n"
     for name, value in enums_value.items():
         if module_name:
@@ -325,20 +427,43 @@ Value* mila_{func_name}(Env* e, int argc, Value** argv) {{
 
     return res
 
-# -------------------
-# MAIN
-# -------------------
-if len(sys.argv) >= 2:
-    f = os.path.abspath(sys.argv[1])
-    d = os.path.join(
-        os.path.dirname(f),
-        os.path.basename(f)[:-2] + ".mila-wrap.c"
-    )
+def parse_functions(filename):
+    index = cindex.Index.create()
+    tu = index.parse(filename, args=["-I.", "-nostdinc"])
 
-    module_name = sys.argv[2] if len(sys.argv) == 3 else None
+    collect_types(tu.cursor)
 
-    res = f'#define ML_LIB\n#include "mila.c"\n#include "{f}"\n\n'
-    res += gen_wrap(f, module_name) + "\n"
+    functions = []
 
-    with open(d, "w") as out:
-        out.write(res)
+    def visit(node):
+        if node.kind == cindex.CursorKind.FUNCTION_DECL:
+
+            functions.append({
+                "name": node.spelling,
+                "return": node.result_type.spelling,
+                "variadic": node.type.is_function_variadic(),
+                "params": [
+                    {"name": a.spelling, "type": normalize_type(a.type.spelling)}
+                    for a in node.get_arguments()
+                ]
+            })
+
+        for c in node.get_children():
+            visit(c)
+
+    visit(tu.cursor)
+    return functions
+
+if len(sys.argv) < 2:
+    print("usage: gen.py <file.h> <namespace>")
+    sys.exit(1)
+
+file_path = os.path.abspath(sys.argv[1])
+out_path = file_path.replace(".h", ".mila-wrap.c")
+
+final = f'#define ML_LIB\n#include "mila.c"\n#include "{file_path}"\n\n'
+final += gen_wrap(file_path, sys.argv[2] if len(sys.argv) == 3 else None)
+final = ("#include <ffi.h>\n" if use_libffi else "") + final
+
+with open(out_path, "w") as f:
+    f.write(final)

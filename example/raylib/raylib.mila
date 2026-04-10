@@ -134,6 +134,7 @@ while (not(WindowShouldClose()))
     }
 
     foreach food : foods {
+        // DrawRectangleRec(food, MARIGOLD); // faster
         DrawCircle(cast.f2i(Rectangle.get_x(food)+10), cast.f2i(Rectangle.get_y(food)+10), 10.0, MARIGOLD);
         if (CheckCollisionRecs(player, food)) {
             random_place(food);

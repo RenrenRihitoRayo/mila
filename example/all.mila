@@ -36,7 +36,7 @@ println(
 
 // Asserts are also available
 catch err {
-    assert(false /*condition goes here*/ , "message here");
+    assert(false /*condition goes here*/ , s);
 }
 
 println(err);
@@ -63,8 +63,8 @@ foreach num : range(3) {
     list.append(threads,
             thread.make(!{
             vars.bind("num");
-            println("Working: thread #" + num);
-            time_sleep(2);
+            print("Working: thread #" + num);
+            time_sleep(1);
         })
     );
     // So loop scope doesnt get freed too quickly
@@ -77,3 +77,5 @@ foreach thread : threads {
 }
 var end = get_time() - start;
 println("Should be around 5s: " + end + "s");
+
+report("what");

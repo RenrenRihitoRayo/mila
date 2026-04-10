@@ -223,7 +223,6 @@ typedef struct
     char *body_src; // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
     char *name;
-    uint64_t line;
     Env* closure;
 } FunctionV;
 
@@ -333,10 +332,6 @@ void val_unset_method(Value *v, MethodType t);
 extern Value *val_retain(Value *v);
 // Disown a value
 extern void val_release(Value *v);
-// Disown a value, doesnt free value instance, only the inner data
-void val_release_incomplete(Value *v);
-// Printf but support `%?` to print values.
-int mila_printf(char *fmt, ...);
 // Generates a string from an fmt
 __attribute__((format(printf, 1, 2)))
 extern Value *vstring_fmt(char *fmt, ...);
@@ -402,6 +397,8 @@ extern int is_number(Value *v);
 // Turn any numeric type to a double
 extern double to_double(Value *v);
 extern unsigned long to_uint(Value *v);
+// Turn a value into its string equivalent
+Value *to_string(Value *v);
 // Turn a value into its c string equivalent
 char *as_c_string(Value *v);
 // Turn a value into its c string representation equivalent
@@ -412,9 +409,8 @@ char *as_c_string_raw(Value *v);
 char *as_c_string_repr_raw(Value *v);
 // Print a value
 int print_value(Value *v);
+// Debug print
 int print_value_debug(Value *v);
-// Print a value (numeric types get a thousands operator)
-int print_value_fancy(Value *v);
 // Print a values representation
 int print_value_repr(Value *v);
 // Call a function
@@ -440,7 +436,6 @@ typedef struct Src
     char *src;    // full source string (null-terminated)
     char *cur_namespace; // current namespace
     uint64_t pos; // current position
-    uint64_t line; // Can never be sure
     int len;
 } Src;
 

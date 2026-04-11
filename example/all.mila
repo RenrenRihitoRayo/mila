@@ -21,17 +21,23 @@ println(
 
 // types
 println(
-    typeof(1),        // "int"        c long
-    typeof(1.0),      // "float"      c double
-    typeof(1u),       // "uint"       c unsigned long
-    typeof(0x1),      // "int"        c long
-    typeof(0x1u),     // "uint"       c unsigned long
-    typeof(1~),       // "bint"       c 128 bit int
-    typeof(0x1~),     // "bint"       c 128 bit int
-    typeof(1.0~),     // "bfloat"     c 128 bit float
-    typeof("string"), // "string"     c string
-    typeof([1, 2, 3]),// "canon:list" c linked list
-    typeof([@ 1 = 2]) // "canon:dict" c hash table (djb2 hash)
+    1,         typeof(1),        // "int"        c long
+    1.0,       typeof(1.0),      // "float"      c double
+    INF,       typeof(INF),      // "float"      c double
+    NINF,      typeof(NINF),     // "float"      c double
+    1u,        typeof(1u),       // "uint"       c unsigned long
+    0x1,       typeof(0x1),      // "int"        c long
+    0x1u,      typeof(0x1u),     // "uint"       c unsigned long
+    1~,        typeof(1~),       // "bint"       c 128 bit int
+    0x1~,      typeof(0x1~),     // "bint"       c 128 bit int
+    1.0~,      typeof(1.0~),     // "bfloat"     c 128 bit float
+    BINF,      typeof(BINF),     // "bfloat"     c 128 bit float
+    BNINF,     typeof(BNINF),    // "bfloat"     c 128 bit float
+    "string",  typeof("string"), // "string"     c string
+    [1, 2, 3], typeof([1, 2, 3]),// "canon:list" c linked list
+    [@ 1 = 2], typeof([@ 1 = 2]),// "canon:dict" c hash table (djb2 hash)
+    fn{},      typeof(fn{}),     // "function"   c struct FunctionV
+    print,     typeof(print)     // "native"     c `Value*(**)(Env*, int, value**)` or struct NativeV
 );
 
 // Asserts are also available
@@ -63,7 +69,7 @@ foreach num : range(3) {
     list.append(threads,
             thread.make(!{
             vars.bind("num");
-            print("Working: thread #" + num);
+            println("Working: thread #" + num);
             time_sleep(1);
         })
     );
@@ -77,5 +83,3 @@ foreach thread : threads {
 }
 var end = get_time() - start;
 println("Should be around 5s: " + end + "s");
-
-report("what");

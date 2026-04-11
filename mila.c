@@ -20,9 +20,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
-#if (!defined(EXT_WEB)) && (!defined(__clang__)) && (!defined(__arm__))
-#include <quadmath.h>
-#endif
 
 #ifdef _WIN32
 #include <direct.h>
@@ -45,6 +42,9 @@
 #include "ml_builtins.c"
 
 #include "ml_threading.c"
+
+#undef MILA_PROTO
+#include "ml_maths.c"
 
 #include "mila.h"
 
@@ -322,7 +322,7 @@ inline int is_truthy(Value *value)
     case T_UINT: return GET_UINTEGER(value) ? 1 : 0;
 #ifndef EXT_WEB
     case T_BINT: return GET_BINTEGER(value) ? 1 : 0;
-    case T_BFLOAT: return GET_BFLOAT(value) ? 1 : 0;
+    case T_BFLOAT: return !b_ff_is_zero(GET_BFLOAT(value));
 #endif
     case T_OPAQUE: return GET_OPAQUE(value) ? 1 : 0;
     case T_BOOL: return GET_BOOL(value) ? 1 : 0;
@@ -535,8 +535,6 @@ inline Value *vfloat(double f)
     return v;
 }
 
-#ifndef EXT_WEB
-
 inline Value *vbint(__int128 x)
 {
     Value *v = val_new(T_BINT);
@@ -544,13 +542,12 @@ inline Value *vbint(__int128 x)
     return v;
 }
 
-inline Value *vbfloat(mila_float128 f)
+inline Value *vbfloat(mila_float128_internal f)
 {
     Value *v = val_new(T_BFLOAT);
     v->v.bf = f;
     return v;
 }
-#endif
 
 inline Value *vbool(int b)
 {
@@ -866,7 +863,7 @@ char *as_c_string(Value *v)
         break;
     }
     case T_BFLOAT: {
-        char* s = f128toa(v->v.bf);
+        char* s = b_ff_to_string(v->v.bf);
         our_asprintf(&buffer, "%s~", s);
         free(s);
         break;
@@ -980,82 +977,65 @@ int raw_print_value(Value *v)
     {
     case T_NULL:
         return printf("null");
-        break;
     case T_NONE:
         return printf("none");
-        break;
     case T_ERROR:
         return printf("<error:%s>", v->v.message);
-        break;
     case T_TAGGED_ERROR:
         return printf("<error[%s]:%s>", GET_ERRORNAME(v),
                      GET_ERROR_MESSAGE(v));
-        break;
     case T_INT:
         return printf("%ld", v->v.i);
-        break;
     case T_FLOAT:
     {
         char buf[MAX_NUMBER_DIGITS] = {0};
         float_to_string(v->v.f, buf, sizeof(buf));
         return printf("%s", buf);
-        break;
     }
     case T_STRING:
         return printf("%s", v->v.s ? v->v.s : "");
-        break;
     case T_BOOL:
         return printf("%s", v->v.b ? "true" : "false");
-        break;
     case T_FUNCTION:
         return printf("<function:%s at %p>",
                      v->v.fn->name ? v->v.fn->name : "(lambda)", v->v.fn);
-        break;
     case T_NATIVE:
         return printf("<native:%s at %p>",
                      v->v.native->name ? v->v.native->name : "???",
                      v->v.native->fn);
-        break;
     case T_OPAQUE:
         if (v->type_name)
             return printf("<opaque:%p %s>", v->v.opaque, v->type_name);
         else
             return printf("<opaque:%p>", v->v.opaque);
-        break;
     case T_WEAK_OPAQUE:
         if (v->type_name)
             return printf("<weak opaque:%p %s>", v->v.opaque, v->type_name);
         else
             return printf("<weak opaque:%p>", v->v.opaque);
-        break;
     case T_OWNED_OPAQUE:
         if (v->type_name)
             return printf("<owned opaque:%p %s>", v->v.opaque, v->type_name);
         else
             return printf("<owned opaque:%p>", v->v.opaque);
-        break;
     case T_UINT:
         return printf("%luu", v->v.ui);
-        break;
-#ifndef EXT_WEB
     case T_BINT: {
         char* s = i128toa(v->v.bi);
-        return printf("%s~", s);
+        int i = printf("%s~", s);
         free(s);
-        break;
+        return i;
     }
     case T_BFLOAT: {
-        char* s = f128toa(v->v.bf);
-        return printf("%s~", s);
+        char* s = b_ff_to_string(v->v.bf);
+        int i = printf("%s~", s);
         free(s);
-        break;
+        return i;
     }
-#endif
     case T_RETURN:
     {
-        printf("<return:"); raw_print_value((Value*)v->v.opaque); return printf(">");
+        return printf("<return:"); raw_print_value((Value*)v->v.opaque); return printf(">");
     }
-    break;
     default:
         return printf("???");
     }
@@ -1096,22 +1076,16 @@ int raw_print_value_repr(Value *v)
             {
             case '\a':
                 return printf("\\a");
-                break;
             case '\t':
                 return printf("\\t");
-                break;
             case '\n':
                 return printf("\\n");
-                break;
             case '\v':
                 return printf("\\v");
-                break;
             case '\f':
                 return printf("\\f");
-                break;
             case '"':
                 return printf("\\\"");
-                break;
             default:
                 if (isprint(GET_STRING(v)[i]))
                     return printf("%c", GET_STRING(v)[i]);
@@ -1120,7 +1094,6 @@ int raw_print_value_repr(Value *v)
             }
         }
         return printf("\"");
-        break;
     default:
     {
         return raw_print_value(v);
@@ -2432,99 +2405,26 @@ char *i128toa(__int128 value) {
     return str;
 }
 
-#ifndef EXT_WEB
-char *f128toa(mila_float128 value) {
-    if (isnanq(value)) {
-        char *buf = malloc(4);
-        if (buf) strcpy(buf, "nan");
-        return buf;
-    }
-    if (isinfq(value)) {
-        char *buf = malloc(5);
-        if (buf) strcpy(buf, value > 0 ? "inf" : "-inf");
-        return buf;
-    }
-    if (value == 0.0Q) {
-        char *buf = malloc(4);
-        if (buf) strcpy(buf, "0.0");
-        return buf;
-    }
-    size_t bufsize = 128;
-    char *buf = malloc(bufsize);
-    if (!buf) return NULL;
-    int ret = quadmath_snprintf(buf, bufsize, "%.34Qg", value);
-    if (ret < 0 || (size_t)ret >= bufsize) {
-        // Buffer too small, expand and retry
-        bufsize = ret + 10;
-        char *newbuf = realloc(buf, bufsize);
-        if (!newbuf) {
-            free(buf);
-            return NULL;
-        }
-        buf = newbuf;
-        ret = quadmath_snprintf(buf, bufsize, "%.34Qg", value);
-        if (ret < 0) {
-            free(buf);
-            return NULL;
-        }
-    }
-    size_t len = strlen(buf);
-    char *decimal = strchr(buf, '.');
-    if (decimal && !strchr(decimal, 'e') && !strchr(decimal, 'E')) {
-        while (len > 0 && buf[len - 1] == '0') {
-            len--;
-        }
-        if (len > 0 && buf[len - 1] == '.') {
-            len++;
-        }
-        buf[len] = '\0';
-    } else if (decimal) {
-        // Has exponent, trim trailing zeros before 'e'/'E'
-        char *exp_pos = strchr(decimal, 'e');
-        if (!exp_pos) {
-            exp_pos = strchr(decimal, 'E');
-        }
-        if (exp_pos) {
-            // Find last non-zero before exponent
-            char *trim_pos = exp_pos - 1;
-            while (trim_pos > decimal && *trim_pos == '0') {
-                trim_pos--;
-            }
-            if (*trim_pos == '.') {
-                trim_pos++;
-            } else {
-                trim_pos++;
-            }
-            if (trim_pos < exp_pos) {
-                size_t exp_len = strlen(exp_pos);
-                memmove(trim_pos, exp_pos, exp_len + 1);
-            }
-        }
-    }
-    size_t final_len = strlen(buf);
-    char *str = realloc(buf, final_len + 1);
-    return str ? str : buf;
-}
+__int128 atoi128(char *s) {
+    while (isspace(*s)) s++;
 
-__int128 atoi128(char *s, char **end) {
-    const char *p = s;
-    // skip whitespace
-    while (isspace((unsigned char)*p)) p++;
+    int sign = 1;
+    if (*s == '-') { sign = -1; s++; }
+    else if (*s == '+') s++;
 
-    int neg = 0;
-    if (*p == '+' || *p == '-') {
-        neg = (*p == '-');
-        p++;
-    }
     __int128 result = 0;
-    while (isdigit((unsigned char)*p)) {
-        result = result * 10 + (*p - '0');
-        p++;
+
+    while (*s) {
+        if (*s < '0' || *s > '9') break;
+
+        int digit = *s - '0';
+        result = result * 10 + digit;
+
+        s++;
     }
-    if (end) *end = (char *)p;
-    return neg ? -result : result;
+
+    return sign * result;
 }
-#endif
 
 // parse number (int or float)
 inline Value *parse_number(Src *s)
@@ -2612,7 +2512,6 @@ inline Value *parse_number(Src *s)
     }
     else
     {
-#ifndef EXT_WEB
         // implement arbritrarily sized integers in the future
         char *buf = mila_malloc(len + 1);
         memcpy(buf, s->src + st, len);
@@ -2620,23 +2519,20 @@ inline Value *parse_number(Src *s)
         Value *r;
         if (seen_dot)
         {
-            mila_float128 f = strtoflt128(buf, NULL);
+            mila_float128_internal f = b_ff_from_string(buf);
             if (is_percent)
-                f /= 100.0;
+                f = b_ff_div(f, b_ff_from_double(100.0));
             r = vbfloat(f);
         }
         else
         {
-            long tmp = atoi128(buf, NULL);
+            long tmp = atoi128(buf);
             if (is_percent)
-                return vbfloat((mila_float128)tmp / 100.0);
+                return vbfloat(b_ff_div(b_ff_from_i128(tmp), b_ff_from_double(100.0)));
             r = vbint(tmp);
         }
         mila_free(buf);
         return r;
-#else
-        return verror("A very long integer was found, this build of MiLa does not support such big numbers.");
-#endif
     }
 }
 
@@ -3959,31 +3855,28 @@ inline double to_double(Value *v)
         return v->v.f;
     if (v->type == T_UINT)
         return (double)v->v.ui;
-#ifndef EXT_WEB
     if (v->type == T_BINT)
         return (double)v->v.bi;
     if (v->type == T_BFLOAT)
         return (double)v->v.bi;
-#endif
     return 0.0;
 }
 
-#ifndef EXT_WEB
-inline mila_float128 to_bdouble(Value *v)
+inline mila_float128_internal to_bdouble(Value *v)
 {
     if (!v)
-        return 0.0;
+        return b_ff_from_double(0.0);
     if (v->type == T_INT)
-        return (mila_float128)v->v.i;
+        return b_ff_from_long(v->v.i);
     if (v->type == T_FLOAT)
-        return (mila_float128)v->v.f;
+        return b_ff_from_double(v->v.f);
     if (v->type == T_UINT)
-        return (mila_float128)v->v.ui;
+        return b_ff_from_ulong(v->v.ui);
     if (v->type == T_BINT)
-        return (mila_float128)v->v.bi;
+        return b_ff_from_i128(v->v.bi);
     if (v->type == T_BFLOAT)
         return v->v.bf;
-    return 0.0;
+    return b_ff_from_double(0.0);
 }
 
 inline __int128 to_bint(Value *v)
@@ -3999,10 +3892,9 @@ inline __int128 to_bint(Value *v)
     if (v->type == T_BINT)
         return v->v.bi;
     if (v->type == T_BFLOAT)
-        return (__int128)v->v.bf;
+        return b_ff_to_i128(v->v.bf);
     return 0.0;
 }
-#endif
 
 inline unsigned long to_uint(Value *v)
 {
@@ -4014,12 +3906,10 @@ inline unsigned long to_uint(Value *v)
         return (unsigned long)v->v.f;
     if (v->type == T_UINT)
         return v->v.ui;
-#ifndef EXT_WEB
     if (v->type == T_BINT)
         return (unsigned long)v->v.bi;
     if (v->type == T_BFLOAT)
-        return (unsigned long)v->v.bf;
-#endif
+        return b_ff_to_ulong(v->v.bf);
     return 0.0;
 }
 
@@ -4061,30 +3951,29 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
     }
     else if (is_number(a) && is_number(b))
     {
-#ifndef EXT_WEB
         if (a->type == T_BFLOAT || b->type == T_BFLOAT)
         {
-            mila_float128 ra = to_bdouble(a), rb = to_bdouble(b);
+            mila_float128_internal ra = to_bdouble(a), rb = to_bdouble(b);
             if (op == BMethodAdd)
-                return vbfloat(ra + rb);
+                return vbfloat(b_ff_add(ra, rb));
             if (op == BMethodSub)
-                return vbfloat(ra - rb);
+                return vbfloat(b_ff_sub(ra, rb));
             if (op == BMethodMul)
-                return vbfloat(ra * rb);
+                return vbfloat(b_ff_mul(ra, rb));
             if (op == BMethodDiv)
-                return vbfloat(ra / rb);
+                return vbfloat(b_ff_div(ra, rb));
             if (op == BMethodLess)
-                return vbool(ra < rb);
+                return vbool(b_ff_cmp(ra,rb)<0);
             if (op == BMethodGreat)
-                return vbool(ra > rb);
+                return vbool(b_ff_cmp(ra,rb)>0);
             if (op == BMethodLE)
-                return vbool(ra <= rb);
+                return vbool(b_ff_cmp(ra, rb)<=0);
             if (op == BMethodGE)
-                return vbool(ra >= rb);
+                return vbool(b_ff_cmp(ra, rb)>=0);
             if (op == BMethodEq)
-                return vbool(ra == rb);
+                return vbool(b_ff_cmp(ra, rb)==0);
             if (op == BMethodNe)
-                return vbool(ra != rb);
+                return vbool(b_ff_cmp(ra, rb)!=0);
             return vnull();
         }
         else if (a->type == T_BINT || b->type == T_BINT)
@@ -4117,9 +4006,6 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
             return vnull();
         }
         else if (a->type == T_UINT || b->type == T_UINT)
-#else
-        if (a->type == T_UINT || b->type == T_UINT)
-#endif
         // treat both numbers as unsigned.
         {
             unsigned long ia = to_uint(a), ib = to_uint(b);
@@ -4290,27 +4176,15 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
 #ifndef EXT_WEB
         if (a->type == T_BFLOAT || b->type == T_BFLOAT)
         {
-            mila_float128 ra = to_bdouble(a), rb = to_bdouble(b);
+            mila_float128_internal ra = to_bdouble(a), rb = to_bdouble(b);
             if (op == BMethodAdd)
-                return vbfloat(ra + rb);
+                a->v.bf = b_ff_add(ra, rb);
             if (op == BMethodSub)
-                return vbfloat(ra - rb);
+                a->v.bf = b_ff_sub(ra, rb);
             if (op == BMethodMul)
-                return vbfloat(ra * rb);
+                a->v.bf = b_ff_mul(ra, rb);
             if (op == BMethodDiv)
-                return vbfloat(ra / rb);
-            if (op == BMethodLess)
-                return vbool(ra < rb);
-            if (op == BMethodGreat)
-                return vbool(ra > rb);
-            if (op == BMethodLE)
-                return vbool(ra <= rb);
-            if (op == BMethodGE)
-                return vbool(ra >= rb);
-            if (op == BMethodEq)
-                return vbool(ra == rb);
-            if (op == BMethodNe)
-                return vbool(ra != rb);
+                a->v.bf = b_ff_div(ra, rb);
             return a;
         }
         else if (a->type == T_BINT || b->type == T_BINT)

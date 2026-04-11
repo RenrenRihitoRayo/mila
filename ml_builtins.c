@@ -20,6 +20,7 @@
 
 #include "ml_dict.c"
 #include "ml_ll.c"
+#include "ml_maths.c"
 
 #ifdef ML_LIB
 #define ML_ALREADY
@@ -2058,6 +2059,8 @@ void env_register_builtins(Env *g)
 #endif
     env_set_raw(g, "INF", vfloat(INFINITY));
     env_set_raw(g, "NINF", vfloat(-INFINITY));
+    env_set_raw(g, "BINF", vbfloat(INFINITY128));
+    env_set_raw(g, "BNINF", vbfloat(NINFINITY128));
 
     // === Misc
     env_register_native(g, "range", native_range);

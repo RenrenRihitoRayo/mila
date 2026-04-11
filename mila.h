@@ -5,14 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef __x86_64__
-  typedef __float128 mila_float128;
-#else
-  typedef long double mila_float128;
-  #warning Using long double for float128!
-#endif
+#include "ml_maths.c"
 
-#define MAX_NUMBER_DIGITS 250
+#define MAX_NUMBER_DIGITS 19
 #define MAX_PATH_LENGTH 1028
 
 // MiLa produces an alternative string representation
@@ -27,7 +22,7 @@
 #define GET_BINTEGER(val) (val ? val->v.bi : 0)
 #define GET_UINTEGER(val) (val ? val->v.ui : 0)
 #define GET_FLOAT(val) (val ? val->v.f : 0.0)
-#define GET_BFLOAT(val) (val ? val->v.bf : 0.0)
+#define GET_BFLOAT(val) (val ? val->v.bf : (mila_float128_internal){0.0, 0.0})
 #define GET_BOOL(val) (val ? val->v.b : 0)
 #define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
 #define GET_FUNCTION(val) (val ? val->v.fn : NULL)
@@ -100,10 +95,8 @@ typedef enum
     T_INT,
     T_UINT,
     T_FLOAT,
-#ifndef EXT_WEB
     T_BINT,
     T_BFLOAT,
-#endif
     T_STRING,
     T_BOOL,
     T_FUNCTION,
@@ -128,10 +121,8 @@ const char *MILA_TYPE_NAMES[] = {
     "int",
     "uint",
     "float",
-#ifndef EXT_WEB
     "bint",
     "bfloat",
-#endif
     "string",
     "bool",
     "function",
@@ -254,10 +245,8 @@ struct Value
         char *message;
         _Bool b;
         double f;
-#ifndef EXT_WEB
-        mila_float128 bf;
+        mila_float128_internal bf;
         __int128 bi;
-#endif
         void *opaque;
         long i;
         unsigned long ui;
@@ -315,6 +304,8 @@ void env_register_builtins(Env *g);
 // these functions might be the only
 // part of mila youll ever touch.
 
+// Convert a 128 bit into a string
+char *i128toa(__int128 value);
 // Return an int if a MiLa value is truthy
 int is_truthy(Value *value);
 // Make a new value with a type
@@ -358,21 +349,12 @@ extern Value *vint(long i);
 extern Value *vuint(unsigned long i);
 // Float constructor
 extern Value *vfloat(double f);
-#ifndef EXT_WEB
 // Bool constructor
 extern Value *vbint(__int128 i);
 // Float constructor
-extern Value *vbfloat(mila_float128 f);
+extern Value *vbfloat(mila_float128_internal f);
 extern Value *vbreak();
 extern Value *vcontinue();
-// Turn any numeric type to a mila_float128
-extern mila_float128 to_bdouble(Value *v);
-// Turn any numeric type into a __int128
-extern __int128 to_bint(Value *v);
-// Turn a mila_float128 into a string
-char *f128toa(mila_float128 value);
-// Turn any numeric type to an unsigned long
-#endif
 // Bool constructor
 extern Value *vbool(int b);
 // Duplicate a string
@@ -427,7 +409,7 @@ Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Create an owned opaque
 Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 #ifndef EXT_WEB
-__int128 atoi128(char* num, char** end);
+__int128 atoi128(char* num);
 char* i128toa(__int128 num);
 #endif
 
@@ -475,6 +457,9 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);
+extern double to_double(Value *v);
+extern mila_float128_internal to_bdouble(Value *v);
+extern __int128 to_bint(Value *v);
 
 // == Helpers
 void sleep_ms(uint64_t ms);
@@ -498,3 +483,4 @@ void mila_deinit(Env* env);
 extern void* mila_malloc(size_t size);
 extern void* mila_realloc(void* ptr, size_t size);
 extern void mila_free(void* ptr);
+

@@ -1,0 +1,11 @@
+
+var start = get_time();
+foreach n:range(1000000){}
+var end = get_time() - start;
+println("Foreach: " + end + "s");
+
+var start = get_time();
+var i=0;
+while (i<1000000){set i+=1;}
+var end = get_time() - start;
+println("While: " + end + "s");

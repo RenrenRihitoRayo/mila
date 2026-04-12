@@ -200,16 +200,12 @@ Value* val_copy(Value *src)
         case T_FLOAT:
             copy->v.f = src->v.f;
             break;
-
-#ifndef EXT_WEB
         case T_BFLOAT:
             copy->v.bf = src->v.bf;
             break;
         case T_BINT:
             copy->v.bi = src->v.bi;
             break;
-#endif
-
         case T_ERROR:
             /* Error messages: duplicate the message */
             if (src->v.message)
@@ -320,10 +316,8 @@ inline int is_truthy(Value *value)
     case T_INT: return GET_INTEGER(value) ? 1 : 0;
     case T_FLOAT: return GET_FLOAT(value) ? 1 : 0;
     case T_UINT: return GET_UINTEGER(value) ? 1 : 0;
-#ifndef EXT_WEB
     case T_BINT: return GET_BINTEGER(value) ? 1 : 0;
     case T_BFLOAT: return !b_ff_is_zero(GET_BFLOAT(value));
-#endif
     case T_OPAQUE: return GET_OPAQUE(value) ? 1 : 0;
     case T_BOOL: return GET_BOOL(value) ? 1 : 0;
     case T_STRING: return strlen(GET_STRING(value)) ? 1 : 0;
@@ -855,7 +849,6 @@ char *as_c_string(Value *v)
     case T_UINT:
         our_asprintf(&buffer, "%luu", v->v.ui);
         break;
-#ifndef EXT_WEB
     case T_BINT: {
         char* s = i128toa(v->v.bi);
         our_asprintf(&buffer, "%s~", s);
@@ -868,7 +861,6 @@ char *as_c_string(Value *v)
         free(s);
         break;
     }
-#endif
     case T_RETURN:
     {
         char *str = as_c_string_repr(v->v.opaque);
@@ -3833,17 +3825,10 @@ Value *eval_primary(Src *s, Env *env)
 }
 
 // helper to convert numeric types and do arithmetic
-#ifndef EXT_WEB
 inline int is_number(Value *v)
 {
     return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT || v->type == T_BINT || v->type == T_BFLOAT);
 }
-#else
-inline int is_number(Value *v)
-{
-    return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
-}
-#endif
 
 inline double to_double(Value *v)
 {
@@ -4173,7 +4158,6 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
 {
     if (is_number(a) && is_number(b))
     {
-#ifndef EXT_WEB
         if (a->type == T_BFLOAT || b->type == T_BFLOAT)
         {
             mila_float128_internal ra = to_bdouble(a), rb = to_bdouble(b);
@@ -4205,11 +4189,8 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
             return a;
         }
         else if (a->type == T_UINT || b->type == T_UINT)
-#else
-        if (a->type == T_UINT || b->type == T_UINT)
-#endif
-        // treat both numbers as unsigned.
         {
+            // treat both numbers as unsigned.
             unsigned long ia = to_uint(a), ib = to_uint(b);
             if (op == BMethodAdd)
                 a->v.ui = ia + ib;

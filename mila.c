@@ -5814,26 +5814,24 @@ int main(int argc, char **argv)
 
         // make sure we are using the bundled canonical builtins
         // otherwise set argv as __argv with the type opaque
-        if (is_builtins)
+        env_set_raw(g, "argc", vint(argc-1));
+        array = call_function_str(g, "array", vint(argc - 1), NULL);
+        for (int i = 1; i < argc; i++)
         {
-            array = call_function_str(g, "array", vint(argc - 1), NULL);
-            for (int i = 1; i < argc; i++)
-            {
-                Value *str = vstring_dup(argv[i]);
-                val_release(call_function_str(g, "array.set", val_retain(array),
-                                              vint(i - 1), str, NULL));
-            }
-            env_set_raw(g, "argv", array);
+            Value *str = vstring_dup(argv[i]);
+            val_release(call_function_str(g, "array.set", val_retain(array),
+                                          vint(i - 1), str, NULL));
         }
-        env_set_raw(g, "__argc", vint(argc)-1);
-        env_set_raw(g, "__argv", vopaque(argv+1));
+        env_set_raw(g, "argv", array);
+        env_set_raw(g, "__argv", vopaque(argv));
 
-        char* path = path_join_alloc(path_get_cwd(), argv[1], NULL);
+        char* path = path_join_alloc(cwd, argv[1], NULL);
         char* local = path_dirname_alloc(path);
         env_set_local_raw(g, "__name__", vstring_dup("__main__"));
         env_set_local_raw(g, "__path__", vstring_take(path));
         env_set_local_raw(g, "__dir_path__", vstring_take(local));
         path_list_add_top(search_path, local);
+        free(cwd);
 
         // read file
         fseek(f, 0, SEEK_END);
@@ -5857,10 +5855,11 @@ int main(int argc, char **argv)
 
         mila_deinit(g);
         env_free_builtins();
+        return 0;
     }
     else
     {
-        if (is_builtins && argc > 1 && strcmp(argv[1], "--") == 0)
+        if (argc > 1 && strcmp(argv[1], "--") == 0)
         {
             array = call_function_str(g, "array", vint(argc - 2), NULL);
             for (int i = 2; i < argc; i++)
@@ -5976,6 +5975,7 @@ int main(int argc, char **argv)
         mila_threads_cleanup();
         mila_deinit(g);
     }
+    free(cwd);
     return 0;
 }
 

@@ -6,7 +6,6 @@
 #include "ml_builtins.c"
 #include "ml_string.c"
 
-
 typedef struct CGenData CGenData;
 typedef Value*(*Generator)(CGenData*);
 

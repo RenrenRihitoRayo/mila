@@ -1,40 +1,41 @@
 cc ?= gcc
-files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c ml_string.c ml_threading.c
+files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c ml_string.c ml_threading.c ml_primitives.c
 files_web = $(files) ./addon/ml_web.c
-targets_web = ./web/mila.wasm ./web/mila.js
-cflags = -O3 -lm -lc -ffast-math -lquadmath
+targets_web = ./build/web/mila.wasm ./build/web/mila.js
+
+libraries ?= -lm
+eflags ?=
+cflags = -O3 $(libraries) $(eflags)
 
 .PHONY: web
 
 all: $(files)
-	$(cc) -lc -lquadmath -lm -O0 -o mila mila.c -fsanitize=address -g\
+	$(cc) $(libraries) -O0 -o mila mila.c -fsanitize=address -g\
 	 -D MILA_NO_SIGNAL_HANDLER
 
 # dont include asan, compile with debug logging
 debug: $(files)
-	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG
-
-debug-custom: $(files)
-	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -D MILA_CUSTOM
+	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG
 
 debug-asan: $(files)
-	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -fsanitize=address
-
-debug-custom-asan: $(files)
-	$(cc) -lc -lquadmath  -lm -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -D MILA_CUSTOM -fsanitize=address
+	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -fsanitize=address
 
 test:
-	$(cc) -o test.o0.mila -O0 mila.c -lm -lquadmath 
-	$(cc) -o test.o3.mila -O3 mila.c -lm -lquadmath 
-	$(cc) -o test.os.mila -Os mila.c -lm -lquadmath 
+	$(cc) -o test.o0.mila -O0 mila.c $(libraries)
+	$(cc) -o test.o3.mila -O3 mila.c $(libraries)
+	$(cc) -o test.m.o3.mila -O3 -march=native mila.c $(libraries)
+	$(cc) -o test.os.mila -Os mila.c $(libraries)
 
-	$(cc) -o test.s.o0.mila -O0 mila.c -lm -lquadmath 
+	$(cc) -o test.s.o0.mila -O0 mila.c $(libraries) 
 	strip test.s.o0.mila
-	$(cc) -o test.s.o3.mila -O3 mila.c -lm -lquadmath 
+	$(cc) -o test.s.o3.mila -O3 mila.c $(libraries) 
 	strip test.s.o0.mila
-	$(cc) -o test.s.os.mila -Os mila.c -lm -lquadmath 
+	$(cc) -o test.s.os.mila -Os mila.c $(libraries) 
 	strip test.s.os.mila
 
+	@echo -e "\nMiLa -O3 -march=native build"
+	@ls -lh test.m.o3.mila
+	@./test.m.o3.mila ./example/speed.mila
 	@echo "MiLa -O0 build"
 	@ls -lh test.o0.mila
 	@./test.o0.mila ./example/speed.mila
@@ -58,19 +59,16 @@ test:
 	@rm test.*
 
 static: $(files)
-	gcc -o mila -Os mila.c -lm -static -lquadmath 
+	$(cc) -o mila -Os mila.c $(libraries) -static 
 	strip mila
 
 smallest: $(files)
-	$(cc) -o mila -Os mila.c -lm -lquadmath 
+	$(cc) -o mila -Os mila.c $(libraries) 
 	strip mila
 
 release: $(files)
 	$(cc) $(cflags) -o mila mila.c -march=native
 	strip mila
-
-release-custom: $(files)
-	$(cc) $(cflags) -o mila mila.c -march=native -D MILA_CUSTOM
 
 web $(targets_web): $(files_web)
 	mkdir -p build/web;:

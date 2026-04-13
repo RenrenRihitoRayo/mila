@@ -5,6 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifndef VMM_BUILD
+#define MILA_LPREFIX "canon:"
+#else
+#define MILA_LPREFIX "vmm:"
+#endif
+
 #include "ml_maths.c"
 
 #define MAX_NUMBER_DIGITS 19
@@ -404,6 +410,8 @@ int print_value_debug(Value *v);
 int print_value_repr(Value *v);
 // Call a function
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
+// Call a function from within an environment using its name representation
+Value *call_function_str(Env *env, const char *fnname, Value *first, ...);
 // Create an opaque
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Create an owned opaque

@@ -18,29 +18,6 @@ MiLa already has the bare minimum to work.
 You can even make a programming language using
 MiLa.
 
-* The "builtins" is not mandatory.
-
-Building MiLa with "make bare" creates a compiled version of MiLa
-that loads `mila_builtins.so` from anywhere in `LD_PATH`.
-This allows MiLa as a CLI to be dynamic and patchable.
-You can check MiLa can "function" with the bear minimum by doing the follwing in
-the REPL.
-
-```Plaintext
-...
->>> // returns the edition (example 202603) of the canonical built ins
->>> // (the one packaged with MiLa by default, other implementations must skip setting this)
->>> __mila_canonical_builtins
-  : 202603
->>> __mila_canonical_builtins_version // returns the version of the current loaded builtins
-  : 1
->>> __mila_builtins_dynamic // if MiLa is built using 'make bare' this should be true
-  : true
->>> __mila_builtins_dynamic_fail // if loading failed this should be set otherwise its null
->>> __mila_codename // code name for the loaded builtins
-  : canon
-```
-
 ## What MiLa is not
 
 * A serious language
@@ -67,7 +44,7 @@ follows this specs defined bellow.
 You may add features but never modify syntax.
 Such as changing syntax of while loops.
 
-## Keywords (20 total)
+## Keywords (22 total)
 
 * if
 * elif
@@ -78,7 +55,7 @@ Such as changing syntax of while loops.
 * block
 * set (3 variants)
 * var
-* foreach
+* foreach (2 variants)
 * while
 * break
 * continue
@@ -89,8 +66,12 @@ Such as changing syntax of while loops.
 * export
 * contextual
 * sync
+* yield (from `foreach yield`)
+* object(2 variants)
 
-Total of 26 different constructs.
+Total of 30 different constructs.
+Less than most programming languages' number of keywords!
+(Python3.12 has 35 keywords)
 
 ## Operators
 

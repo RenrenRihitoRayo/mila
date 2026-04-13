@@ -21,6 +21,7 @@
 #include "ml_dict.c"
 #include "ml_ll.c"
 #include "ml_maths.c"
+#include "ml_paths.c"
 
 #ifdef ML_LIB
 #define ML_ALREADY
@@ -921,10 +922,28 @@ Value *range_to_iter(Value *self)
     return vopaque(v);
 }
 
+Value* range_genth_worker(CGenData* cgen_data)
+{
+    ThreadContext* ctx = cgen_data->ctx;
+    Range* data = GET_OPAQUE(cgen_data->data);
+    long index = 0;
+    for (long i = data->start; i < data->end; i += data->step)
+    {
+        thread_yield(ctx, vint(i));
+    }
+    return NULL;
+}
+
+Value *range_to_gen(Value *self)
+{
+    int th_id = make_cgen(range_genth_worker, self);
+    return vint(th_id);
+}
+
 Value *range_to_str(Value *self)
 {
     Range *data = (Range *)(self->v.opaque);
-    return vstring_fmt("range(%zu, %zu, %zu)", data->start, data->end,
+    return vstring_fmt("range(%zd, %zd, %zd)", data->start, data->end,
                        data->step);
 }
 
@@ -1957,6 +1976,19 @@ Value* native_vars_bind(Env* env, int argc, Value** argv) {
     return vnull();
 }
 
+extern path_list *search_path;
+Value* native_dump_search_list(Env* env, int argc, Value** argv) {
+    printf("Search Paths:\n");
+    for (int i=0; i<search_path->count; i++)
+    {
+        if (i != search_path->count-1)
+            printf("  %s,\n", search_path->items[i]);
+        else
+            printf("  %s\n", search_path->items[i]);
+    }
+    return vnull();
+}
+
 Value *native_break_point(Env *env, int argc, Value **argv)
 {
 #if defined(__x86_64__) || defined(__i386__)
@@ -2076,6 +2108,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "random", native_random);
     env_register_native(g, "srandom", native_srandom);
     env_register_native(g, "crandom", native_crandom);
+    env_register_native(g, "dump_search_paths", native_dump_search_list);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
@@ -2134,6 +2167,7 @@ void env_register_builtins(Env *g)
     range_meta = val_make_table();
 
     val_set_method_table(range_meta, UMethodToIter, range_to_iter);
+    val_set_method_table(range_meta, UMethodToGen, range_to_gen);
     val_set_method_table(range_meta, UMethodToString, range_to_str);
     val_set_method_table(range_meta, UMethodFree, range_free);
 

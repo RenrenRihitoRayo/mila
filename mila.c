@@ -4999,7 +4999,6 @@ Value *eval_statement(Src *s, Env *env)
 
                 // Re-evaluate condition
                 Value *cond = eval_expr(s, env);
-                match_char(s, ')');
                 if (IS_ERROR(cond))
                 {
                     val_release(bod);
@@ -5073,7 +5072,6 @@ Value *eval_statement(Src *s, Env *env)
                 dummy = iter_obj;
                 iter_obj = res;
             }
-            print_value_debug(iter_obj);
 
             if (IS_ERROR(iter_obj))
             {
@@ -5220,9 +5218,9 @@ Value *eval_statement(Src *s, Env *env)
 
                 env_free(frame);
                 // --- Handle body result ---
-                if (bod)
+                switch (GET_TYPE(bod))
                 {
-                    if (bod->type == T_BREAK)
+                    case T_BREAK:
                     {
                         s->pos = body_end_pos;
                         for (;value[i]; ++i)
@@ -5232,7 +5230,7 @@ Value *eval_statement(Src *s, Env *env)
                         mila_free(id);
                         return vnull();
                     }
-                    else if (bod->type == T_CONTINUE)
+                    case T_CONTINUE:
                     {
                         s->pos = body_start_pos;
                         if (bod)
@@ -5244,7 +5242,7 @@ Value *eval_statement(Src *s, Env *env)
                         mila_free(id);
                         continue;
                     }
-                    else if (IS_ERROR(bod))
+                    if (IS_ERROR(bod))
                     {
                         s->pos = body_end_pos;
                         for (;value[i]; ++i)
@@ -5253,7 +5251,7 @@ Value *eval_statement(Src *s, Env *env)
                         mila_free(id);
                         return bod;
                     }
-                    else if (bod->type == T_RETURN)
+                    case T_RETURN:
                     {
                         s->pos = body_end_pos;
                         for (;value[i]; ++i)
@@ -5262,7 +5260,8 @@ Value *eval_statement(Src *s, Env *env)
                         mila_free(id);
                         return bod;
                     }
-                    else if (bod->type == T_ERROR)
+                    case T_TAGGED_ERROR:
+                    case T_ERROR:
                     {
                         s->pos = body_end_pos;
                         for (;value[i]; ++i)
@@ -5645,14 +5644,9 @@ Value *eval_str(char *src, Env *env)
 int run_file(char *name, Env *env)
 {
 #ifndef VMM_BUILD
-    char out_pwd[MAX_PATH_LENGTH] = {0};
-    char out[MAX_PATH_LENGTH] = {0};
-    path_dirname(name, out, sizeof(out));
-    path_list_add(search_path, out);
-
-    char basename[MAX_PATH_LENGTH] = {0};
-    path_basename(name, basename, sizeof(basename));
-    env_set_local_raw(env, "__name__", vstring_dup(basename));
+    env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
+    env_set_local_raw(env, "__path__", vstring_dup(name));
+    env_set_local_raw(env, "__dir_path__", vstring_take(path_dirname_alloc(name)));
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -5679,14 +5673,9 @@ int run_file(char *name, Env *env)
 Value *run_file_keep_res(char *name, Env *env)
 {
 #ifndef VMM_BUILD
-    char out_pwd[MAX_PATH_LENGTH] = {0};
-    char out[MAX_PATH_LENGTH] = {0};
-    path_dirname(name, out, sizeof(out));
-    path_list_add(search_path, out);
-
-    char basename[MAX_PATH_LENGTH] = {0};
-    path_basename(name, basename, sizeof(basename));
-    env_set_local_raw(env, "__name__", vstring_dup(basename));
+    env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
+    env_set_local_raw(env, "__path__", vstring_dup(name));
+    env_set_local_raw(env, "__dir_path__", vstring_take(path_dirname_alloc(name)));
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -5811,13 +5800,6 @@ int main(int argc, char **argv)
 
     path_list_add(search_path, "~/.local/lib/mila");
 
-    char out_pwd[MAX_PATH_LENGTH] = {0};
-    char out[MAX_PATH_LENGTH] = {0};
-    path_dirname(argv[1], out, sizeof(out));
-    path_join(out_pwd, sizeof(out_pwd), 2, cwd, out);
-    path_list_add(search_path, out_pwd);
-    mila_free(cwd);
-
     if (argc >= 2 && strcmp(argv[1], "--") != 0)
     {
         FILE *f = fopen(argv[1], "rb");
@@ -5843,14 +5825,15 @@ int main(int argc, char **argv)
             }
             env_set_raw(g, "argv", array);
         }
-        else
-        {
-            env_set_raw(g, "__argc", vint(argc));
-            env_set_raw(g, "__argv", vopaque(argv));
-            env_set_raw(g, "argv", vnone());
-        }
+        env_set_raw(g, "__argc", vint(argc)-1);
+        env_set_raw(g, "__argv", vopaque(argv+1));
 
+        char* path = path_join_alloc(path_get_cwd(), argv[1], NULL);
+        char* local = path_dirname_alloc(path);
         env_set_local_raw(g, "__name__", vstring_dup("__main__"));
+        env_set_local_raw(g, "__path__", vstring_take(path));
+        env_set_local_raw(g, "__dir_path__", vstring_take(local));
+        path_list_add_top(search_path, local);
 
         // read file
         fseek(f, 0, SEEK_END);

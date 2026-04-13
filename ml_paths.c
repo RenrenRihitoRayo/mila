@@ -1,5 +1,5 @@
 #pragma once
-#include "mila.h"
+#include <stdlib.h>
 #include "ml_string.c"
 #include <ctype.h>
 #include <stdarg.h>
@@ -174,6 +174,20 @@ void path_join(char *out, size_t outsize, int count, ...) {
   normalize_slashes(out);
 }
 
+char* path_join_alloc(char* path, ...) {
+  va_list args;
+  va_start(args, path);
+  char* out = mila_strdup(path);
+  while (1) {
+    const char *part = va_arg(args, const char *);
+    if (!part) break;
+    our_asprintf(&out, "/%s", part);
+  }
+  va_end(args);
+  normalize_slashes(out);
+  return out;
+}
+
 // Expand `~` → HOME or USERPROFILE
 void expand_home(char **bufptr) {
   char *in = *bufptr;
@@ -312,6 +326,73 @@ void path_basename(const char *path, char *out, size_t outsize) {
   out[outsize - 1] = '\0';
 }
 
+// Get the directory part of a path. Returns malloc'd string, caller must free.
+char *path_dirname_alloc(const char *path) {
+  if (!path || !*path) {
+    return mila_strdup(".");
+  }
+
+  char tmp[1024];
+  strncpy(tmp, path, sizeof(tmp));
+  tmp[sizeof(tmp) - 1] = '\0';
+
+  normalize_slashes(tmp);
+
+  // remove trailing slashes
+  size_t len = strlen(tmp);
+  while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
+    tmp[len - 1] = '\0';
+    len--;
+  }
+
+  // find last slash
+  char *slash = strrchr(tmp, '/');
+#ifdef _WIN32
+  if (!slash)
+    slash = strrchr(tmp, '\\');
+#endif
+
+  if (!slash) {
+    // no slash found
+    return mila_strdup(".");
+  } else if (slash == tmp) {
+    // path like "/foo"
+    return mila_strdup(tmp);
+  } else {
+    *slash = '\0';
+    return mila_strdup(tmp);
+  }
+}
+
+char *path_basename_alloc(const char *path) {
+  if (!path || !*path) {
+    return mila_strdup(".");
+  }
+
+  char tmp[1024];
+  strncpy(tmp, path, sizeof(tmp));
+  tmp[sizeof(tmp) - 1] = '\0';
+
+  normalize_slashes(tmp);
+
+  size_t len = strlen(tmp);
+  while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
+    tmp[len - 1] = '\0';
+    len--;
+  }
+
+  char *slash = strrchr(tmp, '/');
+#ifdef _WIN32
+  if (!slash)
+    slash = strrchr(tmp, '\\');
+#endif
+
+  if (!slash)
+    return mila_strdup(tmp);
+  else
+    return mila_strdup(slash + 1);
+}
+
 void path_list_free(path_list *pl) {
   if (!pl)
     return;
@@ -338,6 +419,30 @@ int path_list_add(path_list *pl, const char *path) {
     return 0;
 
   pl->items[pl->count++] = t;
+  return 1;
+}
+
+int path_list_add_top(path_list *pl, const char *path) {
+  if (!pl || !path)
+    return 0;
+ 
+  if (pl->count == pl->capacity) {
+    pl->capacity *= 2;
+    char **ni = realloc(pl->items, sizeof(char *) * pl->capacity);
+    if (!ni)
+      return 0;
+    pl->items = ni;
+  }
+ 
+  char *t = transform_path(path);
+  if (!t)
+    return 0;
+
+  for (int i = pl->count; i > 0; i--)
+    pl->items[i] = pl->items[i - 1];
+ 
+  pl->items[0] = t;
+  pl->count++;
   return 1;
 }
 
@@ -376,16 +481,13 @@ char *path_list_find(path_list *pl, const char *file) {
   if (file_exists(tfile))
     return tfile;
 
-  for (int i = pl->count - 1; i > 0; --i) {
+  for (int i = 0; i < pl->count ; ++i) {
     const char *root = pl->items[i];
-
     size_t rl = strlen(root);
     size_t fl = strlen(tfile);
     size_t need = rl + 1 + fl + 1;
-
     char *full = malloc(need);
     strcpy(full, root);
-
     // add separator if missing
     char sep =
 #ifdef _WIN32
@@ -393,10 +495,8 @@ char *path_list_find(path_list *pl, const char *file) {
 #else
         '/';
 #endif
-
     if (rl > 0 && root[rl - 1] != sep)
       full[rl] = sep, full[rl + 1] = '\0';
-
     strcat(full, tfile);
     if (file_exists(full)) {
       free(tfile);
@@ -432,10 +532,13 @@ char *transform_path(const char *input);
 path_list *path_list_new(void);
 void path_dirname(const char *path, char *out, size_t outsize);
 void path_basename(const char *path, char *out, size_t outsize);
+char* path_dirname_alloc(const char *path);
+char* path_basename_alloc(const char *path);
 void path_list_free(path_list *pl);
 int path_list_add(path_list *pl, const char *path);
 int path_list_remove(path_list *pl, const char *path);
 char *path_list_find(path_list *pl, const char *file);
 char *path_get_cwd(void);
-
+char* path_join_alloc(char* path, ...);
+int path_list_add_top(path_list *pl, const char *path);
 #endif

@@ -1,9 +1,9 @@
+// This project is licensed under the GNU Affero General Public License
 #pragma once
 
 #include <pthread.h>
 #include <string.h>
 #include "mila.h"
-#include "ml_builtins.c"
 #include "ml_string.c"
 
 typedef struct CGenData CGenData;
@@ -265,8 +265,8 @@ int make_cthread(Generator c_gen) {
 
     int thread_id = thread_registry_add(ctx);
 
-    int pth_result = pthread_create(&ctx->thread_id, NULL,
-                                mila_thread_worker, cgen_data);
+    pthread_create(&ctx->thread_id, NULL,
+                   mila_thread_worker, cgen_data);
     if (thread_id < 0)
     {
         mila_free(ctx);
@@ -299,8 +299,8 @@ int make_cgen(Generator c_gen, Value* val) {
 
     int thread_id = thread_registry_add(ctx);
 
-    int pth_result = pthread_create(&ctx->thread_id, NULL,
-                                mila_thread_worker, cgen_data);
+    pthread_create(&ctx->thread_id, NULL,
+                   mila_thread_worker, cgen_data);
     if (thread_id < 0)
     {
         mila_free(ctx);

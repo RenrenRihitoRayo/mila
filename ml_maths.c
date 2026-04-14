@@ -1,3 +1,7 @@
+// This project is licensed under the GNU Affero General Public License
+
+// double-double float implementation
+// hypothetically 102 bits in precision
 #pragma once
 
 #include "ml_string.c"
@@ -5,7 +9,6 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <stdlib.h>
-#include <string.h>
 
 int our_asprintf(char **strp, const char *fmt, ...);
 
@@ -58,7 +61,6 @@ static inline void quick_two_sum(double a, double b, double* s, double* err) {
 
 static inline void two_prod(double a, double b, double* p, double* err) {
     *p = a * b;
-
     const double split = 134217729.0;
     double a_hi = a * split;
     double a_lo = a - a_hi;
@@ -254,8 +256,6 @@ __int128 b_ff_to_i128_round(mila_float128_internal x) {
 }
 
 mila_float128_internal b_ff_from_i128(__int128 v) {
-    const double split = 134217729.0;
-
     double hi = (double)v;
     __int128 tmp = (__int128)hi;
     double lo = (double)(v - tmp);

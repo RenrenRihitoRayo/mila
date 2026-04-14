@@ -1,0 +1,434 @@
+In file included from mila.h:15,
+                 from ml_dict.c:15,
+                 from mila.c:2:
+ml_maths.c: In function ‘b_ff_from_i128’:
+ml_maths.c:258:18: warning: unused variable ‘split’ [-Wunused-variable]
+  258 |     const double split = 134217729.0;
+      |                  ^~~~~
+In file included from ml_primitives.c:8,
+                 from mila.c:3:
+ml_threading.c: In function ‘native_make_mutex’:
+ml_threading.c:212:31: warning: unused parameter ‘env’ [-Wunused-parameter]
+  212 | Value *native_make_mutex(Env *env, int argc, Value **argv)
+      |                          ~~~~~^~~
+ml_threading.c:212:54: warning: unused parameter ‘argv’ [-Wunused-parameter]
+  212 | Value *native_make_mutex(Env *env, int argc, Value **argv)
+      |                                              ~~~~~~~~^~~~
+ml_threading.c: In function ‘native_mutex_lock’:
+ml_threading.c:229:5: warning: argument 1 null where non-null expected [-Wnonnull]
+  229 |     pthread_mutex_lock(GET_OPAQUE(argv[0]));
+      |     ^~~~~~~~~~~~~~~~~~
+In file included from ml_threading.c:4:
+/usr/include/pthread.h:794:12: note: in a call to function ‘pthread_mutex_lock’ declared ‘nonnull’
+  794 | extern int pthread_mutex_lock (pthread_mutex_t *__mutex)
+      |            ^~~~~~~~~~~~~~~~~~
+ml_threading.c:222:31: warning: unused parameter ‘env’ [-Wunused-parameter]
+  222 | Value *native_mutex_lock(Env *env, int argc, Value **argv)
+      |                          ~~~~~^~~
+ml_threading.c: In function ‘native_mutex_unlock’:
+ml_threading.c:240:5: warning: argument 1 null where non-null expected [-Wnonnull]
+  240 |     pthread_mutex_unlock(GET_OPAQUE(argv[0]));
+      |     ^~~~~~~~~~~~~~~~~~~~
+/usr/include/pthread.h:835:12: note: in a call to function ‘pthread_mutex_unlock’ declared ‘nonnull’
+  835 | extern int pthread_mutex_unlock (pthread_mutex_t *__mutex)
+      |            ^~~~~~~~~~~~~~~~~~~~
+ml_threading.c:233:33: warning: unused parameter ‘env’ [-Wunused-parameter]
+  233 | Value *native_mutex_unlock(Env *env, int argc, Value **argv)
+      |                            ~~~~~^~~
+ml_threading.c: In function ‘make_cthread’:
+ml_threading.c:268:9: warning: unused variable ‘pth_result’ [-Wunused-variable]
+  268 |     int pth_result = pthread_create(&ctx->thread_id, NULL,
+      |         ^~~~~~~~~~
+ml_threading.c: In function ‘make_cgen’:
+ml_threading.c:302:9: warning: unused variable ‘pth_result’ [-Wunused-variable]
+  302 |     int pth_result = pthread_create(&ctx->thread_id, NULL,
+      |         ^~~~~~~~~~
+ml_threading.c: In function ‘native_thread_join’:
+ml_threading.c:370:32: warning: unused parameter ‘env’ [-Wunused-parameter]
+  370 | Value *native_thread_join(Env *env, int argc, Value **argv)
+      |                           ~~~~~^~~
+ml_threading.c: In function ‘native_thread_yield’:
+ml_threading.c:406:33: warning: unused parameter ‘env’ [-Wunused-parameter]
+  406 | Value *native_thread_yield(Env *env, int argc, Value **argv)
+      |                            ~~~~~^~~
+ml_threading.c: In function ‘native_thread_next’:
+ml_threading.c:430:32: warning: unused parameter ‘env’ [-Wunused-parameter]
+  430 | Value *native_thread_next(Env *env, int argc, Value **argv)
+      |                           ~~~~~^~~
+ml_threading.c: In function ‘native_thread_dump’:
+ml_threading.c:454:32: warning: unused parameter ‘env’ [-Wunused-parameter]
+  454 | Value *native_thread_dump(Env *env, int argc, Value **argv)
+      |                           ~~~~~^~~
+ml_threading.c: In function ‘native_thread_id’:
+ml_threading.c:484:30: warning: unused parameter ‘env’ [-Wunused-parameter]
+  484 | Value *native_thread_id(Env *env, int argc, Value **argv)
+      |                         ~~~~~^~~
+ml_threading.c:484:39: warning: unused parameter ‘argc’ [-Wunused-parameter]
+  484 | Value *native_thread_id(Env *env, int argc, Value **argv)
+      |                                   ~~~~^~~~
+ml_threading.c:484:53: warning: unused parameter ‘argv’ [-Wunused-parameter]
+  484 | Value *native_thread_id(Env *env, int argc, Value **argv)
+      |                                             ~~~~~~~~^~~~
+ml_threading.c: In function ‘native_thread_status’:
+ml_threading.c:490:34: warning: unused parameter ‘env’ [-Wunused-parameter]
+  490 | Value *native_thread_status(Env *env, int argc, Value **argv)
+      |                             ~~~~~^~~
+ml_threading.c: In function ‘native_thread_cancel’:
+ml_threading.c:508:34: warning: unused parameter ‘env’ [-Wunused-parameter]
+  508 | Value *native_thread_cancel(Env *env, int argc, Value **argv)
+      |                             ~~~~~^~~
+ml_threading.c: In function ‘native_thread_check_cancel’:
+ml_threading.c:541:40: warning: unused parameter ‘env’ [-Wunused-parameter]
+  541 | Value *native_thread_check_cancel(Env *env, int argc, Value **argv)
+      |                                   ~~~~~^~~
+ml_threading.c: In function ‘native_thread_set_deamon’:
+ml_threading.c:561:38: warning: unused parameter ‘env’ [-Wunused-parameter]
+  561 | Value *native_thread_set_deamon(Env *env, int argc, Value **argv)
+      |                                 ~~~~~^~~
+ml_primitives.c: In function ‘native_list_index’:
+ml_primitives.c:82:31: warning: unused parameter ‘e’ [-Wunused-parameter]
+   82 | Value *native_list_index(Env *e, int argc, Value **argv)
+      |                          ~~~~~^
+ml_primitives.c:82:38: warning: unused parameter ‘argc’ [-Wunused-parameter]
+   82 | Value *native_list_index(Env *e, int argc, Value **argv)
+      |                                  ~~~~^~~~
+ml_primitives.c: In function ‘native_list_pop’:
+ml_primitives.c:135:29: warning: unused parameter ‘e’ [-Wunused-parameter]
+  135 | Value *native_list_pop(Env *e, int argc, Value **argv)
+      |                        ~~~~~^
+ml_primitives.c: In function ‘range_genth_worker’:
+ml_primitives.c:400:10: warning: unused variable ‘index’ [-Wunused-variable]
+  400 |     long index = 0;
+      |          ^~~~~
+ml_primitives.c: In function ‘native_str_split’:
+ml_primitives.c:816:18: warning: argument 2 null where non-null expected [-Wnonnull]
+  816 |     char* part = strtok_r(copy, GET_STRING(argv[1]), &save_ptr);
+      |                  ^~~~~~~~
+In file included from ml_dict.c:6:
+/usr/include/string.h:398:14: note: in a call to function ‘strtok_r’ declared ‘nonnull’
+  398 | extern char *strtok_r (char *__restrict __s, const char *__restrict __delim,
+      |              ^~~~~~~~
+ml_primitives.c:819:16: warning: argument 2 null where non-null expected [-Wnonnull]
+  819 |         part = strtok_r(NULL, GET_STRING(argv[1]), &save_ptr);
+      |                ^~~~~~~~
+/usr/include/string.h:398:14: note: in a call to function ‘strtok_r’ declared ‘nonnull’
+  398 | extern char *strtok_r (char *__restrict __s, const char *__restrict __delim,
+      |              ^~~~~~~~
+ml_primitives.c: In function ‘native_str_join’:
+ml_primitives.c:825:29: warning: unused parameter ‘env’ [-Wunused-parameter]
+  825 | Value* native_str_join(Env* env, int argc, Value** argv) {
+      |                        ~~~~~^~~
+In file included from ml_builtins.c:57,
+                 from mila.c:45:
+ml_platform_specific.c: In function ‘native_sys_get_platform’:
+ml_platform_specific.c:6:37: warning: unused parameter ‘env’ [-Wunused-parameter]
+    6 | Value* native_sys_get_platform(Env* env, int argc, Value** argv) {
+      |                                ~~~~~^~~
+ml_platform_specific.c:6:46: warning: unused parameter ‘argc’ [-Wunused-parameter]
+    6 | Value* native_sys_get_platform(Env* env, int argc, Value** argv) {
+      |                                          ~~~~^~~~
+ml_platform_specific.c:6:60: warning: unused parameter ‘argv’ [-Wunused-parameter]
+    6 | Value* native_sys_get_platform(Env* env, int argc, Value** argv) {
+      |                                                    ~~~~~~~~^~~~
+ml_platform_specific.c: In function ‘native_sys_get_arch’:
+ml_platform_specific.c:37:33: warning: unused parameter ‘env’ [-Wunused-parameter]
+   37 | Value* native_sys_get_arch(Env* env, int argc, Value** argv) {
+      |                            ~~~~~^~~
+ml_platform_specific.c:37:42: warning: unused parameter ‘argc’ [-Wunused-parameter]
+   37 | Value* native_sys_get_arch(Env* env, int argc, Value** argv) {
+      |                                      ~~~~^~~~
+ml_platform_specific.c:37:56: warning: unused parameter ‘argv’ [-Wunused-parameter]
+   37 | Value* native_sys_get_arch(Env* env, int argc, Value** argv) {
+      |                                                ~~~~~~~~^~~~
+ml_builtins.c: In function ‘native_cast_float’:
+ml_builtins.c:242:20: warning: unused variable ‘tmp’ [-Wunused-variable]
+  242 |             Value *tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
+      |                    ^~~
+ml_builtins.c: In function ‘native_list_append’:
+ml_builtins.c:870:32: warning: unused parameter ‘env’ [-Wunused-parameter]
+  870 | Value *native_list_append(Env *env, int argc, Value **argv)
+      |                           ~~~~~^~~
+ml_builtins.c:870:41: warning: unused parameter ‘argc’ [-Wunused-parameter]
+  870 | Value *native_list_append(Env *env, int argc, Value **argv)
+      |                                     ~~~~^~~~
+ml_builtins.c: In function ‘native_list_contains’:
+ml_builtins.c:876:43: warning: unused parameter ‘argc’ [-Wunused-parameter]
+  876 | Value *native_list_contains(Env *env, int argc, Value **argv)
+      |                                       ~~~~^~~~
+ml_builtins.c: In function ‘native_own’:
+ml_builtins.c:938:16: warning: unused variable ‘ptr’ [-Wunused-variable]
+  938 |         Value *ptr = argv[0];
+      |                ^~~
+ml_builtins.c: In function ‘native_unown’:
+ml_builtins.c:951:16: warning: unused variable ‘ptr’ [-Wunused-variable]
+  951 |         Value *ptr = argv[0];
+      |                ^~~
+ml_builtins.c: In function ‘native_istring’:
+ml_builtins.c:960:28: warning: unused parameter ‘e’ [-Wunused-parameter]
+  960 | Value *native_istring(Env *e, int argc, Value **argv)
+      |                       ~~~~~^
+ml_builtins.c: In function ‘native_rand’:
+ml_builtins.c:1015:25: warning: unused parameter ‘e’ [-Wunused-parameter]
+ 1015 | Value *native_rand(Env *e, int argc, Value **argv) { return vfloat(rand()); }
+      |                    ~~~~~^
+ml_builtins.c:1015:32: warning: unused parameter ‘argc’ [-Wunused-parameter]
+ 1015 | Value *native_rand(Env *e, int argc, Value **argv) { return vfloat(rand()); }
+      |                            ~~~~^~~~
+ml_builtins.c:1015:46: warning: unused parameter ‘argv’ [-Wunused-parameter]
+ 1015 | Value *native_rand(Env *e, int argc, Value **argv) { return vfloat(rand()); }
+      |                                      ~~~~~~~~^~~~
+ml_builtins.c: In function ‘native_fabs’:
+ml_builtins.c:1017:25: warning: unused parameter ‘e’ [-Wunused-parameter]
+ 1017 | Value *native_fabs(Env *e, int argc, Value **argv)
+      |                    ~~~~~^
+ml_builtins.c: In function ‘native_abs’:
+ml_builtins.c:1024:24: warning: unused parameter ‘e’ [-Wunused-parameter]
+ 1024 | Value *native_abs(Env *e, int argc, Value **argv)
+      |                   ~~~~~^
+ml_builtins.c: In function ‘native_as_opaque’:
+ml_builtins.c:1065:51: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1065 |         ptr = (char *)mila_malloc(sizeof(char) * (strlen(GET_STRING(argv[0])) + 1));
+      |                                                   ^~~~~~
+/usr/include/string.h:439:15: note: in a call to function ‘strlen’ declared ‘nonnull’
+  439 | extern size_t strlen (const char *__s)
+      |               ^~~~~~
+ml_builtins.c:1066:43: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1066 |         strncpy(ptr, GET_STRING(argv[0]), strlen(GET_STRING(argv[0])));
+      |                                           ^~~~~~
+/usr/include/string.h:439:15: note: in a call to function ‘strlen’ declared ‘nonnull’
+  439 | extern size_t strlen (const char *__s)
+      |               ^~~~~~
+ml_builtins.c:1066:9: warning: argument 2 null where non-null expected [-Wnonnull]
+ 1066 |         strncpy(ptr, GET_STRING(argv[0]), strlen(GET_STRING(argv[0])));
+      |         ^~~~~~~
+/usr/include/string.h:159:14: note: in a call to function ‘strncpy’ declared ‘nonnull’
+  159 | extern char *strncpy (char *__restrict __dest,
+      |              ^~~~~~~
+ml_builtins.c:1067:13: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1067 |         ptr[strlen(GET_STRING(argv[0]))] = 0;
+      |             ^~~~~~
+/usr/include/string.h:439:15: note: in a call to function ‘strlen’ declared ‘nonnull’
+  439 | extern size_t strlen (const char *__s)
+      |               ^~~~~~
+ml_builtins.c:1036:5: warning: enumeration value ‘T_WHAT’ not handled in switch [-Wswitch]
+ 1036 |     switch (GET_TYPE(argv[0]))
+      |     ^~~~~~
+ml_builtins.c:1036:5: warning: enumeration value ‘T_NULL’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_BINT’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_BFLOAT’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_BOOL’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_FUNCTION’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_NATIVE’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_WEAK_OPAQUE’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_RETURN’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_NONE’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_ERROR’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_BREAK’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_CONTINUE’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_TAGGED_ERROR’ not handled in switch [-Wswitch]
+ml_builtins.c:1036:5: warning: enumeration value ‘T_ARG_END’ not handled in switch [-Wswitch]
+ml_builtins.c: In function ‘native_srandom’:
+ml_builtins.c:1091:28: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1091 | Value *native_srandom(Env *env, int argc, Value **argv)
+      |                       ~~~~~^~~
+ml_builtins.c: In function ‘native_random’:
+ml_builtins.c:1099:27: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1099 | Value *native_random(Env *env, int argc, Value **argv)
+      |                      ~~~~~^~~
+ml_builtins.c: In function ‘native_crandom’:
+ml_builtins.c:1111:28: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1111 | Value *native_crandom(Env *env, int argc, Value **argv)
+      |                       ~~~~~^~~
+ml_builtins.c:1111:51: warning: unused parameter ‘argv’ [-Wunused-parameter]
+ 1111 | Value *native_crandom(Env *env, int argc, Value **argv)
+      |                                           ~~~~~~~~^~~~
+ml_builtins.c: In function ‘native_get_tm_local’:
+ml_builtins.c:1118:33: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1118 | Value *native_get_tm_local(Env *env, int argc, Value **argv)
+      |                            ~~~~~^~~
+ml_builtins.c: In function ‘native_get_tm_gmt’:
+ml_builtins.c:1127:31: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1127 | Value *native_get_tm_gmt(Env *env, int argc, Value **argv)
+      |                          ~~~~~^~~
+ml_builtins.c: In function ‘native_strftime’:
+ml_builtins.c:1136:29: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1136 | Value *native_strftime(Env *env, int argc, Value **argv)
+      |                        ~~~~~^~~
+ml_builtins.c: In function ‘native_dump_search_list’:
+ml_builtins.c:1157:37: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1157 | Value* native_dump_search_list(Env* env, int argc, Value** argv) {
+      |                                ~~~~~^~~
+ml_builtins.c:1157:46: warning: unused parameter ‘argc’ [-Wunused-parameter]
+ 1157 | Value* native_dump_search_list(Env* env, int argc, Value** argv) {
+      |                                          ~~~~^~~~
+ml_builtins.c:1157:60: warning: unused parameter ‘argv’ [-Wunused-parameter]
+ 1157 | Value* native_dump_search_list(Env* env, int argc, Value** argv) {
+      |                                                    ~~~~~~~~^~~~
+ml_builtins.c: In function ‘native_break_point’:
+ml_builtins.c:1169:32: warning: unused parameter ‘env’ [-Wunused-parameter]
+ 1169 | Value *native_break_point(Env *env, int argc, Value **argv)
+      |                           ~~~~~^~~
+ml_builtins.c:1169:41: warning: unused parameter ‘argc’ [-Wunused-parameter]
+ 1169 | Value *native_break_point(Env *env, int argc, Value **argv)
+      |                                     ~~~~^~~~
+ml_builtins.c:1169:55: warning: unused parameter ‘argv’ [-Wunused-parameter]
+ 1169 | Value *native_break_point(Env *env, int argc, Value **argv)
+      |                                               ~~~~~~~~^~~~
+ml_builtins.c: In function ‘native_from_opaque’:
+ml_builtins.c:1200:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1200 |     if (strcmp(GET_STRING(argv[0]), "string") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+ml_builtins.c:1204:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1204 |     if (strcmp(GET_STRING(argv[0]), "owned_string") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+ml_builtins.c:1208:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1208 |     if (strcmp(GET_STRING(argv[0]), "long") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+ml_builtins.c:1212:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1212 |     if (strcmp(GET_STRING(argv[0]), "long") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+ml_builtins.c:1216:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1216 |     if (strcmp(GET_STRING(argv[0]), "int") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+ml_builtins.c:1220:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1220 |     if (strcmp(GET_STRING(argv[0]), "float") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+ml_builtins.c:1224:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1224 |     if (strcmp(GET_STRING(argv[0]), "double") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+ml_builtins.c:1228:9: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1228 |     if (strcmp(GET_STRING(argv[0]), "char") == 0)
+      |         ^~~~~~
+/usr/include/string.h:171:12: note: in a call to function ‘strcmp’ declared ‘nonnull’
+  171 | extern int strcmp (const char *__s1, const char *__s2)
+      |            ^~~~~~
+mila.c: In function ‘is_truthy’:
+mila.c:326:27: warning: argument 1 null where non-null expected [-Wnonnull]
+  326 |     case T_STRING: return strlen(GET_STRING(value)) ? 1 : 0;
+      |                           ^~~~~~
+/usr/include/string.h:439:15: note: in a call to function ‘strlen’ declared ‘nonnull’
+  439 | extern size_t strlen (const char *__s)
+      |               ^~~~~~
+mila.c:318:5: warning: enumeration value ‘T_WHAT’ not handled in switch [-Wswitch]
+  318 |     switch (GET_TYPE(value)) {
+      |     ^~~~~~
+mila.c:318:5: warning: enumeration value ‘T_NULL’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_FUNCTION’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_NATIVE’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_OWNED_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_WEAK_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_RETURN’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_NONE’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_ERROR’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_BREAK’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_CONTINUE’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_TAGGED_ERROR’ not handled in switch [-Wswitch]
+mila.c:318:5: warning: enumeration value ‘T_ARG_END’ not handled in switch [-Wswitch]
+mila.c: In function ‘vstring_slice’:
+mila.c:575:23: warning: zero-length gnu_printf format string [-Wformat-zero-length]
+  575 |         return verror(""); // empty string
+      |                       ^~
+mila.c: In function ‘as_c_string_repr’:
+mila.c:905:22: warning: argument 1 null where non-null expected [-Wnonnull]
+  905 |         size_t len = strlen(GET_STRING(v));
+      |                      ^~~~~~
+/usr/include/string.h:439:15: note: in a call to function ‘strlen’ declared ‘nonnull’
+  439 | extern size_t strlen (const char *__s)
+      |               ^~~~~~
+mila.c: In function ‘raw_print_value_repr’:
+mila.c:1067:22: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1067 |         size_t len = strlen(GET_STRING(v));
+      |                      ^~~~~~
+/usr/include/string.h:439:15: note: in a call to function ‘strlen’ declared ‘nonnull’
+  439 | extern size_t strlen (const char *__s)
+      |               ^~~~~~
+mila.c: In function ‘as_c_string_repr_raw’:
+mila.c:1189:22: warning: argument 1 null where non-null expected [-Wnonnull]
+ 1189 |         size_t len = strlen(GET_STRING(v));
+      |                      ^~~~~~
+/usr/include/string.h:439:15: note: in a call to function ‘strlen’ declared ‘nonnull’
+  439 | extern size_t strlen (const char *__s)
+      |               ^~~~~~
+mila.c: In function ‘eval_statement’:
+mila.c:5033:17: warning: enumeration value ‘T_WHAT’ not handled in switch [-Wswitch]
+ 5033 |                 switch (GET_TYPE(bod)) {
+      |                 ^~~~~~
+mila.c:5033:17: warning: enumeration value ‘T_NULL’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_INT’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_UINT’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_FLOAT’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_BINT’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_BFLOAT’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_STRING’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_BOOL’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_FUNCTION’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_NATIVE’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_OWNED_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_WEAK_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_NONE’ not handled in switch [-Wswitch]
+mila.c:5033:17: warning: enumeration value ‘T_ARG_END’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_WHAT’ not handled in switch [-Wswitch]
+ 5118 |                 switch (GET_TYPE(bod))
+      |                 ^~~~~~
+mila.c:5118:17: warning: enumeration value ‘T_NULL’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_INT’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_UINT’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_FLOAT’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_BINT’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_BFLOAT’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_STRING’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_BOOL’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_FUNCTION’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_NATIVE’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_OWNED_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_WEAK_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_NONE’ not handled in switch [-Wswitch]
+mila.c:5118:17: warning: enumeration value ‘T_ARG_END’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_WHAT’ not handled in switch [-Wswitch]
+ 5229 |                 switch (GET_TYPE(bod))
+      |                 ^~~~~~
+mila.c:5229:17: warning: enumeration value ‘T_NULL’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_INT’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_UINT’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_FLOAT’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_BINT’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_BFLOAT’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_STRING’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_BOOL’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_FUNCTION’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_NATIVE’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_OWNED_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_WEAK_OPAQUE’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_NONE’ not handled in switch [-Wswitch]
+mila.c:5229:17: warning: enumeration value ‘T_ARG_END’ not handled in switch [-Wswitch]
+mila.c: At top level:
+mila.c:104:13: warning: ‘insert_commas’ defined but not used [-Wunused-function]
+  104 | static void insert_commas(char *buf, size_t bufsize)
+      |             ^~~~~~~~~~~~~
+ml_dict.c:49:22: warning: ‘hash_value’ defined but not used [-Wunused-function]
+   49 | static unsigned long hash_value(Value *val) {
+      |                      ^~~~~~~~~~

@@ -1,3 +1,5 @@
+// This project is licensed under the GNU Affero General Public License
+
 /*
  * Welcome to the MiLa Language Library
  * Functions for MiLa
@@ -52,6 +54,7 @@
 #define MILA_VERSION 2
 
 #include "ml_primitives.c"
+#include "ml_platform_specific.c"
 
 Value *self_free(Value *self)
 {
@@ -238,13 +241,12 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
             our_asprintf(&buffer, "cast.float(str): Got bad part \"%s\"...", end);
             Value *tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
             mila_free(buffer);
-            f = 0;
+            return tmp;
         }
     }
     else
     {
         return verror("cast.float(str): Expected 1 argument (str) string.\n");
-        f = 0;
     }
     return vfloat(f);
 }
@@ -932,7 +934,6 @@ Value *native_own(Env *e, int argc, Value **argv)
     (void)e;
     if (argc == 1 && GET_TYPE(argv[0]) == T_OPAQUE)
     {
-        Value *ptr = argv[0];
         // NOTE: not recomended to directly access value fields!
         argv[0]->type = T_OWNED_OPAQUE;
         return val_retain(argv[0]);
@@ -945,7 +946,6 @@ Value *native_unown(Env *e, int argc, Value **argv)
     (void)e;
     if (argc == 1 && GET_TYPE(argv[0]) == T_OWNED_OPAQUE)
     {
-        Value *ptr = argv[0];
         // NOTE: not recomended to directly access value fields!
         argv[0]->type = T_OPAQUE;
         return val_retain(argv[0]);
@@ -1059,9 +1059,10 @@ Value *native_as_opaque(Env *e, int argc, Value **argv)
     case T_STRING:
     {
         char *ptr = NULL;
-        ptr = (char *)mila_malloc(sizeof(char) * (strlen(GET_STRING(argv[0])) + 1));
-        strncpy(ptr, GET_STRING(argv[0]), strlen(GET_STRING(argv[0])));
-        ptr[strlen(GET_STRING(argv[0]))] = 0;
+        size_t len= strlen(GET_STRING(argv[0]));
+        ptr = (char *)mila_malloc(sizeof(char) * (len + 1));
+        strncpy(ptr, GET_STRING(argv[0]), len);
+        ptr[len] = 0;
         return vowned_opaque(ptr);
     }
     break;
@@ -1071,6 +1072,7 @@ Value *native_as_opaque(Env *e, int argc, Value **argv)
         return vopaque(GET_OPAQUE(argv[0]));
     }
     break;
+    default:;
     }
     return verror("Unsupported type %s!", GET_TYPENAME(argv[0]));
 }
@@ -1443,6 +1445,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "_breakpoint", native_break_point);
     // === OS Stuff
     env_register_native(g, "system", native_system);
+    env_register_native(g, "sys.get_platform", native_sys_get_platform);
+    env_register_native(g, "sys.get_arch", native_sys_get_arch);
     // === Modules
 #ifndef VMM_BUILD
     env_register_native(g, "run", native_run);   // runs file

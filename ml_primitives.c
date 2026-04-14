@@ -1,10 +1,11 @@
+// This project is licensed under the GNU Affero General Public License
 #pragma once
 
 #include "mila.h"
 #include "ml_ll.c"
 #include "ml_dict.c"
-#include "ml_threading.c"
 #include <stdlib.h>
+#include "ml_threading.c"
 
 // Define meta tables
 
@@ -29,7 +30,7 @@ Value *list_repr(Value *self)
     Value **iter = ll_to_iter(lst);
 
     char *buffer = mila_strdup("[");
-    for (int i = 0; iter[i]; i++)
+    for (size_t i = 0; iter[i]; i++)
     {
         char *repr = as_c_string_repr(iter[i]);
         if (i < lst->size - 1)
@@ -50,7 +51,7 @@ Value *list_str(Value *self)
     Value **iter = ll_to_iter(lst);
 
     char *buffer = mila_strdup("[");
-    for (int i = 0; iter[i]; i++)
+    for (size_t i = 0; iter[i]; i++)
     {
         char *repr = as_c_string_repr(iter[i]);
         if (i < lst->size - 1)
@@ -396,7 +397,6 @@ Value* range_genth_worker(CGenData* cgen_data)
 {
     ThreadContext* ctx = cgen_data->ctx;
     Range* data = GET_OPAQUE(cgen_data->data);
-    long index = 0;
     for (long i = data->start; i < data->end; i += data->step)
     {
         thread_yield(ctx, vint(i));

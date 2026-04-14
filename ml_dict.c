@@ -1,3 +1,4 @@
+// This project is licensed under the GNU Affero General Public License
 #pragma once
 
 #include <stdio.h>
@@ -45,7 +46,7 @@ static unsigned long hash_string(const char *str) {
   return hash;
 }
 
-static unsigned long hash_value(Value *val) {
+FN_UNUSED static unsigned long hash_value(Value *val) {
   char *og = as_c_string_repr(val);
   char *str = og;
   unsigned long hash = 5381;

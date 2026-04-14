@@ -1,3 +1,4 @@
+// This project is licensed under the GNU Affero General Public License
 #pragma once
 #include <stdlib.h>
 #include <stdio.h>

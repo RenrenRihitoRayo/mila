@@ -1,8 +1,7 @@
 # Welcome to MiLa
 
-A small embeddable scripting language.
-MiLa is if C and Lua made a child,
-small simple and fast.
+A small embeddable scripting language framework.
+Canonical MiLa is small simple and fast for general computation.
 
 ## What MiLa is
 
@@ -20,29 +19,11 @@ MiLa.
 
 ## What MiLa is not
 
-* A serious language
-
-This is a side project.
-Do not treat MiLa as an actual production
-ready language, simply because it isnt.
-
 * Community Driven
 
 This Repo of MiLa will never accept
 pull requests pertaining to adding features.
 MiLa is a kernel, not a language.
-
-## Rules to Forking MiLa
-
-Credit me as its owner,
-you cannot earn momey from selling copies of MiLa
-or you will be held acountable for it.
-<br><br>
-Make sure your fork of MiLa still
-follows this specs defined bellow.
-<br><br>
-You may add features but never modify syntax.
-Such as changing syntax of while loops.
 
 ## Keywords (22 total)
 
@@ -106,137 +87,20 @@ Less than most programming languages' number of keywords!
 
 `\N` accepts decimal digits.
 
-## Examples
+## Example
 
-* Assignment
-
-```Plaintext
-// Declaration
-var name = value;
-{
-    // This is a different variable
-    // from the outer name.
-    var name = value;
-    
-    // Assignment
-    set name = value;
-}
+### Hello world
+```
+println("Hello, world!");
 ```
 
-* Functions
-
-```Plaintext
-fn greet(name) {
-    println("Hello " + name + "!");
-}
-
-greet("Gene");
-
-fn greet_ctx()[name] {
-    println("Hello " + name + "!");
-}
-
-{
-    var name = "Gene";
-    contextual name;
-    greet_ctx();
-}
-
-fn make_greet(name) {
-    fn greet_closure():[name] {
-        println("Hello " + name + "!");
-    }
-}
-
-var greet_closure = make_greet("Gene");
-greet_closure();
+### Threads
 ```
+var th = thread.make(!{
+    time_sleep(10);
+});
 
-* Loops
-
-```Plaintext
-var i = 0;
-var sum = 0;
-while (i < 10) {
-    var sum = sum + i;
-    var i = i + 1;
-}
-
-var l = array(5);
-set l[0]= "where";
-set l[1] = "what";
-set l[2] = "when";
-set l[3] = "who";
-set l[4] = "why";
-
-foreach item : l {
-    println(item);
-}
-
-foreach n : range(10) {
-    println(n);
-}
-```
-
-* Implicit and Explicit return
-
-```Plaintext
-var res = fn{
-    90; // semicolon can be ommited
-};
-
-// or
-
-var res = fn{
-    /* this is preferred for readability */
-    return 90;
-};
-```
-
-* Block var/set statements
-
-```Plaintext
-// notice we use a colon, not an equal sign
-var res : {
-    return 90;
-} // no semi colon
-```
-
-* If chains
-
-```Plaintext
-if (cond) {
-    ...
-} elif (cond) {
-    ...
-} else {
-    ...
-}
-```
-
-* Subscripting
-
-```
-var a = array.from("hello", 42, 138);
-// hello 42 138
-println(a[0], a[1], a[2]);
-
-var d = dict(
-    "name", "Ezha",
-    "age", 17,
-    "addresses", dict(
-        0, "city 1",
-        1, "city 2"
-    )
-);
-
-// no support for nested subscription when setting (yet)
-set tmp = d["addresses"];
-set tmp[2] = "city 3";
-
-println(d["name"], d["age"]);
-println((d["addresses"])[0]);
-println((d["addresses"])[1]);
+thread.join(th); // wait till thread finishes
 ```
 
 ## Example of using MiLa (in C)

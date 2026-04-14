@@ -1,3 +1,4 @@
+// This project is licensed under the GNU Affero General Public License
 #pragma once
 #include "mila.h"
 #include <stddef.h>
@@ -109,12 +110,13 @@ Value *ll_pop(LinkedList *list, long index) {
     return verror("ll_pop: list data is null.");
   if (index < 0)
     index = (~index);
-  if (index < 0 || index >= list->size)
+  size_t t_index = (size_t)index;
+  if (t_index >= list->size)
     return verror("ll_pop: index out of bounds.");
 
   LLNode *cur = list->head;
   LLNode *prev = NULL;
-  for (size_t i = 0; i < index; i++) {
+  for (size_t i = 0; i < t_index; i++) {
     prev = cur;
     cur = cur->next;
   }

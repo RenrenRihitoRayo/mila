@@ -1,0 +1,17 @@
+
+
+fn subscribe(_, func) {
+    func(0, as_opaque(9));
+}
+
+fn type(_) {}
+
+var space = "    ";
+var int = "int";
+subscribe(EVENT_KEYPRESS, fn(t_, key) {
+    var key = from_opaque("int", key);
+    if (true && key == 9)
+    {
+        type("    ");
+    }
+});

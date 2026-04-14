@@ -1,3 +1,4 @@
+// This project is licensed under the GNU Affero General Public License
 #pragma once
 #include <stdlib.h>
 #include "ml_string.c"
@@ -30,18 +31,10 @@ struct path_list {
 
 #ifndef MILA_PROTO
 
-// =========================================================
-// internal: simple helpers
-// =========================================================
-
 int file_exists(const char *p) {
   struct stat st;
   return stat(p, &st) == 0;
 }
-
-// =========================================================
-// transform_path: expands ~, expands $VAR, normalizes slashes
-// =========================================================
 
 void normalize_slashes(char *buf) {
 #ifdef _WIN32
@@ -229,10 +222,6 @@ char *transform_path(const char *input) {
 
   return buf;
 }
-
-// =========================================================
-// path_list management
-// =========================================================
 
 path_list *path_list_new(void) {
   path_list *p = malloc(sizeof(path_list));
@@ -468,10 +457,6 @@ int path_list_remove(path_list *pl, const char *path) {
   free(t);
   return 0;
 }
-
-// =========================================================
-// file searching
-// =========================================================
 
 char *path_list_find(path_list *pl, const char *file) {
   if (!pl || !file)

@@ -1,0 +1,4 @@
+
+println(sys.get_platform(), sys.get_arch());
+var test = "\x99";
+println(ascii.from_string(test));

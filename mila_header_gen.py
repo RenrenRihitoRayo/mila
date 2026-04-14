@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# This project is licensed under the GNU Affero General Public License
+
 from clang import cindex
 import sys
 import os

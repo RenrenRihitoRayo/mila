@@ -1,5 +1,5 @@
 
-system(!{clear; figlet "Coffee Break" | lolcat});
+system("clear; figlet \"Coffee Break\" | lolcat");
 println("Break Started:");
 var start = get_time();
 var tm = get_tm_local();
@@ -15,4 +15,3 @@ while (true) {
     println(time+"\r\033[A");
     time_sleep_ms(100); // dont hog cpu time
 }
-system(!{read -p ""});

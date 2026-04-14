@@ -1,4 +1,9 @@
+// This project is licensed under the GNU Affero General Public License
+#define _GNU_SOURCE
+
 #include "ml_dict.c"
+#include "ml_primitives.c"
+#include <stddef.h>
 #include <sys/types.h>
 #if !(defined(__GNUC__) || defined(__clang__))
 #error "MiLa only supports GCC."
@@ -98,48 +103,6 @@ inline void mila_free(void *ptr)
     free(ptr);
 }
 
-static void insert_commas(char *buf, size_t bufsize)
-{
-    char temp[128];
-    strncpy(temp, buf, sizeof(temp));
-    temp[sizeof(temp) - 1] = '\0';
-
-    char *dot = strchr(temp, '.');
-    int int_len = dot ? (dot - temp) : (int)strlen(temp);
-
-    int commas = (int_len - 1) / 3;
-    int new_len = strlen(temp) + commas;
-
-    if ((size_t)new_len + 1 > bufsize)
-        return;
-
-    int i = int_len - 1;
-    int j = new_len - 1;
-
-    // copy fractional part first
-    if (dot)
-    {
-        strcpy(buf + (new_len - strlen(dot)), dot);
-        j = new_len - strlen(dot) - 1;
-    }
-    else
-    {
-        buf[new_len] = '\0';
-    }
-
-    int count = 0;
-
-    while (i >= 0)
-    {
-        buf[j--] = temp[i--];
-        if (++count == 3 && i >= 0)
-        {
-            buf[j--] = ',';
-            count = 0;
-        }
-    }
-}
-
 void float_to_string(float f, char *buf, size_t bufsize)
 {
     // Step 1: try %g with max precision
@@ -162,6 +125,126 @@ void float_to_string(float f, char *buf, size_t bufsize)
     }
 }
 
+FunctionV *functionv_copy(const FunctionV *src)
+{
+    if (!src) return NULL;
+
+    FunctionV *dst = malloc(sizeof(FunctionV));
+    if (!dst) return NULL;
+
+    dst->params = NULL;
+    dst->contextuals = NULL;
+    dst->body_src = NULL;
+    dst->name = NULL;
+    dst->closure = src->closure;
+
+    if (src->params) {
+        size_t n = 0;
+        while (src->params[n]) n++;
+
+        dst->params = malloc((n + 1) * sizeof(char *));
+        if (!dst->params) { free(dst); return NULL; }
+
+        for (size_t i = 0; i < n; i++) {
+            dst->params[i] = strdup(src->params[i]);
+            if (!dst->params[i]) {
+                for (size_t j = 0; j < i; j++) free(dst->params[j]);
+                free(dst->params);
+                free(dst);
+                return NULL;
+            }
+        }
+        dst->params[n] = NULL;
+    }
+
+    if (src->contextuals) {
+        size_t n = 0;
+        while (src->contextuals[n]) n++;
+
+        dst->contextuals = malloc((n + 1) * sizeof(char *));
+        if (!dst->contextuals) {
+            if (dst->params) {
+                for (size_t i = 0; dst->params[i]; i++) free(dst->params[i]);
+                free(dst->params);
+            }
+            free(dst);
+            return NULL;
+        }
+
+        for (size_t i = 0; i < n; i++) {
+            dst->contextuals[i] = strdup(src->contextuals[i]);
+            if (!dst->contextuals[i]) {
+                for (size_t j = 0; j < i; j++) free(dst->contextuals[j]);
+                free(dst->contextuals);
+                if (dst->params) {
+                    for (size_t k = 0; dst->params[k]; k++) free(dst->params[k]);
+                    free(dst->params);
+                }
+                free(dst);
+                return NULL;
+            }
+        }
+        dst->contextuals[n] = NULL;
+    }
+
+    if (src->body_src) {
+        dst->body_src = strdup(src->body_src);
+        if (!dst->body_src) {
+            if (dst->contextuals) {
+                for (size_t i = 0; dst->contextuals[i]; i++) free(dst->contextuals[i]);
+                free(dst->contextuals);
+            }
+            if (dst->params) {
+                for (size_t i = 0; dst->params[i]; i++) free(dst->params[i]);
+                free(dst->params);
+            }
+            free(dst);
+            return NULL;
+        }
+    }
+
+    if (src->name) {
+        dst->name = strdup(src->name);
+        if (!dst->name) {
+            if (dst->body_src) free(dst->body_src);
+            if (dst->contextuals) {
+                for (size_t i = 0; dst->contextuals[i]; i++) free(dst->contextuals[i]);
+                free(dst->contextuals);
+            }
+            if (dst->params) {
+                for (size_t i = 0; dst->params[i]; i++) free(dst->params[i]);
+                free(dst->params);
+            }
+            free(dst);
+            return NULL;
+        }
+    }
+
+    return dst;
+}
+
+NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
+{
+    if (!src) return NULL;
+
+    NativeFunctionV *dst = malloc(sizeof(NativeFunctionV));
+    if (!dst) return NULL;
+
+    dst->fn = src->fn;
+    dst->userdata = src->userdata;
+    dst->name = NULL;
+
+    if (src->name) {
+        dst->name = strdup(src->name);
+        if (!dst->name) {
+            free(dst);
+            return NULL;
+        }
+    }
+
+    return dst;
+}
+
 Value* val_copy(Value *src)
 {
     if (!src) return NULL;
@@ -172,8 +255,7 @@ Value* val_copy(Value *src)
     /* Copy structure layout */
     copy->type = src->type;
     copy->refcount = 1;
-    copy->owns_table = src->owns_table;
-    copy->type_name = src->type_name;
+    copy->type_name = mila_strdup(src->type_name);
     copy->method_table = src->method_table;
 
     /* Deep copy based on type */
@@ -225,20 +307,11 @@ Value* val_copy(Value *src)
 
         case T_FUNCTION:
             /* Functions: retain reference (shared ownership) */
-            copy->v.fn = src->v.fn;
-            if (copy->v.fn)
-            {
-                val_retain((Value *)copy->v.fn);
-            }
+            copy->v.fn = functionv_copy(src->v.fn);
             break;
-
         case T_NATIVE:
             /* Native functions: retain reference */
-            copy->v.native = src->v.native;
-            if (copy->v.native)
-            {
-                val_retain((Value *)copy->v.native);
-            }
+            copy->v.native = nativefn_copy(src->v.native);
             break;
 
         case T_OPAQUE:
@@ -246,14 +319,14 @@ Value* val_copy(Value *src)
             copy->v.opaque = src->v.opaque;
             break;
 
+        case T_NONE:
         case T_NULL:
             /* Null: no-op */
             break;
 
         default:
-            /* Unknown type: best effort copy of union */
-            copy->v = src->v;
-            break;
+            val_release(copy);
+            return verror("Type %s doesnt support copying and may cause memory leaks if done so.", GET_TYPENAME(src));
     }
 
     return copy;
@@ -321,6 +394,7 @@ inline int is_truthy(Value *value)
     case T_OPAQUE: return GET_OPAQUE(value) ? 1 : 0;
     case T_BOOL: return GET_BOOL(value) ? 1 : 0;
     case T_STRING: return strlen(GET_STRING(value)) ? 1 : 0;
+    default:;
     }
     return 1;
 }
@@ -550,7 +624,7 @@ inline Value *vbool(int b)
     return v;
 }
 
-inline Value *vstring_dup(const char *s)
+inline Value *vstring_dup(const char *restrict s)
 {
     Value *v = val_new(T_STRING);
     v->v.s = mila_strdup(s ? s : "");
@@ -565,11 +639,11 @@ inline Value *vstring_take(char *s)
 }
 
 // String
-inline Value *vstring_slice(const char *src, size_t start, size_t len)
+inline Value *vstring_slice(const char *restrict src, size_t start, size_t len)
 {
     size_t n = strlen(src);
     if (start > n)
-        return verror(""); // empty string
+        return verror("Out of bounds string slice!"); // empty string
 
     if (start + len > n)
         len = n - start;
@@ -584,7 +658,7 @@ inline Value *vstring_slice(const char *src, size_t start, size_t len)
     return vstring_take(buf);
 }
 
-inline Value *vstring_index(const char *src, size_t index)
+inline Value *vstring_index(const char *restrict src, size_t index)
 {
     size_t n = strlen(src);
     if (index >= n)
@@ -600,7 +674,7 @@ inline Value *vstring_index(const char *src, size_t index)
     return vstring_take(buf);
 }
 
-inline Value *vstring_replace(const char *src, const char *needle, const char *repl)
+inline Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict repl)
 {
     if (!*needle)
         return vstring_dup(src); // can't match empty substring
@@ -899,8 +973,8 @@ char *as_c_string_repr(Value *v)
     {
     case T_STRING:
         our_asprintf(&buffer, "\"");
-        int len = strlen(GET_STRING(v));
-        for (size_t i = 0; i <  len; ++i)
+        size_t len = strlen(GET_STRING(v));
+        for (size_t i = 0; i < len; ++i)
         {
             switch (GET_STRING(v)[i])
             {
@@ -1059,33 +1133,40 @@ int raw_print_value_repr(Value *v)
     }
     switch (v->type)
     {
-    case T_STRING:
-        return printf("\"");
-        int len = strlen(GET_STRING(v));
-        for (size_t i = 0; i <  len; ++i)
+    case T_STRING:;
+        int first = printf("\"");
+        size_t len = strlen(GET_STRING(v));
+        for (size_t i = 0; i < len; ++i)
         {
             switch (GET_STRING(v)[i])
             {
             case '\a':
-                return printf("\\a");
+                first += printf("\\a");
+                break;
             case '\t':
-                return printf("\\t");
+                first += printf("\\t");
+                break;
             case '\n':
-                return printf("\\n");
+                first += printf("\\n");
+                break;
             case '\v':
-                return printf("\\v");
+                first += printf("\\v");
+                break;
             case '\f':
-                return printf("\\f");
+                first += printf("\\f");
+                break;
             case '"':
-                return printf("\\\"");
+                first += printf("\\\"");
+                break;
             default:
                 if (isprint(GET_STRING(v)[i]))
-                    return printf("%c", GET_STRING(v)[i]);
+                    first += printf("%c", GET_STRING(v)[i]);
                 else
-                    return printf("\\x%02x", GET_STRING(v)[i]);
+                    first += printf("\\x%02x", GET_STRING(v)[i]);
+                break;
             }
         }
-        return printf("\"");
+        return first + printf("\"");
     default:
     {
         return raw_print_value(v);
@@ -1176,7 +1257,7 @@ char *as_c_string_repr_raw(Value *v)
     {
     case T_STRING:
         our_asprintf(&buffer, "\"");
-        int len = strlen(GET_STRING(v));
+        size_t len = strlen(GET_STRING(v));
         for (size_t i = 0; i < len; ++i)
         {
             switch (GET_STRING(v)[i])
@@ -1222,7 +1303,6 @@ int print_value(Value *v)
     {
         return printf("cnull");
     }
-    char *txt;
     return raw_print_value(v);
 }
 
@@ -2127,7 +2207,7 @@ inline void skip_block(Src *s)
         return;
     }
     int depth = 0;
-    int i = s->pos;
+    size_t i = s->pos;
     for (; i < s->len; ++i)
     {
         char ch = s->src[i];
@@ -2180,7 +2260,7 @@ inline void skip_expr(Src *s)
     skip_ws(s);
     // body is block; extract substring from '{' to matching '}'
     int depth = 1;
-    int i = s->pos;
+    size_t i = s->pos;
     for (; i < s->len; ++i)
     {
         char ch = s->src[i];
@@ -2208,7 +2288,7 @@ inline void skip_expr(Src *s)
 inline void skip_stmt(Src *s)
 {
     skip_ws(s);
-    int i = s->pos;
+    size_t i = s->pos;
     for (; i < s->len; ++i)
     {
         char ch = s->src[i];
@@ -2479,7 +2559,7 @@ inline Value *parse_number(Src *s)
 
     int en = s->pos;
     char tmp[MAX_NUMBER_DIGITS];
-    int len = en - st;
+    uint64_t len = en - st;
     if (len <= 0)
         return NULL;
 
@@ -2551,7 +2631,6 @@ char* dedent(char* str) {
     size_t i = 0;
     while (i < len) {
         size_t line_indent = 0;
-        size_t line_start = i;
         while (i < len && (str[i] == ' ' || str[i] == '\t')) {
             line_indent++;
             i++;
@@ -2613,7 +2692,7 @@ inline Value *parse_string(Src *s)
     while (!src_eof(s))
     {
         char b = 0;
-        char c = src_get(s);
+        unsigned char c = src_get(s);
         if (c == '"')
             break;
 
@@ -2646,22 +2725,21 @@ inline Value *parse_string(Src *s)
             case 'N':
             { // \Nxx (decimal) escape codes
                 char code[3] = {src_get(s), src_get(s), 0};
-                c = (char)atoi(code);
+                c = atoi(code);
             }
             break;
             case 'x':
             { // \xhh (hex) escape codes
                 char code[3] = {src_get(s), src_get(s), 0};
-                c = (char)strtol(code, NULL, 16);
+                c = strtol(code, NULL, 16);
             }
-                break;
             break;
             case '0':
             { // \0oo (octal) escape codes
                 char code[3] = {src_get(s), src_get(s), 0};
-                c = (char)strtol(code, NULL, 8);
+                c = strtol(code, NULL, 8);
             }
-                break;
+            break;
             case '\n':
             {
                 c = src_get(s);
@@ -2686,11 +2764,11 @@ inline Value *parse_string(Src *s)
             }
             buf = tmp;
         }
-        buf[len++] = c;
+        buf[len++] = (unsigned char)c;
     }
     if (src_peek(s) == '!') {
-        do_dedent = 1;
         src_get(s);
+        do_dedent = 1;
     }
 
     // shrink to exact size
@@ -2711,7 +2789,7 @@ inline int is_keyword_at(Src *s, const char *kw)
 {
     skip_ws(s);
     int p = s->pos;
-    int klen = strlen(kw);
+    size_t klen = strlen(kw);
     if (p + klen > s->len)
         return 0;
     if (strncmp(s->src + p, kw, klen) == 0)
@@ -2939,13 +3017,13 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
 
     if (!fnval)
     {
-        for (int i = 0; i < count; i++)
+        for (size_t i = 0; i < count; i++)
             val_release(args[i]);
         return verror("Function is NULL!");
     }
 
     Value *res = call_function(fnval, env, count, args);
-    for (int i = 0; i < count; ++i)
+    for (size_t i = 0; i < count; ++i)
         val_release(args[i]);
     mila_free(args);
     HANDLE_RETURN(res);
@@ -2982,13 +3060,13 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
     Value *fnval = env_get(env, fnname);
     if (!fnval)
     {
-        for (int i = 0; i < count; i++)
+        for (size_t i = 0; i < count; i++)
             val_release(args[i]);
         return verror("Function is NULL!");
     }
 
     Value *res = call_function(fnval, env, count, args);
-    for (int i = 0; i < count; ++i)
+    for (size_t i = 0; i < count; ++i)
         val_release(args[i]);
     mila_free(args);
     HANDLE_RETURN(res);
@@ -3227,10 +3305,10 @@ Value *eval_primary(Src *s, Env *env)
                     Value *a = eval_expr(s, env);
                     if (IS_ERROR(a))
                     {
-                        mila_free(args);
                         val_release(expr);
                         for (int i = 0; i < argc; i++)
                             val_release(args[i]);
+                        mila_free(args);
                         return a;
                     }
                     args = mila_realloc(args, sizeof(Value *) * (argc + 1));
@@ -3493,8 +3571,8 @@ Value *eval_primary(Src *s, Env *env)
         }
         // find matching brace (we will copy out body)
         int depth = 0;
-        int start = s->pos;
-        int i = s->pos;
+        size_t start = s->pos;
+        size_t i = s->pos;
         for (; i < s->len; ++i)
         {
             char ch = s->src[i];
@@ -5045,6 +5123,7 @@ Value *eval_statement(Src *s, Env *env)
                     s->pos = body_end_pos;
                     return bod;
                 } break;
+                default:;
                 }
             }
             return bod;
@@ -5138,6 +5217,7 @@ Value *eval_statement(Src *s, Env *env)
                         mila_free(id);
                         return bod;
                     } break;
+                    default:;
                 }
                 val_release(bod);
             }
@@ -5242,15 +5322,6 @@ Value *eval_statement(Src *s, Env *env)
                         mila_free(id);
                         continue;
                     }
-                    if (IS_ERROR(bod))
-                    {
-                        s->pos = body_end_pos;
-                        for (;value[i]; ++i)
-                            val_release(value[i]);
-                        mila_free(value);
-                        mila_free(id);
-                        return bod;
-                    }
                     case T_RETURN:
                     {
                         s->pos = body_end_pos;
@@ -5270,6 +5341,7 @@ Value *eval_statement(Src *s, Env *env)
                         mila_free(id);
                         return bod;
                     }
+                    default:;
                 }
 
                 val_release(bod);
@@ -5421,8 +5493,8 @@ Value *eval_statement(Src *s, Env *env)
         }
         // find matching brace (we will copy out body)
         int depth = 0;
-        int start = s->pos;
-        int i = s->pos;
+        size_t start = s->pos;
+        size_t i = s->pos;
         for (; i < s->len; ++i)
         {
             char ch = s->src[i];
@@ -5832,6 +5904,7 @@ int main(int argc, char **argv)
         env_set_local_raw(g, "__dir_path__", vstring_take(local));
         path_list_add_top(search_path, local);
         free(cwd);
+
 
         // read file
         fseek(f, 0, SEEK_END);

@@ -1,3 +1,4 @@
+// This project is licensed under the GNU Affero General Public License
 #pragma once
 
 #include <stdarg.h>
@@ -42,7 +43,7 @@
 #define GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
 #define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 #define GET_ERROR(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
-#define GET_TYPE(v) (v ? v->type : -1 )
+#define GET_TYPE(v) (v ? v->type : T_WHAT )
 
 #define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
 
@@ -69,6 +70,8 @@
             return res;\
         }\
     }\
+
+#define FN_UNUSED __attribute__((unused))
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
 
@@ -97,7 +100,8 @@ typedef enum
 
 typedef enum
 {
-    T_NULL = 0,
+    T_WHAT = -1,
+    T_NULL,
     T_INT,
     T_UINT,
     T_FLOAT,
@@ -197,7 +201,7 @@ typedef enum __attribute__((packed))
     BMethodGlob,
 
     BMethodGetItem, // name[...] syntax
-    TMethodSetItem, // var name[...] or set name[...] syntax
+    TMethodSetItem, // set name[...] syntax
 
     // when converting objects into strings
     UMethodToString,
@@ -205,11 +209,10 @@ typedef enum __attribute__((packed))
 
     // foreach syntax
     UMethodToIter,
+    UMethodToGen,  // Method to turn collections into generators
 
     UMethodFree,
     UMethodKill,
-
-    UMethodToGen,  // Method to turn collections into generators
 
     MethodTotalCount
 } MethodType;
@@ -247,8 +250,8 @@ struct Value
     int refcount;              // simple refcount (4 bytes)
     char owns_table;           // check if table can be freed or not (1 bytes)
     union {
-        char *s;
-        char *message;
+        char * s;
+        char * message;
         _Bool b;
         double f;
         mila_float128_internal bf;
@@ -433,7 +436,7 @@ typedef struct Src
     char *src;    // full source string (null-terminated)
     char *cur_namespace; // current namespace
     uint64_t pos; // current position
-    int len;
+    uint64_t len;
 } Src;
 
 Src *src_new(const char *s);

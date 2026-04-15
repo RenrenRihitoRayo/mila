@@ -16,12 +16,12 @@ Value *hello(Env *e, int argc, Value **argv) {
 }
 
 Value *greet(Env *e, int argc, Value **argv) {
-  if (argc != 1 || MILA_GET_TYPE(argv[0]) != T_STRING) {
+  if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) {
     return vtagged_error(E_TYPE_ERROR,
                          "Expected first argument to be a string but got %s!",
-                         MILA_GET_TYPENAME(argv[0]));
+                         GET_TYPENAME(argv[0]));
   }
-  mila_printf("Hello %?!\n", argv[0]);
+  print_value(argv[0]);
   return vnull();
 }
 

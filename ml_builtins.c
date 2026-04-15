@@ -703,6 +703,7 @@ Value *native_system(Env *env, int argc, Value **argv)
     return vint(system(argv[0]->v.opaque));
 }
 
+#ifndef ML_NO_MATH
 Value *native_floor(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -783,6 +784,21 @@ Value *native_pow(Env *env, int argc, Value **argv)
         return verror("pow(base, exp): Requires two arguments");
     return vint(pow(argv[0]->v.i, argv[1]->v.i));
 }
+
+Value *native_fabs(Env *e, int argc, Value **argv)
+{
+    if (argc != 1 || GET_TYPE(argv[0]) != T_FLOAT)
+        return verror("fabs(num): argument must be a float!");
+    return vfloat(fabs(GET_FLOAT(argv[0])));
+}
+
+Value *native_abs(Env *e, int argc, Value **argv)
+{
+    if (argc != 1 || GET_TYPE(argv[0]) != T_INT)
+        return verror("abs(num): argument must be an integer!");
+    return vint(abs((int)GET_INTEGER(argv[0])));
+}
+#endif // ML_NO_MATH
 
 Value *native_vars_set(Env *env, int argc, Value **argv)
 {
@@ -1011,20 +1027,6 @@ Value *istring_to_str(Value *self) { return vstring_dup(self->v.opaque); }
 
 Value *native_rand(Env *e, int argc, Value **argv) { return vfloat(rand()); }
 
-Value *native_fabs(Env *e, int argc, Value **argv)
-{
-    if (argc != 1 || GET_TYPE(argv[0]) != T_FLOAT)
-        return verror("fabs(num): argument must be a float!");
-    return vfloat(fabs(GET_FLOAT(argv[0])));
-}
-
-Value *native_abs(Env *e, int argc, Value **argv)
-{
-    if (argc != 1 || GET_TYPE(argv[0]) != T_INT)
-        return verror("abs(num): argument must be an integer!");
-    return vint(abs((int)GET_INTEGER(argv[0])));
-}
-
 Value *native_as_opaque(Env *e, int argc, Value **argv)
 {
     (void)e;
@@ -1242,6 +1244,15 @@ Value *native_copy(Env *env, int argc, Value **argv)
     return val_copy(argv[0]);
 }
 
+Value* native_is(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("is(a, b): Requires two arguments");
+    return vbool(argv[0] == argv[1]);
+}
+
+#ifdef EXT_SOCK
+#include "addon/ml_socket.c"
+#endif
+
 void env_register_builtins(Env *g)
 {
 #ifndef VMM_BUILD
@@ -1285,6 +1296,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "srandom", native_srandom);
     env_register_native(g, "crandom", native_crandom);
     env_register_native(g, "dump_search_paths", native_dump_search_list);
+    env_register_native(g, "is", native_is);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
@@ -1398,6 +1410,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "ascii.from_int", native_ascii_from_int);
     env_register_native(g, "ascii.from_string", native_ascii_from_string);
     // === Math
+#ifndef ML_NO_MATH
     env_register_native(g, "floor", native_floor);
     env_register_native(g, "ceil", native_ceil);
     env_register_native(g, "sqrt", native_sqrt);
@@ -1410,6 +1423,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "rand", native_rand);
     env_register_native(g, "fabs", native_fabs);
     env_register_native(g, "abs", native_abs);
+#endif // ML_NO_MATH
     env_set_raw(g, "RAND_MAX", vint(RAND_MAX));
     // === Env
     env_register_native(g, "vars.set", native_vars_set);
@@ -1457,5 +1471,8 @@ void env_register_builtins(Env *g)
 #ifdef EXT_WEB
 #include "addon/ml_web.h"
     env_register_web_ext(g);
+#endif
+#ifdef EXT_SOCK
+    env_register_socket_ext(g);
 #endif
 }

@@ -1,5 +1,10 @@
 
-system("clear; figlet \"Coffee Break\" | lolcat");
+var text = "Coffee Break"
+if (argc == 2) {
+    set text = argv[1];
+}
+
+system("clear; figlet \""+text+"\" | lolcat");
 println("Break Started:");
 var start = get_time();
 var tm = get_tm_local();

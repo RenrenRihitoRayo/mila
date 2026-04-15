@@ -257,5 +257,5 @@ fn print_text(text) {
     }
 }
 
-print_text(!{PRINTLN("HELLO, WORLD!")});
+print_text("SODA BREAK");
 println();

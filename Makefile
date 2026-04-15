@@ -4,21 +4,20 @@ files_web = $(files) ./addon/ml_web.c
 targets_web = ./build/web/mila.wasm ./build/web/mila.js
 
 libraries ?= -lm
-eflags ?= -Wno-nonnull -Wno-unused-parameter -std=c11 -Wextra -Wall
-cflags = -O3 $(libraries) $(eflags)
+eflags ?= 
+cflags = -O3 $(libraries) -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -std=c11 $(eflags)
 
 .PHONY: web
 
 all: $(files)
 	$(cc) $(libraries) $(eflags) -O0 -o mila mila.c -fsanitize=address -g\
-	 -D MILA_NO_SIGNAL_HANDLER
 
 # dont include asan, compile with debug logging
 debug: $(files)
-	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG
+	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_DEBUG
 
 debug-asan: $(files)
-	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_NO_SIGNAL_HANDLER -D MILA_DEBUG -fsanitize=address
+	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_DEBUG -fsanitize=address
 
 test:
 	$(cc) -o test.o0.mila -O0 mila.c $(libraries)

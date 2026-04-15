@@ -5,12 +5,13 @@
 
 Value* native_sys_get_platform(Env* env, int argc, Value** argv) {
 // Supported and managed platforms
-#ifdef __linux__
+
+#ifdef __ANDROID__
+    return vstring_dup("android");
+#elif defined(__linux__)
     return vstring_dup("linux");
 #elif defined(__EMSCRIPTEN__) || defined(__wasi__)
     return vstring_dup("web");
-#elif defined(__ANDROID__)
-    return vstring_dup("android");
 // Untested platforms
 #elif defined(_WIN32) || defined(_WIN64)
     return vstring_dup("win");

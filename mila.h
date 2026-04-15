@@ -199,6 +199,7 @@ typedef enum __attribute__((packed))
     BMethodOr,
     BMethodDefault,
     BMethodGlob,
+    BMethodIs,
 
     BMethodGetItem, // name[...] syntax
     TMethodSetItem, // set name[...] syntax
@@ -339,17 +340,6 @@ void val_unset_method(Value *v, MethodType t);
 extern Value *val_retain(Value *v);
 // Disown a value
 extern void val_release(Value *v);
-// Generates a string from an fmt
-__attribute__((format(printf, 1, 2)))
-extern Value *vstring_fmt(char *fmt, ...);
-// Slice a string
-extern Value *vstring_slice(const char *src, size_t start, size_t len);
-// Index a string
-extern Value *vstring_index(const char *src, size_t index);
-// Replace some path of a string (used string.patch)
-extern Value *vstring_replace(const char *src,
-                       const char *needle,
-                       const char *repl);
 // Free a value regardless of refcount
 void val_kill(Value *v);
 // Integer contructor
@@ -362,14 +352,23 @@ extern Value *vfloat(double f);
 extern Value *vbint(__int128 i);
 // Float constructor
 extern Value *vbfloat(mila_float128_internal f);
-extern Value *vbreak();
-extern Value *vcontinue();
 // Bool constructor
 extern Value *vbool(int b);
 // Duplicate a string
 extern Value *vstring_dup(const char *s);
 // Take a string (assuming MiLa can free it)
 extern Value *vstring_take(char *s);
+// Generates a string from an fmt
+__attribute__((format(printf, 1, 2)))
+extern Value *vstring_fmt(char *fmt, ...);
+// Slice a string
+extern Value *vstring_slice(const char *src, size_t start, size_t len);
+// Index a string
+extern Value *vstring_index(const char *src, size_t index);
+// Replace some path of a string (used string.patch)
+extern Value *vstring_replace(const char *src,
+                       const char *needle,
+                       const char *repl);
 // Opaque pointer constructor
 extern Value *vopaque(void *p);
 // Owned opaque pointer constructor (MiLa takes ownership)
@@ -378,6 +377,8 @@ extern Value *vowned_opaque(void *p);
 extern Value *vnative(NativeFn fn, const char *name);
 // Create a bool if a value is truthy
 extern Value *vtruthy(Value *value);
+extern Value *vbreak();
+extern Value *vcontinue();
 // Null
 extern Value *vnull();
 // None

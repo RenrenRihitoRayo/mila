@@ -1,4 +1,26 @@
 
+var a = 0;
+var b = a;
+fn inc(a!) {
+    set a += 1; // the same as an inplace operation
+    return a;
+}
+set b = inc(a);
+println(is(a, b), a, b);
+
+exit();
+
+fn inc(a) {
+    sync a = a + 1;
+}
+
+var a = 0;
+inc(a)
+println(a);
+
+exit();
+
+
 
 fn subscribe(_, func) {
     func(0, as_opaque(9));

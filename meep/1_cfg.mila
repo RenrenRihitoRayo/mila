@@ -1,8 +1,8 @@
 // MEEP 1 - April 3 2026
 
 /*
-Approval: pending
-Experimentation: pending
+Approval: denied
+Experimentation: too much complexity
 */
 
 grammar Expression {

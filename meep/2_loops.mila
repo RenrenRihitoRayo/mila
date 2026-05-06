@@ -1,3 +1,12 @@
+// MEEP 2 - May 6, 2026
+
+/*
+Approval: pending
+Expiramentation: pending
+High chance of being approved due to
+proof of usefulness (seen in zig)
+*/
+
 
 while (cond):(continue expr) {
     ...

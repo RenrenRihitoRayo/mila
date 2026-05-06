@@ -1,0 +1,6 @@
+
+while (cond):(continue expr) {
+    ...
+}
+
+This is a inspiration from zig.

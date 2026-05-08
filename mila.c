@@ -3142,7 +3142,17 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
                 i++;
                 break;
             }
-            env_set_local(frame, p[i], a);
+            if (strncmp("...", p[i], 3) == 0) {
+                Value* list = call_function_str(env, "list", NULL);
+                env_set_local_raw(frame, p[i]+3, list);
+                val_release(call_function_str(env, "list.append", val_retain(list), val_retain(a), NULL));
+                for (i++; i<argc; ++i) {
+                    val_retain(call_function_str(env, "list.append", val_retain(list), val_retain(argv[i]), NULL));
+                }
+                break;
+            } else {
+                env_set_local(frame, p[i], a);
+            }
         }
         // set contextual values
         p = fnval->v.fn->contextuals;

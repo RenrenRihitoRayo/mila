@@ -215,6 +215,9 @@ typedef enum __attribute__((packed))
     UMethodFree,
     UMethodKill,
 
+    UMethodCopy, // Deep copy by default
+    UMethodCopyShallow,
+
     MethodTotalCount
 } MethodType;
 

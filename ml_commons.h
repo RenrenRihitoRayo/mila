@@ -23,3 +23,15 @@
         arr->size = new_size;\
     }\
     arr->items[arr->count++] = item;
+
+// Read entire file in one go.
+char* read_file(const char* name) {
+    FILE* fhandle = fopen(name, "r");
+    fseek(fhandle, 0, SEEK_END);
+    size_t size = ftell(fhandle);
+    char* file = (char*)malloc(sizeof(char)*size+1);
+    fseek(fhandle, 0, SEEK_SET);
+    fread(file, sizeof(char), size, fhandle);
+    fclose(fhandle);
+    return file;
+}

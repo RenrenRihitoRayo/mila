@@ -73,5 +73,10 @@ web $(targets_web): $(files_web)
 	mkdir -p build/web;:
 	emcc -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_main"]' -s EXPORTED_RUNTIME_METHODS='["FS","callMain"]' mila.c addon/ml_web.c -o ./build/web/mila.js -D EXT_WEB
 
+test-embed: embed.c
+	gcc -o embed embed.c
+	./embed
+	rm embed
+
 clean:
 	rm mila *.so test.*

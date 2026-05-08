@@ -1,0 +1,10 @@
+// MEEP 3 - May 8, 2026
+
+/*
+Approval: Approved
+Experimentation: passed
+*/
+
+fn our_prinln(...values) {
+  println(...values); // yes we also support expansion now.
+}

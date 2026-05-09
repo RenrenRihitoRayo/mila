@@ -1,6 +1,7 @@
 // This project is licensed under the GNU Affero General Public License
 #define _GNU_SOURCE
 
+#include "blr.c"
 #include "ml_dict.c"
 #include "ml_primitives.c"
 #include <stddef.h>
@@ -5967,17 +5968,26 @@ int main(int argc, char **argv)
                    env_get(g, "__mila_canonical_builtins_version")->v.i);
         }
 
-        char line[256];
+        BlrHistory hist;
+        if (blr_history_init(&hist, 100))
+        {
+            perror("blr_history_init");
+            return 1;
+        }
+
         char buffer[2048]; // accumulated snippet
         buffer[0] = 0;
 
         printf(">>> ");
         fflush(stdout);
 
-        while (fgets(line, sizeof(line), stdin))
+        char* line = NULL;
+        char* ps = ">>> ";
+        while ((line = blr_rec_read(ps, &hist)) != NULL)
         {
             // append line to buffer
             strcat(buffer, line);
+            free(line);
             fflush(stdout);
 
             // debugging
@@ -6045,13 +6055,13 @@ int main(int argc, char **argv)
                 // clear buffer
                 buffer[0] = 0;
 
-                printf(">>> ");
+                ps=">>> ";
                 fflush(stdout);
             }
             else
             {
                 // prompt for continuation
-                printf("... ");
+                ps="... ";
                 fflush(stdout);
             }
         }
@@ -6066,6 +6076,11 @@ int main(int argc, char **argv)
 
 int repr()
 {
+    BlrHistory hist;
+    if (blr_history_init(&hist, 100)) {
+        perror("blr_history_init");
+        return 1;
+    }
     // read file if provided or use built-in demo
     char *src_text = NULL;
 
@@ -6091,17 +6106,20 @@ int repr()
                env_get(g, "__mila_canonical_builtins_version")->v.i);
     }
 
-    char line[256];
     char buffer[2048]; // accumulated snippet
     buffer[0] = 0;
 
     printf(">>> ");
     fflush(stdout);
 
-    while (fgets(line, sizeof(line), stdin))
+    char* ps;
+    ps = ">>> ";
+    char* line = NULL;
+    while ((line = blr_rec_read(ps, &hist)) != NULL)
     {
         // append line to buffer
         strcat(buffer, line);
+        free(line);
         fflush(stdout);
 
         // debugging
@@ -6122,7 +6140,6 @@ int repr()
                 }
             }
             fclose(f);
-            printf(">>> ");
             fflush(stdout);
             buffer[0] = 0;
             continue;
@@ -6131,7 +6148,6 @@ int repr()
         {
             print_memory_usage();
             buffer[0] = 0;
-            printf(">>> ");
             fflush(stdout);
             continue;
         }
@@ -6160,13 +6176,13 @@ int repr()
             // clear buffer
             buffer[0] = 0;
 
-            printf(">>> ");
+            ps=">>> ";
             fflush(stdout);
         }
         else
         {
             // prompt for continuation
-            printf("... ");
+            ps="... ";
             fflush(stdout);
         }
     }

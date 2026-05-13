@@ -55,6 +55,7 @@
 
 #include "ml_primitives.c"
 #include "ml_platform_specific.c"
+#include "ml_commons.h"
 
 Value *self_free(Value *self)
 {
@@ -191,7 +192,8 @@ Value *native_input(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1)
         print_value(argv[0]);
-    else if (argc == 0);
+    else if (argc == 0)
+        ;
     else
         return verror("input(prompt): Expected 1 argument (prompt) string.\n");
 
@@ -607,7 +609,8 @@ Value *native_time_sleep(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-void sleep_micros(uint64_t microseconds) {
+void sleep_micros(uint64_t microseconds)
+{
     struct timespec ts;
     ts.tv_sec = microseconds / 1000000;
     ts.tv_nsec = (microseconds % 1000000) * 1000;
@@ -996,14 +999,14 @@ Value *istring_to_iter(Value *self)
     return vopaque(iter);
 }
 
-Value* string_genth_worker(CGenData* cgen_data)
+Value *string_genth_worker(CGenData *cgen_data)
 {
-    ThreadContext* ctx = cgen_data->ctx;
-    char* data = GET_STRING(cgen_data->data);
+    ThreadContext *ctx = cgen_data->ctx;
+    char *data = GET_STRING(cgen_data->data);
     size_t len = strlen(data);
-    for (size_t i=0; i<len; ++i)
+    for (size_t i = 0; i < len; ++i)
     {
-        Value* tmp = vstring_dup((char[]){data[i], 0});
+        Value *tmp = vstring_dup((char[]){data[i], 0});
         thread_yield(ctx, tmp);
         val_kill(tmp);
     }
@@ -1061,7 +1064,7 @@ Value *native_as_opaque(Env *e, int argc, Value **argv)
     case T_STRING:
     {
         char *ptr = NULL;
-        size_t len= strlen(GET_STRING(argv[0]));
+        size_t len = strlen(GET_STRING(argv[0]));
         ptr = (char *)mila_malloc(sizeof(char) * (len + 1));
         strncpy(ptr, GET_STRING(argv[0]), len);
         ptr[len] = 0;
@@ -1109,6 +1112,25 @@ Value *native_random(Env *env, int argc, Value **argv)
     return verror("random(lower, upper): Expected two integer arguments.");
 }
 
+Value *native_noise(Env *env, int argc, Value **argv)
+{
+    if (argc > 5 || argc < 4) return verror("noise(start, count, max, min, magnitude?): Expected at least 4 or 5 arguments.");
+    long start = GET_INTEGER(argv[0]);
+    long count = GET_INTEGER(argv[1]);
+    long max = GET_INTEGER(argv[2]);
+    long min = GET_INTEGER(argv[3]);
+    long mag = argc == 5 ? GET_INTEGER(argv[4]) : 5L;
+    
+    long* nums = (long*)malloc(sizeof(long)*count);
+    Value* arr = call_function_str(env, "array", vint(count), NULL);
+    noise(start, count, max, min, mag, nums);
+    for (long i=0; i<count; ++i) {
+        val_release(call_function_str(env, "array.set", val_retain(arr), vint(i), vint(nums[i]), NULL));
+    }
+    free(nums);
+    return arr;
+}
+
 Value *native_crandom(Env *env, int argc, Value **argv)
 {
     if (argc != 0)
@@ -1145,21 +1167,25 @@ Value *native_strftime(Env *env, int argc, Value **argv)
     return vstring_dup(buffer);
 }
 
-Value* native_vars_bind(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("vars.bind(name: \"string\"): Expected an argument");
-    Env* parent = env->parent ? env->parent : env;
-    Value* v = env_get(parent, GET_STRING(argv[0]));
-    if (!v) return verror("vars.bind(name: \"string\"): Variable %s does exist!", GET_STRING(argv[0]));
+Value *native_vars_bind(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("vars.bind(name: \"string\"): Expected an argument");
+    Env *parent = env->parent ? env->parent : env;
+    Value *v = env_get(parent, GET_STRING(argv[0]));
+    if (!v)
+        return verror("vars.bind(name: \"string\"): Variable %s does exist!", GET_STRING(argv[0]));
     env_set_local(env, GET_STRING(argv[0]), v);
     return vnull();
 }
 
 extern path_list *search_path;
-Value* native_dump_search_list(Env* env, int argc, Value** argv) {
+Value *native_dump_search_list(Env *env, int argc, Value **argv)
+{
     printf("Search Paths:\n");
-    for (int i=0; i<search_path->count; i++)
+    for (int i = 0; i < search_path->count; i++)
     {
-        if (i != search_path->count-1)
+        if (i != search_path->count - 1)
             printf("  %s,\n", search_path->items[i]);
         else
             printf("  %s\n", search_path->items[i]);
@@ -1170,23 +1196,23 @@ Value* native_dump_search_list(Env* env, int argc, Value** argv) {
 Value *native_break_point(Env *env, int argc, Value **argv)
 {
 #if defined(__x86_64__) || defined(__i386__)
-    __asm__ volatile ("int3");
+    __asm__ volatile("int3");
 
 #elif defined(__aarch64__) || defined(__arm__)
-    __asm__ volatile ("brk #0");
+    __asm__ volatile("brk #0");
 
 #elif defined(__riscv)
-    __asm__ volatile ("ebreak");
+    __asm__ volatile("ebreak");
 
 #elif defined(__powerpc__) || defined(__ppc__)
-    __asm__ volatile ("trap");
+    __asm__ volatile("trap");
 
 #elif defined(__mips__)
-    __asm__ volatile ("break");
+    __asm__ volatile("break");
 
 #else
-    /* Fallback: raise a signal that debuggers treat like a breakpoint */
-    #include <signal.h>
+/* Fallback: raise a signal that debuggers treat like a breakpoint */
+#include <signal.h>
     raise(SIGTRAP);
 #endif
     return vnull();
@@ -1244,8 +1270,10 @@ Value *native_copy(Env *env, int argc, Value **argv)
     return val_copy(argv[0]);
 }
 
-Value* native_is(Env* env, int argc, Value** argv) {
-    if (argc != 2) return verror("is(a, b): Requires two arguments");
+Value *native_is(Env *env, int argc, Value **argv)
+{
+    if (argc != 2)
+        return verror("is(a, b): Requires two arguments");
     return vbool(argv[0] == argv[1]);
 }
 
@@ -1294,6 +1322,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str", native_str);
     env_register_native(g, "random", native_random);
     env_register_native(g, "srandom", native_srandom);
+    env_register_native(g, "noise", native_noise);
     env_register_native(g, "crandom", native_crandom);
     env_register_native(g, "dump_search_paths", native_dump_search_list);
     env_register_native(g, "is", native_is);

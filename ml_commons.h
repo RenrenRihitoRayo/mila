@@ -35,3 +35,48 @@ char* read_file(const char* name) {
     fclose(fhandle);
     return file;
 }
+
+void noise(
+    long start,
+    long count,
+    long min,
+    long max,
+    long magnitude,
+    long* out
+) {
+    long current = start;
+
+    out[0] = current;
+
+    for (long i = 1; i < count; i++) {
+
+        long dir;
+
+        if (current <= min) {
+            dir = 1;
+        }
+        else if (current >= max) {
+            dir = -1;
+        }
+        else {
+            /* -1, 0, or 1 */
+            dir = (rand() % 3) - 1;
+        }
+
+        /* random jump from 0 to magnitude */
+        long jump = rand() % (magnitude + 1);
+
+        current += dir * jump;
+
+        /* clamp */
+        if (current < min) {
+            current = min;
+        }
+
+        if (current > max) {
+            current = max;
+        }
+
+        out[i] = current;
+    }
+}

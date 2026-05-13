@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 #if !(defined(__GNUC__) || defined(__clang__))
-#error "MiLa only supports GCC."
+#error "MiLa only supports GCC and Clang."
 #endif
 
 #include <stdatomic.h>
@@ -16,7 +16,7 @@
  * MiLa
  * A modern programming language
  * the smallest it can get.
- * Welcome to the MiLa Language Kernel.
+ * Welcome to the MiLa Language Implementation.
  */
 
 #include <ctype.h>

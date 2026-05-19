@@ -470,7 +470,7 @@ extern Value *parse_string(Src *s);
 extern int is_keyword_at(Src *s, const char *kw);
 char *dup_substr(Src *s, int a, int b);
 FunctionParameters *parse_param_list(Src *s, Env* env);
-Value *eval_block(Src *s, Env *env);
+Value *evwdaal_block(Src *s, Env *env);
 extern Value *eval_primary(Src *s, Env *env);
 Value *binary_op(Value *a, MethodType op, Value *b);
 int precedence_of(MethodType op);

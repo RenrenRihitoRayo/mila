@@ -896,9 +896,21 @@ char *as_c_string(Value *v)
         our_asprintf(&buffer, "%s", v->v.b ? "true" : "false");
         break;
     case T_FUNCTION:
-        our_asprintf(&buffer, "<function:%s at %p>",
-                     v->v.fn->name ? v->v.fn->name : "(lambda)", v->v.fn);
-        break;
+        {
+        char *args = mila_strdup("");
+        for (int i=0; v->v.fn->params[i]; ++i) {
+            our_asprintf(&args, "%s", v->v.fn->params[i]);
+            if (v->v.fn->defaults[i]) {
+                our_asprintf(&args, "=%s", v->v.fn->defaults[i]);
+            }
+            if (v->v.fn->params[i+1]) {
+                our_asprintf(&args, ",");
+            }
+        }
+        our_asprintf(&buffer, "<function:%s(%s) at %p>",
+                     v->v.fn->name ? v->v.fn->name : "[lambda]", args, v->v.fn);
+        free(args);
+        } break;
     case T_NATIVE:
         our_asprintf(&buffer, "<native:%s at %p>",
                      v->v.native->name ? v->v.native->name : "???",
@@ -1065,8 +1077,22 @@ int raw_print_value(Value *v)
     case T_BOOL:
         return printf("%s", v->v.b ? "true" : "false");
     case T_FUNCTION:
-        return printf("<function:%s at %p>",
-                     v->v.fn->name ? v->v.fn->name : "(lambda)", v->v.fn);
+        {
+        char *args = mila_strdup("");
+        for (int i=0; v->v.fn->params[i]; ++i) {
+            our_asprintf(&args, "%s", v->v.fn->params[i]);
+            if (v->v.fn->defaults[i]) {
+                our_asprintf(&args, "=%s", v->v.fn->defaults[i]);
+            }
+            if (v->v.fn->params[i+1]) {
+                our_asprintf(&args, ",");
+            }
+        }
+        int i = printf("<function:%s(%s) at %p>",
+                     v->v.fn->name ? v->v.fn->name : "[lambda]", args, v->v.fn);
+        free(args);
+        return i;
+        }
     case T_NATIVE:
         return printf("<native:%s at %p>",
                      v->v.native->name ? v->v.native->name : "???",
@@ -1212,7 +1238,7 @@ char *as_c_string_raw(Value *v)
         break;
     case T_FUNCTION:
         our_asprintf(&buffer, "<function:%s at %p>",
-                     v->v.fn->name ? v->v.fn->name : "(lambda)", v->v.fn);
+                     v->v.fn->name ? v->v.fn->name : "[lambda]", v->v.fn);
         break;
     case T_NATIVE:
         our_asprintf(&buffer, "<native:%s at %p>",
@@ -3474,7 +3500,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
                 env_free(frame);
                 Value *res =
                     verror("Function %s requires the contextual value `%s`",
-                           fnval->v.fn->name ? fnval->v.fn->name : "(lambda)", name);
+                           fnval->v.fn->name ? fnval->v.fn->name : "[lambda]", name);
                 mila_free(name);
                 return res;
             }
@@ -3923,7 +3949,7 @@ Value *eval_primary(Src *s, Env *env)
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
         free(params);
-        fn->v.fn->name = mila_strdup("(lambda)");
+        fn->v.fn->name = mila_strdup("[lambda]");
         return fn;
     }
     // identifier or keyword like 'null', 'true', 'false', or bare native name
@@ -4787,12 +4813,18 @@ void clean_elif_chain(Src *s)
         if (match_char(s, '('))
             skip_expr(s);
         match_char(s, ')');
-        skip_block(s);
+        if (match_char(s, '{')) skip_block(s);
+        else {
+            skip_parse_statement(s);
+        }
     }
     if (is_keyword_at(s, "else"))
     {
         s->pos += strlen("else");
-        skip_block(s);
+        if (match_char(s, '{')) skip_block(s);
+        else {
+            skip_parse_statement(s);
+        }
     }
 }
 
@@ -5321,14 +5353,18 @@ Value *eval_statement(Src *s, Env *env)
             if (truth)
             {
                 Value *res = NULL;
-                res = eval_block_raw(s, env);
+                if (match_char(s, '{')) res = eval_block_raw(s, env);
+                else res = eval_statement(s, env);
                 clean_elif_chain(s);
                 HANDLE_CONTROL(res);
             }
             else
             {
                 // skip then clause
-                skip_block(s);
+                if (match_char(s, '{')) skip_block(s);
+                else {
+                    skip_parse_statement(s);
+                }
                 // check elifs
                 while (is_keyword_at(s, "elif"))
                 {
@@ -5340,7 +5376,8 @@ Value *eval_statement(Src *s, Env *env)
                         if (is_truthy(cond))
                         {
                             Value *res = NULL;
-                            res = eval_block_raw(s, env);
+                            if (match_char(s, '{')) res = eval_block_raw(s, env);
+                            else res = eval_statement(s, env);
 
                             clean_elif_chain(s);
                             val_release(cond);
@@ -5350,7 +5387,10 @@ Value *eval_statement(Src *s, Env *env)
                         {
                             // skip elif then clause
                             val_release(cond);
-                            skip_block(s);
+                            if (match_char(s, '{')) skip_block(s);
+                            else {
+                                skip_parse_statement(s);
+                            }
                         }
                     }
                 }
@@ -5359,7 +5399,8 @@ Value *eval_statement(Src *s, Env *env)
                 {
                     s->pos += strlen("else");
                     Value *res = NULL;
-                    res = eval_block_raw(s, env);
+                    if (match_char(s, '{')) res = eval_block_raw(s, env);
+                    else res = eval_statement(s, env);
                     // check for return propagation
                     HANDLE_CONTROL(res);
                 }

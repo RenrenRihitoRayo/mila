@@ -8,11 +8,16 @@ fn count() {
     return counter;
 }
 
-
 // New update now removes the eval once on definition
-fn greet(name=default_name, additional=name) {
+fn greet(name=default_name, additional=90+90) {
     println("Hello " + name + "! " + additional);
 }
 
 greet("Ren"); // additional is Ren
 greet(); // additional is [user]
+
+object what {
+    var test = 90;
+}
+
+println(greet);

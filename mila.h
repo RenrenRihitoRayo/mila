@@ -230,12 +230,19 @@ typedef void* MethodTable;
 typedef struct
 {
     char **params;  // NULL-terminated
+    char **defaults;  // NULL-terminated
     char **contextuals; // NULL_terminated
     char *body_src; // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
     char *name;
     Env* closure;
 } FunctionV;
+
+typedef struct {
+    char** params;
+    char** defaults;
+    size_t count;
+} FunctionParameters;
 
 typedef struct
 {
@@ -393,7 +400,7 @@ Value *verror(char *message, ...);
 __attribute__((format(printf, 2, 3)))
 Value *vtagged_error(ErrorType type, char *message, ...);
 // Create a function
-Value *vfunction(char **params, char** contextuals, Env* closure, char *body_src);
+Value *vfunction(char **params, char** defaults, char** contextuals, Env* closure, char *body_src);
 // Check if a value is any numeric type
 extern int is_number(Value *v);
 // Turn any numeric type to a double
@@ -462,7 +469,7 @@ extern Value *parse_number(Src *s);
 extern Value *parse_string(Src *s);
 extern int is_keyword_at(Src *s, const char *kw);
 char *dup_substr(Src *s, int a, int b);
-char **parse_param_list(Src *s);
+FunctionParameters *parse_param_list(Src *s, Env* env);
 Value *eval_block(Src *s, Env *env);
 extern Value *eval_primary(Src *s, Env *env);
 Value *binary_op(Value *a, MethodType op, Value *b);

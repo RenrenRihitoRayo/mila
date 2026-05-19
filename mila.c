@@ -775,12 +775,13 @@ inline Value *vnative(NativeFn fn, const char *name)
     return v;
 }
 // vfunction creation
-inline Value *vfunction(char **params, char **contextuals, Env *closure,
+inline Value *vfunction(char **params, char** defaults, char **contextuals, Env *closure,
                  char *body_src)
 {
     Value *v = val_new(T_FUNCTION);
     v->v.fn = (FunctionV *)mila_malloc(sizeof(FunctionV));
     v->v.fn->params = params;
+    v->v.fn->defaults = defaults;
     v->v.fn->contextuals = contextuals;
     v->v.fn->body_src = body_src;
     v->v.fn->closure = closure;
@@ -1391,6 +1392,13 @@ inline void val_release(Value *v)
                 for (int i = 0; p[i]; ++i)
                     mila_free(p[i]);
                 mila_free(p);
+            }
+            if (v->v.fn->defaults)
+            {
+                char **d = v->v.fn->defaults;
+                for (int i = 0; d[i]; ++i)
+                    mila_free(d[i]);
+                mila_free(d);
             }
             if (v->v.fn->contextuals)
             {
@@ -2369,6 +2377,270 @@ int match_char(Src *s, char c)
     return 0;
 }
 
+// Parse-only skip functions - move position without evaluation
+
+void skip_primary(Src *s)
+{
+    skip_ws(s);
+    char c = src_peek(s);
+    
+    if (isdigit((unsigned char)c) || (c == '-' && isdigit((unsigned char)s->src[s->pos + 1])) ||
+        (c == '+' && isdigit((unsigned char)s->src[s->pos + 1]))) {
+        while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.' || 
+               src_peek(s) == 'x' || src_peek(s) == 'X' || src_peek(s) == '~' ||
+               isxdigit((unsigned char)src_peek(s))) src_get(s);
+        if (src_peek(s) == 'u' || src_peek(s) == 'U') src_get(s);
+        if (src_peek(s) == '%') src_get(s);
+    }
+    else if (c == '"') {
+        src_get(s);
+        while (!src_eof(s)) {
+            char ch = src_get(s);
+            if (ch == '"') break;
+            if (ch == '\\') src_get(s);
+        }
+    }
+    else if (c == '[') {
+        src_get(s);
+        int depth = 1;
+        while (depth > 0 && !src_eof(s)) {
+            char ch = src_get(s);
+            if (ch == '[') depth++;
+            else if (ch == ']') depth--;
+            else if (ch == '"') {
+                while (!src_eof(s)) {
+                    char x = src_get(s);
+                    if (x == '"') break;
+                    if (x == '\\') src_get(s);
+                }
+            }
+        }
+    }
+    else if (c == '(') {
+        src_get(s);
+        skip_expr(s);
+    }
+    else if (c == '{') {
+        skip_block(s);
+    }
+    else if (c == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == '{') {
+        src_get(s);
+        skip_block(s);
+    }
+    else if (is_ident_start(c)) {
+        char *id = parse_ident(s);
+        mila_free(id);
+        skip_ws(s);
+        
+        if (src_peek(s) == '(') {
+            src_get(s);
+            int depth = 1;
+            while (depth > 0 && !src_eof(s)) {
+                char ch = src_get(s);
+                if (ch == '(') depth++;
+                else if (ch == ')') depth--;
+                else if (ch == '"') {
+                    while (!src_eof(s)) {
+                        char x = src_get(s);
+                        if (x == '"') break;
+                        if (x == '\\') src_get(s);
+                    }
+                }
+            }
+        }
+        else if (src_peek(s) == '[') {
+            while (src_peek(s) == '[') {
+                src_get(s);
+                int depth = 1;
+                while (depth > 0 && !src_eof(s)) {
+                    char ch = src_get(s);
+                    if (ch == '[') depth++;
+                    else if (ch == ']') depth--;
+                    else if (ch == '"') {
+                        while (!src_eof(s)) {
+                            char x = src_get(s);
+                            if (x == '"') break;
+                            if (x == '\\') src_get(s);
+                        }
+                    }
+                }
+            }
+        }
+        else if (src_peek(s) == ':') {
+            src_get(s);
+            char *method = parse_ident(s);
+            mila_free(method);
+            
+            if (src_peek(s) == '(') {
+                src_get(s);
+                int depth = 1;
+                while (depth > 0 && !src_eof(s)) {
+                    char ch = src_get(s);
+                    if (ch == '(') depth++;
+                    else if (ch == ')') depth--;
+                    else if (ch == '"') {
+                        while (!src_eof(s)) {
+                            char x = src_get(s);
+                            if (x == '"') break;
+                            if (x == '\\') src_get(s);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void skip_expr_prec(Src *s, int min_prec)
+{
+    skip_primary(s);
+    
+    for (;;) {
+        int saved_pos = s->pos;
+        skip_ws(s);
+        char a = src_peek(s);
+        if (a == '\0') return;
+        
+        char b = s->src[s->pos + 1];
+        MethodType op = MethodNone;
+        int prec = 0;
+        
+        if (a == '|' && b == '|') { s->pos += 2; op = BMethodOr; prec = 2; }
+        else if (a == '&' && b == '&') { s->pos += 2; op = BMethodAnd; prec = 1; }
+        else if (a == '=' && b == '=') { s->pos += 2; op = BMethodEq; prec = 4; }
+        else if (a == '!' && b == '=') { s->pos += 2; op = BMethodNe; prec = 4; }
+        else if (a == '<' && b == '=') { s->pos += 2; op = BMethodLE; prec = 6; }
+        else if (a == '>' && b == '=') { s->pos += 2; op = BMethodGE; prec = 6; }
+        else if (a == '>' && b == '>') { s->pos += 2; op = BMethodRshift; prec = 5; }
+        else if (a == '<' && b == '<') { s->pos += 2; op = BMethodLshift; prec = 5; }
+        else if (a == '?' && b == '?') { s->pos += 2; op = BMethodDefault; prec = 3; }
+        else if (a == '=' && b == '>') { s->pos += 2; op = BMethodGlob; prec = 9; }
+        else if (a == '+') { s->pos++; op = BMethodAdd; prec = 7; }
+        else if (a == '-') { s->pos++; op = BMethodSub; prec = 7; }
+        else if (a == '*') { s->pos++; op = BMethodMul; prec = 8; }
+        else if (a == '/') { s->pos++; op = BMethodDiv; prec = 8; }
+        else if (a == '%') { s->pos++; op = BMethodMod; prec = 8; }
+        else if (a == '<') { s->pos++; op = BMethodLess; prec = 6; }
+        else if (a == '>') { s->pos++; op = BMethodGreat; prec = 6; }
+        
+        if (op == MethodNone) {
+            s->pos = saved_pos;
+            return;
+        }
+        
+        if (prec < min_prec) {
+            s->pos = saved_pos;
+            return;
+        }
+        
+        skip_expr_prec(s, prec + 1);
+    }
+}
+
+void skip_parse_expr(Src *s)
+{
+    skip_expr_prec(s, 1);
+}
+
+void skip_parse_statement(Src *s)
+{
+    skip_ws(s);
+    
+    // Check keywords and skip appropriately
+    if (is_keyword_at(s, "var")) {
+        s->pos += 3;
+        char *id = parse_ident(s);
+        mila_free(id);
+        if (match_char(s, ':')) skip_parse_expr(s);
+        if (match_char(s, '=')) skip_parse_expr(s);
+        match_char(s, ';');
+    }
+    else if (is_keyword_at(s, "set")) {
+        s->pos += 3;
+        char *id = parse_ident(s);
+        mila_free(id);
+        while (match_char(s, '[')) skip_parse_expr(s);
+        if (match_char(s, '+') || match_char(s, '-') || match_char(s, '*') ||
+            match_char(s, '/') || match_char(s, '%')) skip_ws(s);
+        if (match_char(s, '=')) skip_parse_expr(s);
+        else if (match_char(s, ':')) skip_parse_statement(s);
+        match_char(s, ';');
+    }
+    else if (is_keyword_at(s, "if")) {
+        s->pos += 2;
+        if (match_char(s, '(')) skip_expr(s);
+        skip_block(s);
+        while (is_keyword_at(s, "elif")) {
+            s->pos += 4;
+            if (match_char(s, '(')) skip_expr(s);
+            skip_block(s);
+        }
+        if (is_keyword_at(s, "else")) {
+            s->pos += 4;
+            skip_block(s);
+        }
+    }
+    else if (is_keyword_at(s, "while")) {
+        s->pos += 5;
+        if (match_char(s, '(')) skip_expr(s);
+        skip_block(s);
+    }
+    else if (is_keyword_at(s, "foreach")) {
+        s->pos += 7;
+        char *id = parse_ident(s);
+        mila_free(id);
+        if (match_char(s, ':')) skip_parse_expr(s);
+        skip_block(s);
+    }
+    else if (is_keyword_at(s, "fn")) {
+        s->pos += 2;
+        char *name = parse_ident(s);
+        mila_free(name);
+        if (match_char(s, '(')) {
+            while (!match_char(s, ')')) {
+                parse_ident(s);
+                if (match_char(s, ':')) skip_parse_expr(s);
+                if (match_char(s, '=')) skip_parse_expr(s);
+                match_char(s, ',');
+            }
+        }
+        if (match_char(s, '[')) {
+            while (!match_char(s, ']')) {
+                parse_ident(s);
+                match_char(s, ',');
+            }
+        }
+        if (match_char(s, ':')) {
+            if (match_char(s, '[')) {
+                while (!match_char(s, ']')) {
+                    parse_ident(s);
+                    match_char(s, ',');
+                }
+            }
+        }
+        if (is_keyword_at(s, "->")) {
+            s->pos += 2;
+            if (src_peek(s) == '"') {
+                src_get(s);
+                while (!src_eof(s) && src_get(s) != '"');
+            }
+        }
+        skip_block(s);
+    }
+    else if (is_keyword_at(s, "return")) {
+        s->pos += 6;
+        skip_parse_expr(s);
+        match_char(s, ';');
+    }
+    else if (src_peek(s) == '{') {
+        skip_block(s);
+    }
+    else {
+        skip_parse_expr(s);
+        match_char(s, ';');
+    }
+}
+
 int is_ident_start(char c)
 {
     return isalpha((unsigned char)c) || c == '_' || c == '.' || c == '\'';
@@ -2813,21 +3085,29 @@ char *dup_substr(Src *s, int a, int b)
 }
 
 // parse comma-separated identifiers (for parameters)
-char **parse_param_list(Src *s)
+FunctionParameters *parse_param_list(Src *s, Env* env)
 {
     skip_ws(s);
     if (!match_char(s, '('))
         return NULL;
     skip_ws(s);
     // empty
+    FunctionParameters* fnp = (FunctionParameters*)mila_malloc(sizeof(FunctionParameters));
+    char* buffer = NULL;
+    fnp->count = 0;
     if (match_char(s, ')'))
     {
         char **p = mila_malloc(sizeof(char *));
+        char **d = mila_malloc(sizeof(char *));
         p[0] = NULL;
-        return p;
+        d[0] = NULL;
+        fnp->params = p;
+        fnp->defaults = d;
+        return fnp;
     }
     // read identifiers
     char **arr = NULL;
+    char **def = NULL;
     int cnt = 0;
     for (;;)
     {
@@ -2847,16 +3127,33 @@ char **parse_param_list(Src *s)
             // ignore types for now
             val_kill(type);
         }
+        if (match_char(s, '='))
+        {
+            size_t old_pos = s->pos;
+            skip_parse_expr(s);
+            size_t new_pos = s->pos;
+            size_t len = new_pos - old_pos + 1;
+            buffer = (char*)mila_malloc(sizeof(char)*len);
+            strncpy(buffer, s->src+old_pos, len);
+            buffer[len-1] = '\0';
+        } else
+            buffer = NULL;
         arr = mila_realloc(arr, sizeof(char *) * (cnt + 2));
+        def = mila_realloc(def, sizeof(char *) * (cnt + 2));
         arr[cnt++] = id;
+        def[cnt-1] = buffer;
         arr[cnt] = NULL;
+        def[cnt] = NULL;
         if (match_char(s, ','))
             continue;
         if (match_char(s, ')'))
             break;
         break;
     }
-    return arr;
+    fnp->params = arr;
+    fnp->defaults = def;
+    fnp->count = cnt-1;
+    return fnp;
 }
 
 char **parse_context_list(Src *s)
@@ -3140,6 +3437,10 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             Value *a = (i < argc) ? argv[i] : NULL;
             if (a == NULL)
             {
+                for (size_t j=argc; fnval->v.fn->defaults[j]; ++j)
+                {
+                    env_set_raw(frame, strncmp("...", p[j], 3) != 0 ? p[j] : p[j]+3, eval_str(fnval->v.fn->defaults[j], env));
+                }
                 i++;
                 break;
             }
@@ -3536,7 +3837,7 @@ Value *eval_primary(Src *s, Env *env)
         // consume keyword
         s->pos += strlen("fn");
         // parse params
-        char **params = parse_param_list(s);
+        FunctionParameters *params = parse_param_list(s, env);
         char **contextuals = parse_context_list(s);
         char **names;
         Env *closure = env_new(NULL);
@@ -3564,9 +3865,10 @@ Value *eval_primary(Src *s, Env *env)
             else
             {
                 env_free(closure);
-                for (int i = 0; params[i]; ++i)
+                for (int i = 0; params->params[i]; ++i)
                 {
-                    mila_free(params[i]);
+                    mila_free(params->params[i]);
+                    mila_free(params->defaults[i]);
                 }
                 mila_free(params);
                 return vtagged_error(E_SYNTAX_ERROR,
@@ -3619,7 +3921,8 @@ Value *eval_primary(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params, contextuals, closure, body);
+        Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
+        free(params);
         fn->v.fn->name = mila_strdup("(lambda)");
         return fn;
     }
@@ -5450,7 +5753,7 @@ Value *eval_statement(Src *s, Env *env)
         char *name = parse_ident(s);
         if (!name)
             return verror("Function needs a name!");
-        char **params = parse_param_list(s);
+        FunctionParameters *params = parse_param_list(s, env);
         char **contextuals = parse_context_list(s);
         char **names;
         Env *closure = env_new(NULL);
@@ -5478,9 +5781,10 @@ Value *eval_statement(Src *s, Env *env)
             else
             {
                 env_free(closure);
-                for (int i = 0; params[i]; ++i)
+                for (int i = 0; params->params[i]; ++i)
                 {
-                    mila_free(params[i]);
+                    mila_free(params->params[i]);
+                    mila_free(params->defaults[i]);
                 }
                 mila_free(params);
                 mila_free(name);
@@ -5493,9 +5797,10 @@ Value *eval_statement(Src *s, Env *env)
         if (src_peek(s) != '{')
         {
             env_free(closure);
-            for (int i = 0; params[i]; ++i)
+            for (int i = 0; params->params[i]; ++i)
             {
-                mila_free(params[i]);
+                mila_free(params->params[i]);
+                mila_free(params->defaults[i]);
             }
             mila_free(params);
             mila_free(name);
@@ -5541,7 +5846,8 @@ Value *eval_statement(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params, contextuals, closure, body);
+        Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
+        free(params);
         if (!fn->v.fn->name)
             fn->v.fn->name = mila_strdup(name);
         env_set_local(env, name, fn);

@@ -1,5 +1,18 @@
 
-println({
-    var temp = 90;
-    return "Hello, world!";
-});
+var default_name = "[user]";
+
+var counter = 0;
+
+fn count() {
+    set counter += 1;
+    return counter;
+}
+
+
+// New update now removes the eval once on definition
+fn greet(name=default_name, additional=count()) {
+    println("Hello " + name + "! " + additional);
+}
+
+greet("Ren"); // additional is 1
+greet(); // additional is 2

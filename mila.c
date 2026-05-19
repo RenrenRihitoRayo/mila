@@ -3439,7 +3439,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             {
                 for (size_t j=argc; fnval->v.fn->defaults[j]; ++j)
                 {
-                    env_set_raw(frame, strncmp("...", p[j], 3) != 0 ? p[j] : p[j]+3, eval_str(fnval->v.fn->defaults[j], env));
+                    env_set_raw(frame, strncmp("...", p[j], 3) != 0 ? p[j] : p[j]+3, eval_str(fnval->v.fn->defaults[j], frame));
                 }
                 i++;
                 break;

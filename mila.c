@@ -1311,6 +1311,9 @@ char *as_c_string_repr_raw(Value *v)
             case '\f':
                 our_asprintf(&buffer, "\\f");
                 break;
+            case '"':
+                our_asprintf(&buffer, "\\\"");
+                break;
             default:
                 if (isprint(GET_STRING(v)[i]))
                     our_asprintf(&buffer, "%c", GET_STRING(v)[i]);
@@ -2732,7 +2735,7 @@ int skip_parse_source(Src* s) {
 void syn_check(Src* s) {
     if (skip_parse_source(s)) {
         size_t line = 1;
-        for (int i=0; i<s->pos; ++i)
+        for (size_t i=0; i<s->pos; ++i)
             if (s->src[i] == '\n')
                 line++;
         printf("Syntax Error on line: %zu\n", line);
@@ -6271,8 +6274,14 @@ int main(int argc, char **argv)
             printf("MiLa - Info\n"
                    "Version: 1.0\n\n"
                    "Variable size:\n"
-                   "  %lu Bytes\n"
-                   "  %lu Bytes for worst case (boxed value is not counted)\n"
+                   "  %lu Bytes\n "
+                   "   For types:\n"
+                   "     strings, int, bint,\n"
+                   "     uint, float, bfloat,\n"
+                   "     functions, and native functions\n"
+                   "  %lu Bytes for types with user defined overloads\n"
+                   "    For types:\n"
+                   "      arrays, lists, and dictionaries\n"
                    "Estimated memory:\n"
                    "  t * %lu + n * 40 Bytes\n"
                    "  n = # of vars\n"
@@ -6329,10 +6338,6 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        // argv handling is the only part that touches the builtins.
-
-        // make sure we are using the bundled canonical builtins
-        // otherwise set argv as __argv with the type opaque
         env_set_raw(g, "argc", vint(argc-1));
         array = call_function_str(g, "array", vint(argc - 1), NULL);
         for (int i = 1; i < argc; i++)
@@ -6501,6 +6506,7 @@ int main(int argc, char **argv)
                 fflush(stdout);
             }
         }
+        blr_history_free(&hist);
         mila_threads_cleanup();
         mila_deinit(g);
     }

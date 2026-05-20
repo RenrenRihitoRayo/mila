@@ -761,7 +761,7 @@ Value *native_str_slice(Env *env, int argc, Value **argv)
     (void)env;
     (void)argc;
     if (!match_types(argv, T_STRING, T_INT, T_INT, T_ARG_END))
-        return vnull();
+        return verror("str.slice(str, index, len): Expected 3 arguments.");
     return vstring_slice(argv[0]->v.s, argv[1]->v.i, argv[2]->v.i);
 }
 
@@ -836,4 +836,52 @@ Value* native_str_join(Env* env, int argc, Value** argv) {
         free(vstr);
     }
     return vstring_take(string);
+}
+
+Value* native_str_startsw(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("str.startswith(str, pref): Expected 2 arguments!");
+    char* str = GET_STRING(argv[0]);
+    char* prefix = GET_STRING(argv[1]);
+    if (strncmp(prefix, str, strlen(prefix)) == 0) return vbool(1);
+    return vbool(0);
+}
+
+Value* native_str_endsw(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("str.endswith(str, suf): Expected 2 arguments!");
+    char* str = GET_STRING(argv[0]);
+    char* prefix = GET_STRING(argv[1]);
+    if (strcmp(prefix, str+(strlen(str)-strlen(prefix))) == 0) return vbool(1);
+    return vbool(0);
+}
+
+Value* native_str_contains(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("str.contains(needle, haystack): Expected 2 arguments!");
+    char* needle = GET_STRING(argv[0]);
+    char* haystack = GET_STRING(argv[1]);
+    if (strstr(haystack, needle)) return vbool(1);
+    return vbool(0);
+}
+
+Value* native_str_contains_caseless(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("str.contains(needle, haystack): Expected 2 arguments!");
+    char* needle = GET_STRING(argv[0]);
+    char* haystack = GET_STRING(argv[1]);
+    if (strcasestr(haystack, needle)) return vbool(1);
+    return vbool(0);
+}
+
+Value* native_str_find(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("str.caseless_find(needle, haystack): Expected 2 arguments!");
+    char* needle = GET_STRING(argv[0]);
+    char* haystack = GET_STRING(argv[1]);
+    long index = strstr(haystack, needle) - haystack;
+    return vint(index);
+}
+
+Value* native_str_caseless_find(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("str.find(needle, haystack): Expected 2 arguments!");
+    char* needle = GET_STRING(argv[0]);
+    char* haystack = GET_STRING(argv[1]);
+    long index = strcasestr(haystack, needle) - haystack;
+    return vint(index);
 }

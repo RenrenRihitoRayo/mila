@@ -1434,6 +1434,13 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.pop_b", native_str_pop_end);
     env_register_native(g, "str.split", native_str_split);
     env_register_native(g, "str.join", native_str_join);
+    env_register_native(g, "str.startswith", native_str_startsw);
+    env_register_native(g, "str.endswith", native_str_endsw);
+    env_register_native(g, "str.contains", native_str_contains);
+    env_register_native(g, "str.caseless_contains", native_str_contains_caseless);
+    env_register_native(g, "str.find", native_str_find);
+    env_register_native(g, "str.caseless_find", native_str_caseless_find);
+
     env_register_native(g, "istring", native_istring);
     // === ASCII
     env_register_native(g, "ascii.from_int", native_ascii_from_int);

@@ -59,7 +59,6 @@ fn Clamp(val, min, max) {
         return val;
     }
 }
-
 fn distance(v1, v2) {
     var dx = Vector2.get_x(v2) - Vector2.get_x(v1);
     var dy = Vector2.get_y(v2) - Vector2.get_y(v1);
@@ -142,6 +141,7 @@ while (not(WindowShouldClose()))
         }
     }
 
+
     DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, BLACK);
 
     // Yes addition and concat is the same.
@@ -150,8 +150,7 @@ while (not(WindowShouldClose()))
     var current_fps = GetFPS();
     if (current_fps > peak_fps) {
         set peak_fps = current_fps;
-    }
-    elif (current_fps < peak_fps * 0.8) {
+    } elif (current_fps < peak_fps * 0.8) {
         set peak_fps = current_fps; // reset peak_fps
     }
 

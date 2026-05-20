@@ -4888,7 +4888,10 @@ void clean_elif_chain(Src *s)
         if (match_char(s, '('))
             skip_expr(s);
         match_char(s, ')');
-        if (match_char(s, '{')) skip_block(s);
+        if (match_char(s, '{')) {
+            s->pos--;
+            skip_block(s);
+        }
         else {
             skip_parse_statement(s);
         }
@@ -4896,7 +4899,10 @@ void clean_elif_chain(Src *s)
     if (is_keyword_at(s, "else"))
     {
         s->pos += strlen("else");
-        if (match_char(s, '{')) skip_block(s);
+        if (match_char(s, '{')) {
+            s->pos--;
+            skip_block(s);
+        }
         else {
             skip_parse_statement(s);
         }
@@ -5428,7 +5434,10 @@ Value *eval_statement(Src *s, Env *env)
             if (truth)
             {
                 Value *res = NULL;
-                if (match_char(s, '{')) res = eval_block_raw(s, env);
+                if (match_char(s, '{')){
+                    s->pos--;
+                    res = eval_block_raw(s, env);
+                }
                 else res = eval_statement(s, env);
                 clean_elif_chain(s);
                 HANDLE_CONTROL(res);
@@ -5436,7 +5445,10 @@ Value *eval_statement(Src *s, Env *env)
             else
             {
                 // skip then clause
-                if (match_char(s, '{')) skip_block(s);
+                if (match_char(s, '{')) {
+                    s->pos--;
+                    skip_block(s);
+                }
                 else {
                     skip_parse_statement(s);
                 }
@@ -5451,7 +5463,10 @@ Value *eval_statement(Src *s, Env *env)
                         if (is_truthy(cond))
                         {
                             Value *res = NULL;
-                            if (match_char(s, '{')) res = eval_block_raw(s, env);
+                            if (match_char(s, '{')) {
+                                s->pos--;
+                                res = eval_block_raw(s, env);
+                            }
                             else res = eval_statement(s, env);
 
                             clean_elif_chain(s);
@@ -5462,7 +5477,10 @@ Value *eval_statement(Src *s, Env *env)
                         {
                             // skip elif then clause
                             val_release(cond);
-                            if (match_char(s, '{')) skip_block(s);
+                            if (match_char(s, '{')) {
+                                s->pos--;
+                                skip_block(s);
+                            }
                             else {
                                 skip_parse_statement(s);
                             }
@@ -5474,7 +5492,10 @@ Value *eval_statement(Src *s, Env *env)
                 {
                     s->pos += strlen("else");
                     Value *res = NULL;
-                    if (match_char(s, '{')) res = eval_block_raw(s, env);
+                    if (match_char(s, '{')) {
+                        s->pos--;
+                        res = eval_block_raw(s, env);
+                    }
                     else res = eval_statement(s, env);
                     // check for return propagation
                     HANDLE_CONTROL(res);

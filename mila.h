@@ -175,8 +175,8 @@ extern int MILA_TYPE_COUNT;
 #endif
 
 // each of these methods may be reffered to as
-// type<method name>
-// like array<UMethodToIter>
+// type{method name}
+// like array{UMethodToIter}
 // or simple UMethodToIter
 typedef enum __attribute__((packed))
 {
@@ -470,7 +470,7 @@ extern Value *parse_string(Src *s);
 extern int is_keyword_at(Src *s, const char *kw);
 char *dup_substr(Src *s, int a, int b);
 FunctionParameters *parse_param_list(Src *s, Env* env);
-Value *evwdaal_block(Src *s, Env *env);
+Value *eval_block(Src *s, Env *env);
 extern Value *eval_primary(Src *s, Env *env);
 Value *binary_op(Value *a, MethodType op, Value *b);
 int precedence_of(MethodType op);
@@ -496,6 +496,9 @@ double get_unix_timestamp();
 char *read_input(void);
 int load_library(Env *env, const char *libpath);
 void mila_add_atexit(Value* fn);
+int skip_parse_block(Src* s);
+int skip_parse_statement(Src* s);
+int skip_parse_expr(Src* s);
 
 // Initialize a minimal environment for a MiLa script
 // This will automatically inject built ins

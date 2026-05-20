@@ -248,6 +248,11 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
 
 Value* val_copy(Value *src)
 {
+    if (src->method_table && src->method_table[UMethodCopy])
+        return ((unary_method)src->method_table[UMethodCopy])(src);
+    if (src->method_table && src->method_table[UMethodCopyShallow])
+        return ((unary_method)src->method_table[UMethodCopyShallow])(src);
+
     if (!src) return NULL;
 
     Value *copy = mila_malloc(sizeof(Value));
@@ -395,9 +400,10 @@ inline int is_truthy(Value *value)
     case T_OPAQUE: return GET_OPAQUE(value) ? 1 : 0;
     case T_BOOL: return GET_BOOL(value) ? 1 : 0;
     case T_STRING: return strlen(GET_STRING(value)) ? 1 : 0;
+    case T_FUNCTION: case T_NATIVE: return 1;
     default:;
     }
-    return 1;
+    return 0;
 }
 
 int match_range(const char **pat, char c)
@@ -2405,7 +2411,7 @@ int match_char(Src *s, char c)
 
 // Parse-only skip functions - move position without evaluation
 
-void skip_primary(Src *s)
+int skip_primary(Src *s)
 {
     skip_ws(s);
     char c = src_peek(s);
@@ -2417,6 +2423,7 @@ void skip_primary(Src *s)
                isxdigit((unsigned char)src_peek(s))) src_get(s);
         if (src_peek(s) == 'u' || src_peek(s) == 'U') src_get(s);
         if (src_peek(s) == '%') src_get(s);
+        return 0;
     }
     else if (c == '"') {
         src_get(s);
@@ -2425,6 +2432,7 @@ void skip_primary(Src *s)
             if (ch == '"') break;
             if (ch == '\\') src_get(s);
         }
+        return 0;
     }
     else if (c == '[') {
         src_get(s);
@@ -2441,17 +2449,18 @@ void skip_primary(Src *s)
                 }
             }
         }
+        return 0;
     }
     else if (c == '(') {
         src_get(s);
-        skip_expr(s);
+        return skip_parse_expr(s);
     }
     else if (c == '{') {
-        skip_block(s);
+        return skip_parse_block(s);
     }
     else if (c == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == '{') {
         src_get(s);
-        skip_block(s);
+        return skip_parse_block(s);
     }
     else if (is_ident_start(c)) {
         char *id = parse_ident(s);
@@ -2473,6 +2482,8 @@ void skip_primary(Src *s)
                     }
                 }
             }
+            if (depth) return 1;
+            return 0;
         }
         else if (src_peek(s) == '[') {
             while (src_peek(s) == '[') {
@@ -2490,7 +2501,9 @@ void skip_primary(Src *s)
                         }
                     }
                 }
+                if (depth) return 1;
             }
+            return 0;
         }
         else if (src_peek(s) == ':') {
             src_get(s);
@@ -2512,20 +2525,26 @@ void skip_primary(Src *s)
                         }
                     }
                 }
-            }
+                return depth ? 1 : 0;
+            } else
+                return 1;
+            return 0;
         }
+        return 0; // variable read
     }
+    return 1;
 }
 
-void skip_expr_prec(Src *s, int min_prec)
+int skip_expr_prec(Src *s, int min_prec)
 {
-    skip_primary(s);
+    int i = skip_primary(s);
+    if (i) return i;
     
     for (;;) {
         int saved_pos = s->pos;
         skip_ws(s);
         char a = src_peek(s);
-        if (a == '\0') return;
+        if (a == '\0') return 0;
         
         char b = s->src[s->pos + 1];
         MethodType op = MethodNone;
@@ -2551,72 +2570,88 @@ void skip_expr_prec(Src *s, int min_prec)
         
         if (op == MethodNone) {
             s->pos = saved_pos;
-            return;
+            return 0;
         }
         
         if (prec < min_prec) {
             s->pos = saved_pos;
-            return;
+            return 0;
         }
         
-        skip_expr_prec(s, prec + 1);
+        return skip_expr_prec(s, prec + 1);
     }
 }
 
-void skip_parse_expr(Src *s)
+int skip_parse_expr(Src *s)
 {
-    skip_expr_prec(s, 1);
+    return skip_expr_prec(s, 1);
 }
 
-void skip_parse_statement(Src *s)
+int skip_parse_statement(Src *s)
 {
     skip_ws(s);
     
     // Check keywords and skip appropriately
+    int is_err = 0;
     if (is_keyword_at(s, "var")) {
         s->pos += 3;
         char *id = parse_ident(s);
         mila_free(id);
-        if (match_char(s, ':')) skip_parse_expr(s);
-        if (match_char(s, '=')) skip_parse_expr(s);
+        if (match_char(s, ':')) is_err = skip_parse_expr(s);
+        if (match_char(s, '=')) is_err = skip_parse_expr(s);
         match_char(s, ';');
+        return is_err;
     }
     else if (is_keyword_at(s, "set")) {
         s->pos += 3;
         char *id = parse_ident(s);
         mila_free(id);
-        while (match_char(s, '[')) skip_parse_expr(s);
+        while (match_char(s, '[')) is_err = skip_parse_expr(s);
         if (match_char(s, '+') || match_char(s, '-') || match_char(s, '*') ||
             match_char(s, '/') || match_char(s, '%')) skip_ws(s);
-        if (match_char(s, '=')) skip_parse_expr(s);
-        else if (match_char(s, ':')) skip_parse_statement(s);
+        if (match_char(s, '=')) is_err = skip_parse_expr(s);
+        else if (match_char(s, ':')) is_err = skip_parse_statement(s);
         match_char(s, ';');
+        return is_err;
     }
     else if (is_keyword_at(s, "if")) {
         s->pos += 2;
-        if (match_char(s, '(')) skip_expr(s);
-        skip_block(s);
+        if (match_char(s, '(')) is_err = skip_parse_expr(s);
+        else return 1;
+        if (match_char(s, '{')) is_err = skip_parse_block(s);
+        else is_err = skip_parse_statement(s);
+        if (is_err) return is_err;
         while (is_keyword_at(s, "elif")) {
             s->pos += 4;
-            if (match_char(s, '(')) skip_expr(s);
-            skip_block(s);
+            if (match_char(s, '(')) is_err = skip_parse_expr(s);
+            else return 1;
+            if (match_char(s, '{')) is_err = skip_parse_block(s);
+            else is_err = skip_parse_statement(s);
+            if (is_err) return is_err;
         }
         if (is_keyword_at(s, "else")) {
             s->pos += 4;
-            skip_block(s);
+            if (match_char(s, '{'))
+                is_err = skip_parse_block(s);
+            else is_err = skip_parse_statement(s);
         }
+        return is_err;
     }
     else if (is_keyword_at(s, "while")) {
         s->pos += 5;
         if (match_char(s, '(')) skip_expr(s);
+        else return 1;
         skip_block(s);
+        return 0;
     }
     else if (is_keyword_at(s, "foreach")) {
         s->pos += 7;
         char *id = parse_ident(s);
         mila_free(id);
         if (match_char(s, ':')) skip_parse_expr(s);
+        else return 1;
         skip_block(s);
+        return 0;
     }
     else if (is_keyword_at(s, "fn")) {
         s->pos += 2;
@@ -2651,20 +2686,59 @@ void skip_parse_statement(Src *s)
                 while (!src_eof(s) && src_get(s) != '"');
             }
         }
-        skip_block(s);
+        if (match_char(s, '{')) is_err = skip_parse_block(s);
+        else is_err = skip_parse_statement(s);
+        return is_err;
     }
     else if (is_keyword_at(s, "return")) {
         s->pos += 6;
         skip_parse_expr(s);
         match_char(s, ';');
+        return 0;
     }
     else if (src_peek(s) == '{') {
         skip_block(s);
+        return 0;
     }
     else {
-        skip_parse_expr(s);
+        is_err = skip_parse_expr(s);
         match_char(s, ';');
+        return is_err;
     }
+    return 0;
+}
+
+int skip_parse_block(Src* s) {
+    if (!match_char(s, '{')) return 1;
+    while (!match_char(s, '}'))
+    {
+        int i = skip_parse_statement(s);
+        if (i) return i;
+    }
+    return 0;
+}
+
+int skip_parse_source(Src* s) {
+    while (s->pos < s->len)
+    {
+        int i = skip_parse_statement(s);
+        if (i) return i;
+    }
+    return 0;
+}
+
+// FINALLY
+// Still incomplete and has bugs.
+void syn_check(Src* s) {
+    if (skip_parse_source(s)) {
+        size_t line = 1;
+        for (int i=0; i<s->pos; ++i)
+            if (s->src[i] == '\n')
+                line++;
+        printf("Syntax Error on line: %zu\n", line);
+    }
+    else
+        printf("Success!\n");
 }
 
 int is_ident_start(char c)
@@ -3475,7 +3549,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
                 env_set_local_raw(frame, p[i]+3, list);
                 val_release(call_function_str(env, "list.append", val_retain(list), val_retain(a), NULL));
                 for (i++; i<argc; ++i) {
-                    val_retain(call_function_str(env, "list.append", val_retain(list), val_retain(argv[i]), NULL));
+                    val_release(call_function_str(env, "list.append", val_retain(list), val_retain(argv[i]), NULL));
                 }
                 break;
             } else {
@@ -3518,7 +3592,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
         Src *child = src_new(fnval->v.fn->body_src);
         // position should start at 0 for the body; body is a block (starts with
         // '{') Evaluate block using the new frame
-        Value *res = eval_block(child, frame);
+        Value *res = eval_source(child, frame);
         src_free(child);
         env_free(frame);
         HANDLE_CONTROL(res);
@@ -3603,7 +3677,7 @@ Value *eval_primary(Src *s, Env *env)
                     E_SYNTAX_ERROR,
                     "Expected a %s or closing bracket!\nAt list `%.*s`",
                     is_dict && argc % 2 ? "colon" : "comma",
-                    len, s->src + start);
+                    len, s->src + start - 1);
             }
         } else {
             src_get(s);
@@ -3903,41 +3977,42 @@ Value *eval_primary(Src *s, Env *env)
         }
         skip_ws(s);
         // body is block; extract substring from '{' to matching '}'
-        if (src_peek(s) != '{')
-        {
-            // error: expected body
-            return verror("Body wasnt found.");
-        }
-        // find matching brace (we will copy out body)
-        int depth = 0;
         size_t start = s->pos;
         size_t i = s->pos;
-        for (; i < s->len; ++i)
+        if (src_peek(s) == '{')
         {
-            char ch = s->src[i];
-            if (ch == '{')
-                depth++;
-            else if (ch == '}')
+            int depth = 0;
+            // find matching brace (we will copy out body)
+            for (; i < s->len; ++i)
             {
-                depth--;
-                if (depth == 0)
+                char ch = s->src[i];
+                if (ch == '{')
+                    depth++;
+                else if (ch == '}')
                 {
-                    i++;
-                    break;
-                }
-            }
-            else if (ch == '"')
-            {
-                // skip string literal
-                i++;
-                while (i < s->len && s->src[i] != '"')
-                {
-                    if (s->src[i] == '\\' && i + 1 < s->len)
-                        i += 2;
-                    else
+                    depth--;
+                    if (depth == 0)
+                    {
                         i++;
+                        break;
+                    }
+                }
+                else if (ch == '"')
+                {
+                    // skip string literal
+                    i++;
+                    while (i < s->len && s->src[i] != '"')
+                    {
+                        if (s->src[i] == '\\' && i + 1 < s->len)
+                            i += 2;
+                        else
+                            i++;
+                    }
                 }
             }
+        } else {
+            skip_parse_statement(s);
+            i = s->pos;
         }
         if (i > s->len)
             i = s->len;
@@ -5835,49 +5910,42 @@ Value *eval_statement(Src *s, Env *env)
         }
         skip_ws(s);
         // body is block; extract substring from '{' to matching '}'
-        if (src_peek(s) != '{')
-        {
-            env_free(closure);
-            for (int i = 0; params->params[i]; ++i)
-            {
-                mila_free(params->params[i]);
-                mila_free(params->defaults[i]);
-            }
-            mila_free(params);
-            mila_free(name);
-            // error: expected body
-            return verror("Body wasnt found.");
-        }
-        // find matching brace (we will copy out body)
         int depth = 0;
         size_t start = s->pos;
         size_t i = s->pos;
-        for (; i < s->len; ++i)
+        if (src_peek(s) == '{')
         {
-            char ch = s->src[i];
-            if (ch == '{')
-                depth++;
-            else if (ch == '}')
+            // find matching brace (we will copy out body)
+            for (; i < s->len; ++i)
             {
-                depth--;
-                if (depth == 0)
+                char ch = s->src[i];
+                if (ch == '{')
+                    depth++;
+                else if (ch == '}')
                 {
-                    i++;
-                    break;
-                }
-            }
-            else if (ch == '"')
-            {
-                // skip string literal
-                i++;
-                while (i < s->len && s->src[i] != '"')
-                {
-                    if (s->src[i] == '\\' && i + 1 < s->len)
-                        i += 2;
-                    else
+                    depth--;
+                    if (depth == 0)
+                    {
                         i++;
+                        break;
+                    }
+                }
+                else if (ch == '"')
+                {
+                    // skip string literal
+                    i++;
+                    while (i < s->len && s->src[i] != '"')
+                    {
+                        if (s->src[i] == '\\' && i + 1 < s->len)
+                            i += 2;
+                        else
+                            i++;
+                    }
                 }
             }
+        } else {
+            skip_parse_statement(s);
+            i = s->pos;
         }
         if (i > s->len)
             i = s->len;

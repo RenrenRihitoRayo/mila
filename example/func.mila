@@ -9,7 +9,7 @@ fn count() {
 }
 
 // New update now removes the eval once on definition
-fn greet(name=default_name, additional=90+90) {
+fn greet(name=default_name, additional=name) {
     println("Hello " + name + "! " + additional);
 }
 
@@ -17,7 +17,11 @@ greet("Ren"); // additional is Ren
 greet(); // additional is [user]
 
 object what {
-    var test = 90;
+    fn get_test(self) {
+        return self["test"];
+    }
 }
 
-println(greet);
+object test with what {}
+
+println(test);

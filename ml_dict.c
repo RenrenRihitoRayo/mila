@@ -261,7 +261,7 @@ Value *dict_display(Value *self) {
   Dict *dict = (Dict *)self->v.opaque;
 
   if (dict->size > MAX_ITEMS_DISPLAYED)
-    return vstring_fmt("dict(%zu pairs)", dict->size);
+    return vstring_fmt("[@ %zu pairs]", dict->size);
 
   if (!dict || !dict->buckets)
     return vstring_dup("[@]");

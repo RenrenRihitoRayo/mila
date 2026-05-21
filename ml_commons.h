@@ -1,5 +1,6 @@
 // This project is licensed under the GNU Affero General Public License
 #pragma once
+#include "./mila.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -27,9 +28,14 @@
 // Read entire file in one go.
 char* read_file(const char* name) {
     FILE* fhandle = fopen(name, "r");
+    if (!fhandle) return NULL;
     fseek(fhandle, 0, SEEK_END);
     size_t size = ftell(fhandle);
-    char* file = (char*)malloc(sizeof(char)*size+1);
+    char* file = (char*)mila_malloc(sizeof(char)*size+1);
+    if (!file) {
+        fclose(fhandle);
+        return NULL;
+    }
     fseek(fhandle, 0, SEEK_SET);
     fread(file, sizeof(char), size, fhandle);
     fclose(fhandle);

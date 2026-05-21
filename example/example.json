@@ -1,0 +1,21 @@
+// MiLa suppports comments also ID as keys and trailing commas
+// but thats about its difference from JSON.
+{
+    "name": "example.json",
+    "details": "test for MiLa's json parser",
+    "good": true,
+    "extra": [9.0, -9.0, 90, -90],
+    "some utf": "JSON is ein Stück Scheiße.",
+    "test": {
+        "what": 90,
+        "ey": [90]
+    },
+    "null": null
+}
+/*
+Bellow could also be done
+[
+    {"name": ...},
+    {"name": ...}
+]
+*/

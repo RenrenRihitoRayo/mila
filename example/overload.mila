@@ -53,3 +53,14 @@ fn init_cin()['@env:env'] {
 
 var new = 90 + Object.new(90);
 cout << new << "\n";
+
+fn test() {
+    if (false)
+        println("if");
+    elif (true)
+        println("elif");
+    else
+        println("else");
+}
+
+test();

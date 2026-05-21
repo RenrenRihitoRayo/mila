@@ -1012,10 +1012,11 @@ char *as_c_string_repr(Value *v)
     {
     case T_STRING:
         our_asprintf(&buffer, "\"");
+        uint8_t* text = (uint8_t*)GET_STRING(v);
         size_t len = strlen(GET_STRING(v));
         for (size_t i = 0; i < len; ++i)
         {
-            switch (GET_STRING(v)[i])
+            switch (text[i])
             {
             case '\a':
                 our_asprintf(&buffer, "\\a");
@@ -1032,14 +1033,17 @@ char *as_c_string_repr(Value *v)
             case '\f':
                 our_asprintf(&buffer, "\\f");
                 break;
+            case '\r':
+                our_asprintf(&buffer, "\\r");
+                break;
             case '"':
                 our_asprintf(&buffer, "\\\"");
                 break;
             default:
-                if (isprint(GET_STRING(v)[i]))
-                    our_asprintf(&buffer, "%c", GET_STRING(v)[i]);
+                if (isprint(text[i]))
+                    our_asprintf(&buffer, "%c", text[i]);
                 else
-                    our_asprintf(&buffer, "\\x%02x", GET_STRING(v)[i]);
+                    our_asprintf(&buffer, "\\x%02x", text[i]);
             }
         }
         our_asprintf(&buffer, "\"");
@@ -1207,10 +1211,11 @@ int raw_print_value_repr(Value *v)
     {
     case T_STRING:;
         int first = printf("\"");
+        uint8_t* text = (uint8_t*)GET_STRING(v);
         size_t len = strlen(GET_STRING(v));
         for (size_t i = 0; i < len; ++i)
         {
-            switch (GET_STRING(v)[i])
+            switch (text[i])
             {
             case '\a':
                 first += printf("\\a");
@@ -1227,14 +1232,17 @@ int raw_print_value_repr(Value *v)
             case '\f':
                 first += printf("\\f");
                 break;
+            case '\r':
+                first += printf("\\r");
+                break;
             case '"':
                 first += printf("\\\"");
                 break;
             default:
-                if (isprint(GET_STRING(v)[i]))
-                    first += printf("%c", GET_STRING(v)[i]);
+                if (isprint(text[i]))
+                    first += printf("%c", text[i]);
                 else
-                    first += printf("\\x%02x", GET_STRING(v)[i]);
+                    first += printf("\\x%02x", text[i]);
                 break;
             }
         }
@@ -1329,10 +1337,11 @@ char *as_c_string_repr_raw(Value *v)
     {
     case T_STRING:
         our_asprintf(&buffer, "\"");
+        uint8_t* text = (uint8_t*)GET_STRING(v);
         size_t len = strlen(GET_STRING(v));
         for (size_t i = 0; i < len; ++i)
         {
-            switch (GET_STRING(v)[i])
+            switch (text[i])
             {
             case '\a':
                 our_asprintf(&buffer, "\\a");
@@ -1349,14 +1358,17 @@ char *as_c_string_repr_raw(Value *v)
             case '\f':
                 our_asprintf(&buffer, "\\f");
                 break;
+            case '\r':
+                our_asprintf(&buffer, "\\r");
+                break;
             case '"':
                 our_asprintf(&buffer, "\\\"");
                 break;
             default:
-                if (isprint(GET_STRING(v)[i]))
-                    our_asprintf(&buffer, "%c", GET_STRING(v)[i]);
+                if (isprint(text[i]))
+                    our_asprintf(&buffer, "%c", text[i]);
                 else
-                    our_asprintf(&buffer, "\\x%02x", GET_STRING(v)[i]);
+                    our_asprintf(&buffer, "\\x%02x", text[i]);
             }
         }
         our_asprintf(&buffer, "\"");
@@ -2659,21 +2671,29 @@ int skip_parse_statement(Src *s)
         s->pos += 2;
         if (match_char(s, '(')) is_err = skip_parse_expr(s);
         else return 1;
-        if (match_char(s, '{')) is_err = skip_parse_block(s);
+        if (match_char(s, '{')) {
+            s->pos--;
+            is_err = skip_parse_block(s);
+        }
         else is_err = skip_parse_statement(s);
         if (is_err) return is_err;
         while (is_keyword_at(s, "elif")) {
             s->pos += 4;
             if (match_char(s, '(')) is_err = skip_parse_expr(s);
             else return 1;
-            if (match_char(s, '{')) is_err = skip_parse_block(s);
+            if (match_char(s, '{')) {
+                s->pos--;
+                is_err = skip_parse_block(s);
+            }
             else is_err = skip_parse_statement(s);
             if (is_err) return is_err;
         }
         if (is_keyword_at(s, "else")) {
             s->pos += 4;
-            if (match_char(s, '{'))
+            if (match_char(s, '{')) {
+                s->pos--;
                 is_err = skip_parse_block(s);
+            }
             else is_err = skip_parse_statement(s);
         }
         return is_err;
@@ -3096,20 +3116,17 @@ inline Value *parse_string(Src *s)
         return verror("String unterminated!");
     src_get(s); // consume opening "
     char do_dedent = 0;
-
     size_t cap = 256;
     size_t len = 0;
     char *buf = mila_malloc(cap);
     if (!buf)
         return verror("Allocation failure");
-
     while (!src_eof(s))
     {
         char b = 0;
         unsigned char c = src_get(s);
         if (c == '"')
             break;
-
         if (c == '\\')
         {
             char n = src_get(s);
@@ -3148,6 +3165,94 @@ inline Value *parse_string(Src *s)
                 c = strtol(code, NULL, 16);
             }
             break;
+            case 'u':
+            { // \uXXXX (16-bit unicode)
+                char code[5] = {src_get(s), src_get(s), src_get(s), src_get(s), 0};
+                uint32_t cp = strtol(code, NULL, 16);
+                if (cp < 0x80) {
+                    c = cp;
+                } else if (cp < 0x800) {
+                    if (len + 2 >= cap) {
+                        cap = cap + (int)(cap * 0.3);
+                        char *tmp = mila_realloc(buf, cap);
+                        if (!tmp) {
+                            mila_free(buf);
+                            return verror("Allocation failure!");
+                        }
+                        buf = tmp;
+                    }
+                    buf[len++] = 0xC0 | (cp >> 6);
+                    buf[len++] = 0x80 | (cp & 0x3F);
+                    c = 0; // mark as already added
+                } else {
+                    if (len + 3 >= cap) {
+                        cap = cap + (int)(cap * 0.3);
+                        char *tmp = mila_realloc(buf, cap);
+                        if (!tmp) {
+                            mila_free(buf);
+                            return verror("Allocation failure!");
+                        }
+                        buf = tmp;
+                    }
+                    buf[len++] = 0xE0 | (cp >> 12);
+                    buf[len++] = 0x80 | ((cp >> 6) & 0x3F);
+                    buf[len++] = 0x80 | (cp & 0x3F);
+                    c = 0;
+                }
+            }
+            break;
+            case 'U':
+            { // \UXXXXXXXX (32-bit unicode)
+                char code[9] = {src_get(s), src_get(s), src_get(s), src_get(s), 
+                                src_get(s), src_get(s), src_get(s), src_get(s), 0};
+                uint32_t cp = strtol(code, NULL, 16);
+                if (cp < 0x80) {
+                    c = cp;
+                } else if (cp < 0x800) {
+                    if (len + 2 >= cap) {
+                        cap = cap + (int)(cap * 0.3);
+                        char *tmp = mila_realloc(buf, cap);
+                        if (!tmp) {
+                            mila_free(buf);
+                            return verror("Allocation failure!");
+                        }
+                        buf = tmp;
+                    }
+                    buf[len++] = 0xC0 | (cp >> 6);
+                    buf[len++] = 0x80 | (cp & 0x3F);
+                    c = 0;
+                } else if (cp < 0x10000) {
+                    if (len + 3 >= cap) {
+                        cap = cap + (int)(cap * 0.3);
+                        char *tmp = mila_realloc(buf, cap);
+                        if (!tmp) {
+                            mila_free(buf);
+                            return verror("Allocation failure!");
+                        }
+                        buf = tmp;
+                    }
+                    buf[len++] = 0xE0 | (cp >> 12);
+                    buf[len++] = 0x80 | ((cp >> 6) & 0x3F);
+                    buf[len++] = 0x80 | (cp & 0x3F);
+                    c = 0;
+                } else {
+                    if (len + 4 >= cap) {
+                        cap = cap + (int)(cap * 0.3);
+                        char *tmp = mila_realloc(buf, cap);
+                        if (!tmp) {
+                            mila_free(buf);
+                            return verror("Allocation failure!");
+                        }
+                        buf = tmp;
+                    }
+                    buf[len++] = 0xF0 | (cp >> 18);
+                    buf[len++] = 0x80 | ((cp >> 12) & 0x3F);
+                    buf[len++] = 0x80 | ((cp >> 6) & 0x3F);
+                    buf[len++] = 0x80 | (cp & 0x3F);
+                    c = 0;
+                }
+            }
+            break;
             case '0':
             { // \0oo (octal) escape codes
                 char code[3] = {src_get(s), src_get(s), 0};
@@ -3178,18 +3283,16 @@ inline Value *parse_string(Src *s)
             }
             buf = tmp;
         }
-        buf[len++] = (unsigned char)c;
+        if (c) buf[len++] = (unsigned char)c;
     }
     if (src_peek(s) == '!') {
         src_get(s);
         do_dedent = 1;
     }
-
     // shrink to exact size
     char *res = mila_realloc(buf, len + 1);
     if (!res)
         res = buf; // if mila_realloc fails, keep original buffer
-
     res[len] = '\0';
     Value* str = vstring_take(!do_dedent ? res : dedent(res));
     if (do_dedent) free(res);

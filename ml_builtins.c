@@ -20,6 +20,7 @@
 #include <string.h>
 #include <uchar.h>
 
+#include "ml_json.c"
 #include "ml_maths.c"
 #include "ml_paths.c"
 
@@ -1348,6 +1349,19 @@ Value *native_is(Env *env, int argc, Value **argv)
     return vbool(argv[0] == argv[1]);
 }
 
+Value *native_json_loads(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("json.loads(str): Expects one argument.");
+    Src* s = src_new(GET_STRING(argv[0]));
+    Value* res = parse_json(s);
+    src_free(s);
+    return res;
+}
+
+Value *native_json_dumps(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("json.dumps(value): Expects one argument.");
+    return vstring_take(mila_to_json(argv[0]));
+}
+
 #ifdef EXT_SOCK
 #include "addon/ml_socket.c"
 #endif
@@ -1495,6 +1509,9 @@ void env_register_builtins(Env *g)
     env_register_native(g, "cast.f2i", native_cast_float_to_int);
     env_register_native(g, "typeof", native_type_of);
     env_register_native(g, "is_numeric", native_is_numeric);
+    // === JSON
+    env_register_native(g, "json.loads", native_json_loads);
+    env_register_native(g, "json.dumps", native_json_dumps);
     // === String
     env_register_native(g, "str.slice", native_str_slice);
     env_register_native(g, "str.index", native_str_index);

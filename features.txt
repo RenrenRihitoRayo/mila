@@ -8,6 +8,7 @@ List of all MiLa features
 * Inplace assignment (references)
 * Inplace operations
 * Objects (kind of, more prototype-ish)
+* Overloading
 * Common string escapes (as well as hex and octal codes)
 * Anything as identifiers
 Example: var 'Das variable Name ist ein Stück Scheiße' = 90;

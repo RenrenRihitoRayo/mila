@@ -809,6 +809,54 @@ Value *native_abs(Env *e, int argc, Value **argv)
 }
 #endif // ML_NO_MATH
 
+Value* native_env_new(Env* env, int argc, Value** argv) {
+    Env* e = env_new(NULL);
+    return vopaque_extra(e, NULL, "environment");
+}
+
+Value* native_env_new_from(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("env");
+    Env* e = env_new(NULL);
+    return vopaque_extra(e, NULL, "environment");
+}
+
+Value *native_env_set(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 3)
+        return verror("env.set(env, name, val): Requires three arguments");
+    env_set((Env*)GET_OPAQUE(argv[0]), GET_STRING(argv[1]), argv[2]);
+    return vnull();
+}
+
+Value *native_env_set_local(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 3)
+        return verror("env.set_local(env, name, val): Requires three arguments");
+    env_set_local((Env*)GET_OPAQUE(argv[0]), GET_STRING(argv[1]), argv[2]);
+    return vnull();
+}
+
+Value *native_env_free(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+        return verror("env.free(env): Requires one arguments");
+    env_free((Env*)GET_OPAQUE(argv[0]));
+    return vnull();
+}
+
+
+Value *native_env_kill(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+        return verror("env.kill(env): Requires one arguments");
+    env_kill((Env*)GET_OPAQUE(argv[0]));
+    return vnull();
+}
+
 Value *native_vars_set(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -1485,6 +1533,12 @@ void env_register_builtins(Env *g)
 #endif // ML_NO_MATH
     env_set_raw(g, "RAND_MAX", vint(RAND_MAX));
     // === Env
+    env_register_native(g, "env.new", native_env_new);
+    env_register_native(g, "env.new_from", native_env_new_from);
+    env_register_native(g, "env.set", native_env_set);
+    env_register_native(g, "env.set_local", native_env_set_local);
+    env_register_native(g, "env.free", native_env_free);
+    env_register_native(g, "env.kill", native_env_kill);
     env_register_native(g, "vars.set", native_vars_set);
     env_register_native(g, "vars.set_local", native_vars_set_local);
     env_register_native(g, "vars.bind", native_vars_bind);

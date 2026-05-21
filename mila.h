@@ -71,6 +71,34 @@
         }\
     }\
 
+#define GET_OVERLOAD(obj, method) ((obj)->type_name && strcmp((obj)->type_name, MILA_LPREFIX "dict") == 0) ? dict_get_str((Dict*)(obj)->v.opaque, method) : NULL
+
+// Left Operators
+const char* OVERLOAD_ADD = ":+";
+const char* OVERLOAD_SUB = ":-";
+const char* OVERLOAD_MUL = ":*";
+const char* OVERLOAD_DIV = ":/";
+const char* OVERLOAD_MOD = ":%";
+const char* OVERLOAD_RSHIFT = ":>>";
+const char* OVERLOAD_LSHIFT = ":<<";
+const char* OVERLOAD_DEFAULT = ":??";
+
+// Right Operators
+const char* OVERLOAD_R_ADD = "+:";
+const char* OVERLOAD_R_SUB = "-:";
+const char* OVERLOAD_R_MUL = "*:";
+const char* OVERLOAD_R_DIV = "/:";
+const char* OVERLOAD_R_MOD = "%:";
+const char* OVERLOAD_R_RSHIFT = ">>:";
+const char* OVERLOAD_R_LSHIFT = "<<:";
+const char* OVERLOAD_R_DEFAULT = "??:";
+
+// More complex overloads
+const char* OVERLOAD_DISPLAY = ":display";
+const char* OVERLOAD_COPY = ":copy";
+const char* OVERLOAD_COPYSHALLOW = ":copyshallow";
+const char* OVERLOAD_TO_BOOL = ":to_bool";
+
 #define FN_UNUSED __attribute__((unused))
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))

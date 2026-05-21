@@ -321,11 +321,14 @@ Value* val_copy(Value *src)
             copy->v.native = nativefn_copy(src->v.native);
             break;
 
-        case T_OPAQUE:
+        case T_OPAQUE: {
             /* Opaques: share the pointer but increment if refcounted */
+            Value* fn = GET_OVERLOAD(src, OVERLOAD_COPY);
+            if (fn)
+                return call_function_with(NULL, fn, val_retain(src), NULL);
+            else
             copy->v.opaque = src->v.opaque;
-            break;
-
+        } break;
         case T_NONE:
         case T_NULL:
             /* Null: no-op */
@@ -398,10 +401,25 @@ inline int is_truthy(Value *value)
     case T_UINT: return GET_UINTEGER(value) ? 1 : 0;
     case T_BINT: return GET_BINTEGER(value) ? 1 : 0;
     case T_BFLOAT: return !b_ff_is_zero(GET_BFLOAT(value));
-    case T_OPAQUE: return GET_OPAQUE(value) ? 1 : 0;
     case T_BOOL: return GET_BOOL(value) ? 1 : 0;
     case T_STRING: return strlen(GET_STRING(value)) ? 1 : 0;
     case T_FUNCTION: case T_NATIVE: return 1;
+    case T_OPAQUE: {
+        if (value->type_name && strcmp(value->type_name, MILA_LPREFIX "dict") == 0) {
+#ifdef MILA_DEBUG
+            printf("  ?? Recieved candidate for overloading!\n  `");
+            print_value(value); puts("`");
+#endif
+            Value* fn = dict_get_str((Dict*)value->v.opaque, ":to_bool");
+            if (fn) {
+                Value* tmp = call_function_with(NULL, fn, val_retain(value), NULL);
+                int res = is_truthy(tmp);
+                val_release(tmp);
+                return res;
+            }
+        }
+        return GET_OPAQUE(value) ? 1 : 0;
+    } break;
     default:;
     }
     return 0;
@@ -3636,7 +3654,16 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
                 is_optional = 1;
                 name[strlen(name) - 1] = 0;
             }
-            Value *a = env_get_contextual(env, name);
+            Value *a;
+            if (strncmp("@env:", name, 5) == 0) {
+                a = vopaque_extra(env, NULL, "environment");
+                char* new_name = mila_strdup(name + 5);
+                free(name);
+                env_set_local_raw(frame, new_name, a);
+                free(new_name);
+                continue;
+            }
+            else a = env_get_contextual(env, name);
             if (is_optional == 0 && a == NULL)
             {
                 env_free(frame);
@@ -5291,12 +5318,13 @@ Value *eval_statement(Src *s, Env *env)
                     val_release(v);
                     return err;
                 }
+                Value* res = NULL;
                 if (inplace)
-                    env_set_raw(env, id, binary_op(inplace, mt, v));
+                    env_set_raw(env, id, res = binary_op(inplace, mt, v));
                 mila_free(id);
                 val_release(v);
                 match_char(s, ';');
-                return val_retain(inplace);
+                return val_retain(res);
             }
         }
         else if (match_char(s, ':'))

@@ -180,7 +180,7 @@ int dict_set_raw(Dict *dict, char *key, Value *value) {
   return 1; // new insertion
 }
 
-Value *dict_get_str(Dict *dict, char *key) {
+Value *dict_get_str(Dict *dict, const char *key) {
   if (!dict || !key)
     return NULL;
   char* key_str = NULL;

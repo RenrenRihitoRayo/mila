@@ -1,27 +1,55 @@
 
 fn Object.new(value):[print] {
-    object what {
+    object _tmp {
         var value = value;
         fn ':+'(self, other):[typeof, Object.new] {
-            if (typeof(other) == "int") {
-                return Object.new(self["value"] + other);
-            } else {
-                return Object.new(self["value"] + other["value"]);
-            }
+            if (typeof(other) == "int") return Object.new(self["value"] + other);
+            else return Object.new(self["value"] + other["value"]);
         }
         fn '+:'(self, other):[typeof, Object.new] {
-            if (typeof(other) == "int") {
-                return Object.new(other + self["value"]);
-            } else {
-                return Object.new(other["value"] + self["value"]);
-            }
+            if (typeof(other) == "int") return Object.new(other + self["value"]);
+            else return Object.new(other["value"] + self["value"]);
         }
-        fn ':display'(self):[print] {
+        fn ':>'(self, other):[typeof] {
+            if (typeof(other) == "int") return self["value"] > other;
+            else return self["value"] > other["value"];
+        }
+        fn '>:'(self, other):[typeof] {
+            if (typeof(other) == "int") return self["value"] < other;
+            else return self["value"] < other["value"];
+        }
+        fn ':<'(self, other):[typeof] {
+            if (typeof(other) == "int") return self["value"] < other;
+            else return self["value"] < other["value"];
+        }
+        fn '<:'(self, other):[typeof] {
+            if (typeof(other) == "int") return self["value"] > other;
+            else return self["value"] > other["value"];
+        }
+        fn ':display'(self):[print]
             print("Object.new("+self["value"]+")");
-        }
+        fn ':to_bool'(self):[print]
+            return self["value"];
     }
-    return what;
+    return _tmp;
 }
 
-var new = 90 + Object.new(90900);
-println(new, 90);
+// Yes.
+object cout {
+    fn ':<<'(self, other):[print] {
+        print(other);
+        return self;
+    }
+}
+
+fn init_cin()['@env:env'] {
+    object cin {
+        fn ':>>'(self, other):[input, env.set, env] {
+            env.set(env, other, input());
+        }
+    }
+    return cin;
+}
+
+var new = 90 + Object.new(90);
+cout << new << "\n";

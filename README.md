@@ -17,14 +17,6 @@ MiLa already has the bare minimum to work.
 You can even make a programming language using
 MiLa.
 
-## What MiLa is not
-
-* Community Driven
-
-This Repo of MiLa will never accept
-pull requests pertaining to adding features.
-MiLa is a kernel, not a language.
-
 ## Keywords (22 total)
 
 * if

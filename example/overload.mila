@@ -1,0 +1,27 @@
+
+fn Object.new(value):[print] {
+    object what {
+        var value = value;
+        fn ':+'(self, other):[typeof, Object.new] {
+            if (typeof(other) == "int") {
+                return Object.new(self["value"] + other);
+            } else {
+                return Object.new(self["value"] + other["value"]);
+            }
+        }
+        fn '+:'(self, other):[typeof, Object.new] {
+            if (typeof(other) == "int") {
+                return Object.new(other + self["value"]);
+            } else {
+                return Object.new(other["value"] + self["value"]);
+            }
+        }
+        fn ':display'(self):[print] {
+            print("Object.new("+self["value"]+")");
+        }
+    }
+    return what;
+}
+
+var new = 90 + Object.new(90900);
+println(new, 90);

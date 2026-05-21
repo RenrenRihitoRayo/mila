@@ -29,6 +29,7 @@ typedef struct {
   size_t capacity;
   size_t size;
 } Dict;
+
 typedef struct {
   char *key;
   Value *value;
@@ -177,6 +178,24 @@ int dict_set_raw(Dict *dict, char *key, Value *value) {
   dict->buckets[index] = new_entry;
   dict->size++;
   return 1; // new insertion
+}
+
+Value *dict_get_str(Dict *dict, char *key) {
+  if (!dict || !key)
+    return NULL;
+  char* key_str = NULL;
+  our_asprintf(&key_str, "\"%s\"", key);
+  unsigned long index = hash_string(key_str) % dict->capacity;
+  DictEntry *entry = dict->buckets[index];
+  while (entry) {
+    if (strcmp(entry->key, key_str) == 0) {
+      free(key_str);
+      return entry->value;
+    }
+    entry = entry->next;
+  }
+  free(key_str);
+  return NULL;
 }
 
 Value *dict_get(Dict *dict, Value *key) {

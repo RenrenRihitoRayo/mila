@@ -248,6 +248,7 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
 
 Value* val_copy(Value *src)
 {
+    if (!src) return vnull();
     if (src->method_table && src->method_table[UMethodCopy])
         return ((unary_method)src->method_table[UMethodCopy])(src);
     if (src->method_table && src->method_table[UMethodCopyShallow])
@@ -1035,11 +1036,22 @@ char *as_c_string_repr(Value *v)
     return buffer;
 }
 
+int raw_print_value_repr(Value* v);
+
 int raw_print_value(Value *v)
 {
     if (!v)
     {
         return printf("cnull");
+    }
+    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0)
+    {
+        Value* fn = dict_get_str((Dict*)v->v.opaque, ":display");
+        if (fn) {
+            val_release(call_function_with(NULL, fn, val_retain(v), NULL));
+            fflush(stdout);
+            return 0;
+        }
     }
     if (v->method_table && v->method_table[UMethodToString])
     {
@@ -1146,6 +1158,14 @@ int raw_print_value_repr(Value *v)
     if (!v)
     {
         return printf("cnull");
+    }
+
+    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0)
+    {
+        Value* fn = dict_get_str((Dict*)v->v.opaque, ":display");
+        if (fn)
+            val_release(call_function_with(NULL, fn, val_retain(v), NULL));
+        return 0;
     }
     if (v->method_table && v->method_table[UMethodToRepr])
     {
@@ -1651,7 +1671,7 @@ void env_dump(Env *e)
         Var *nx = v->next;
         if (!v->value)
         {
-            printf("%s dangling\n", v->name);
+            printf("'%s' dangling!\n", v->name);
             v = nx;
             continue;
         }
@@ -3420,10 +3440,54 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
     {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
+        free(args);
         return verror("Function is NULL!");
     }
 
     Value *res = call_function(fnval, env, count, args);
+    for (size_t i = 0; i < count; ++i)
+        val_release(args[i]);
+    mila_free(args);
+    HANDLE_RETURN(res);
+    return res;
+}
+
+Value *call_native_with(Env *env, NativeFn fnval, Value *first, ...)
+{
+    va_list ap;
+    size_t count = 0;
+
+    /* First pass: count */
+    va_start(ap, first);
+    for (Value *v = first; v != NULL; v = va_arg(ap, Value *))
+    {
+        count++;
+    }
+    va_end(ap);
+
+    /* Allocate array (+1 if you want NULL terminator preserved) */
+    Value **args = mila_malloc((count + 1) * sizeof(Value *));
+    if (!args)
+        return NULL;
+
+    /* Second pass: fill */
+    va_start(ap, first);
+    size_t i = 0;
+    for (Value *v = first; v != NULL; v = va_arg(ap, Value *))
+    {
+        args[i++] = v;
+    }
+    va_end(ap);
+
+    if (!fnval)
+    {
+        for (size_t i = 0; i < count; i++)
+            val_release(args[i]);
+        free(args);
+        return verror("Function is NULL!");
+    }
+
+    Value *res = fnval(env, count, args);
     for (size_t i = 0; i < count; ++i)
         val_release(args[i]);
     mila_free(args);
@@ -3463,7 +3527,8 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
     {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
-        return verror("Function is NULL!");
+        free(args);
+        return verror("Function %s does not exist!", fnname);
     }
 
     Value *res = call_function(fnval, env, count, args);
@@ -4647,6 +4712,47 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
         else
             return vbool(0);
     }
+    if (a->type_name && strcmp(a->type_name, MILA_LPREFIX "dict") == 0) {
+        return binary_op_objects(NULL, 1, a, op, b);
+    }
+    if (b->type_name && strcmp(b->type_name, MILA_LPREFIX "dict") == 0) {
+        return binary_op_objects(NULL, 0, b, op, a);
+    }
+    return vnull();
+}
+
+Value *binary_op_objects(Env* env, char right, Value* a, MethodType op, Value* b) {
+    if (a->type_name && strcmp(a->type_name, MILA_LPREFIX "dict") != 0) {
+        char* repr = as_c_string_repr(a);
+        Value* err = verror("%s\n of type %s does not support runtime overloading!", repr, GET_TYPENAME(a));
+        free(repr);
+        return err;
+    }
+    char* method = NULL;
+    switch (op) {
+        case BMethodAdd: method = right ? ":+" : "+:"; break;
+        case BMethodSub: method = right ? ":-" : "-:"; break;
+        case BMethodMul: method = right ? ":*" : "*:"; break;
+        case BMethodDiv: method = right ? ":/" : "/:"; break;
+        case BMethodMod: method = right ? ":%" : "%:"; break;
+        case BMethodEq: method = right ? ":==" : "==:"; break;
+        case BMethodNe: method = right ? ":!=" : "!=:"; break;
+        case BMethodLess: method = right ? ":<" : "<:"; break;
+        case BMethodGreat: method = right ? ":>" : "<:"; break;
+        case BMethodLE: method = right ? ":<=" : "<=:"; break;
+        case BMethodGE: method = right ? ":>=" : ">=:"; break;
+        case BMethodGlob: method = right ? ":=>" : "=>:"; break;
+        case BMethodDefault: method = right ? ":??" : "??:"; break;
+        case BMethodLshift: method = right ? ":<<" : "<<:"; break;
+        case BMethodRshift: method = right ? ":>>" : ">>:"; break;
+        case UMethodCopy: method = ":copy"; break;
+        case UMethodCopyShallow: method = ":copyshallow"; break;
+        default:;
+    }
+    if (!method) return vnull();
+    Value* fn = dict_get_str((Dict*)a->v.opaque, method);
+    if (fn)
+        return call_function_with(env, fn, val_retain(a), val_retain(b), NULL);
     return vnull();
 }
 
@@ -5024,18 +5130,19 @@ Value *eval_statement(Src *s, Env *env)
                     {
                         Value *inplace =
                             ((binary_method)parent->method_table[BMethodGetItem])(
-                                parent, last_index);
-
+                                parent, val_retain(last_index));
+                        val_release(obj);
+                        Value* result = binary_op(inplace, mt, v);
+                        ((trinary_method)parent->method_table[TMethodSetItem])(
+                                parent, last_index, result);
                         for (int i = 0; i < num_indices; i++)
                             val_release(indices[i]);
+                        val_release(last_index);
                         mila_free(indices);
-                        val_release(obj);
-                        if (inplace)
-                            binary_op_in_place(inplace, mt, v);
                         val_release(v);
                         mila_free(id);
                         match_char(s, ';');
-                        return val_retain(inplace);
+                        return result;
                     }
                     else
                     {
@@ -5185,7 +5292,7 @@ Value *eval_statement(Src *s, Env *env)
                     return err;
                 }
                 if (inplace)
-                    binary_op_in_place(inplace, mt, v);
+                    env_set_raw(env, id, binary_op(inplace, mt, v));
                 mila_free(id);
                 val_release(v);
                 match_char(s, ';');
@@ -5326,6 +5433,12 @@ Value *eval_statement(Src *s, Env *env)
         case T_UINT:
             a->v.ui = GET_UINTEGER(val);
             break;
+        case T_BINT:
+            a->v.bi = GET_BINTEGER(val);
+            break;
+        case T_BFLOAT:
+            a->v.bf = GET_BFLOAT(val);
+            break;
         case T_OWNED_OPAQUE:
         case T_OPAQUE:
             a->v.opaque = GET_OPAQUE(val);
@@ -5335,6 +5448,9 @@ Value *eval_statement(Src *s, Env *env)
             break;
         case T_FUNCTION:
             a->v.fn = val->v.fn;
+            break;
+        case T_NATIVE:
+            a->v.native = val->v.native;
             break;
         default:
             return vtagged_error(E_FATAL, "Type %s cannot be synced!",
@@ -5370,10 +5486,6 @@ Value *eval_statement(Src *s, Env *env)
             Value *tmp = v;
             v = (Value *)tmp->v.opaque;
             val_release(tmp);
-        }
-        else if (v && v->type == T_FUNCTION)
-        {
-            v->v.fn->name = mila_strdup(id);
         }
         if (env->parent)
         {
@@ -5860,7 +5972,7 @@ Value *eval_statement(Src *s, Env *env)
                 if (IS_ERROR_TAGGED(res)) {
                     Value* msg = vstring_dup(res->v.tagged_error.message);
                     Value* type = vstring_dup(GET_ERRORNAME(res));
-                    Value* dict = call_function_str(env, "dict", vstring_dup("error"), type, vstring_dup("message"), msg, NULL);
+                    Value* dict = call_native_with(env, native_new_dict, vstring_dup("error"), type, vstring_dup("message"), msg, NULL);
                     val_release(res);
                     env_set_local(env, id, dict);
                     free(id);
@@ -5868,7 +5980,7 @@ Value *eval_statement(Src *s, Env *env)
                     return dict;
                 } else {
                     Value* msg = vstring_dup(res->v.message);
-                    Value* dict = call_function_str(env, "dict", vstring_dup("error"), vstring_dup("Generic"), vstring_dup("message"), msg, NULL);
+                    Value* dict = call_native_with(env, native_new_dict, vstring_dup("error"), vstring_dup("Generic"), vstring_dup("message"), msg, NULL);
                     val_release(res);
                     env_set_local(env, id, dict);
                     free(id);
@@ -5997,7 +6109,7 @@ Value *eval_statement(Src *s, Env *env)
         }
         Value *obj;
         if (!is_keyword_at(s, "with"))
-            obj = call_function_str(env, "dict", NULL);
+            obj = call_native_with(env, native_new_dict, NULL);
         else
         {
             s->pos += strlen("with");
@@ -6008,7 +6120,7 @@ Value *eval_statement(Src *s, Env *env)
                 free(name);
                 return res;
             }
-            obj = call_function_str(env, "dict", NULL);
+            obj = call_native_with(env, native_new_dict, NULL);
             Value *with_obj = env_get(env, obj_name);
             if (!obj)
             {
@@ -6020,6 +6132,7 @@ Value *eval_statement(Src *s, Env *env)
                 mila_free(name);
                 return res;
             }
+            else if (IS_ERROR(obj)) return obj;
 
             KVPair *entries = NULL;
             size_t count = 0, capacity = 16;
@@ -6058,6 +6171,10 @@ Value *eval_statement(Src *s, Env *env)
             }
             mila_free(entries);
             mila_free(obj_name);
+        }
+        if (IS_ERROR(obj)) {
+            mila_free(name);
+            return obj;
         }
         Env *class_env = env_new(env);
         Value *res = eval_block_raw(s, class_env);

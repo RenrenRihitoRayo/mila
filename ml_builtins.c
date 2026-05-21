@@ -650,7 +650,13 @@ Value *native_run(Env *env, int argc, Value **argv)
         }
         Env *frame = env_new(env);
         Value *by = env_get(env, "__name__");
-        env_set_local(frame, "__importer__", by ? by : vstring_dup("???"));
+        Value *by_path = env_get(env, "__path__");
+        Value *by_dir_path = env_get(env, "__dir_path__");
+        env_set_local_raw(frame, "__importer__", call_native_with(env, native_new_dict,
+            vstring_dup("name"), val_copy(by),
+            vstring_dup("path"), val_copy(by_path),
+            vstring_dup("dir_path"), val_copy(by_dir_path),
+        NULL));
         Value *res = run_file_keep_res(path, frame);
         if (GET_TYPE(res) == T_ERROR)
         {
@@ -829,6 +835,20 @@ Value *native_vars_get(Env *env, int argc, Value **argv)
     return env_get(env, argv[0]->v.s);
 }
 
+Value *native_vars_get_global(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+        return verror("vars.get_global(name): Requires one argument");
+    for (Env *cur = env; cur; cur = cur->parent)
+    {
+        if (cur->parent == NULL) {
+            return env_get(cur, GET_STRING(argv[0]));
+        }
+    }
+    return vnull();
+}
+
 Value *native_vfree(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -864,13 +884,16 @@ Value *native_vars_global(Env *env, int argc, Value **argv)
         return verror("vars.local(): Requires no arguments");
     for (Env *cur = env; cur; cur = cur->parent)
     {
-        for (Var *v = cur->vars; v; v = v->next)
-        {
-            printf("%s", v->name);
-            if (v->next)
+        if (cur->parent == NULL) {
+            for (Var *v = cur->vars; v; v = v->next)
             {
-                printf(", ");
+                printf("%s", v->name);
+                if (v->next)
+                {
+                    printf(", ");
+                }
             }
+            break;
         }
     }
     putchar(10);
@@ -1466,6 +1489,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "vars.set_local", native_vars_set_local);
     env_register_native(g, "vars.bind", native_vars_bind);
     env_register_native(g, "vars.get", native_vars_get);
+    env_register_native(g, "vars.get_global", native_vars_get_global);
     env_register_native(g, "vars.local", native_vars_local);
     env_register_native(g, "vars.global", native_vars_global);
 

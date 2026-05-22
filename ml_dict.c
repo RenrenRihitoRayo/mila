@@ -19,6 +19,7 @@
 #endif
 
 typedef struct DictEntry {
+  ValueType key_type;
   char *key;
   Value *value;
   struct DictEntry *next;
@@ -138,6 +139,7 @@ int dict_set(Dict *dict, Value *key, Value *value) {
   }
 
   DictEntry *new_entry = dict_entry_create(key_str, value);
+  new_entry->key_type = key->type;
   if (!new_entry) {
     mila_free(key_str);
     return 0;
@@ -174,6 +176,7 @@ int dict_set_raw(Dict *dict, char *key, Value *value) {
     mila_free(key);
     return 0;
   }
+  new_entry->key_type = T_INT;
   new_entry->next = dict->buckets[index];
   dict->buckets[index] = new_entry;
   dict->size++;
@@ -307,4 +310,51 @@ Value *dict_display(Value *self) {
   our_asprintf(&buffer, "]");
   mila_free(entries);
   return vstring_take(buffer);
+}
+
+Value** dict_keys(Dict* dict) {
+  if (!dict || !dict->buckets)
+    return NULL;
+
+  Value **entries = NULL;
+  size_t count = 0, capacity = 16;
+  entries = (Value**)mila_malloc(capacity * sizeof(char*));
+  if (!entries)
+    return NULL;
+
+  // Collect all entries
+  for (size_t i = 0; i < dict->capacity; i++) {
+    DictEntry *entry = dict->buckets[i];
+    while (entry) {
+      if (count >= capacity) {
+        capacity *= 2;
+        Value** tmp = (Value**)realloc(entries, capacity * sizeof(Value*));
+        if (!tmp) {
+          mila_free(entries);
+          return NULL;
+        }
+        entries = tmp;
+      }
+      entries[count++] = eval_str(entry->key, NULL);
+      entry = entry->next;
+    }
+  }
+
+  if (count >= capacity) {
+    capacity *= 2;
+    Value** tmp = (Value**)realloc(entries, capacity * sizeof(Value*));
+    if (!tmp) {
+      mila_free(entries);
+      return NULL;
+    }
+    entries = tmp;
+  }
+  entries[count] = NULL;
+  return entries;
+}
+
+void dict_free_keys(char** entries) {
+  for (size_t i=0; entries[i]; ++i) {
+    mila_free(entries[i]);
+  }
 }

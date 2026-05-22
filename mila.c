@@ -3154,21 +3154,93 @@ inline Value *parse_string(Src *s)
                 c = '\\';
                 break;
             case 'N':
-            { // \Nxx (decimal) escape codes
-                char code[3] = {src_get(s), src_get(s), 0};
-                c = atoi(code);
+            {
+                if (src_peek(s) == '{')
+                {
+                    src_get(s);
+                    char text[MILA_N_ESCAPE_DIGITS+1] = "";
+                    int offset = 0;
+                    while (src_peek(s) != '}')
+                        text[offset++] = src_get(s);
+                    src_get(s);
+                    uint32_t cp = atoi(text);
+                    if (!cp) {
+                        mila_free(buf);
+                        return verror("NULL BYTE ISNT SUPPORTED.");
+                    }
+                    if (cp < 0x80) {
+                        c = (char)cp;
+                    } else if (cp < 0x800) {
+                        if (len + 2 >= cap) {
+                            cap = cap + (int)(cap * 0.3);
+                            char *tmp = mila_realloc(buf, cap);
+                            if (!tmp) {
+                                mila_free(buf);
+                                return verror("Allocation failure!");
+                            }
+                            buf = tmp;
+                        }
+                        buf[len++] = 0xC0 | (cp >> 6);
+                        buf[len++] = 0x80 | (cp & 0x3F);
+                        continue;
+                    } else if (cp < 0x10000) {
+                        if (len + 3 >= cap) {
+                            cap = cap + (int)(cap * 0.3);
+                            char *tmp = mila_realloc(buf, cap);
+                            if (!tmp) {
+                                mila_free(buf);
+                                return verror("Allocation failure!");
+                            }
+                            buf = tmp;
+                        }
+                        buf[len++] = 0xE0 | (cp >> 12);
+                        buf[len++] = 0x80 | ((cp >> 6) & 0x3F);
+                        buf[len++] = 0x80 | (cp & 0x3F);
+                        continue;
+                    } else {
+                        if (len + 4 >= cap) {
+                            cap = cap + (int)(cap * 0.3);
+                            char *tmp = mila_realloc(buf, cap);
+                            if (!tmp) {
+                                mila_free(buf);
+                                return verror("Allocation failure!");
+                            }
+                            buf = tmp;
+                        }
+                        buf[len++] = 0xF0 | (cp >> 18);
+                        buf[len++] = 0x80 | ((cp >> 12) & 0x3F);
+                        buf[len++] = 0x80 | ((cp >> 6) & 0x3F);
+                        buf[len++] = 0x80 | (cp & 0x3F);
+                        continue;
+                    }
+                } else {
+                    char code[3] = {src_get(s), src_get(s), 0};
+                    c = atoi(code);
+                    if (!c) {
+                        mila_free(buf);
+                        return verror("NULL BYTE ISNT SUPPORTED.");
+                    }
+                }
             }
             break;
             case 'x':
             { // \xhh (hex) escape codes
                 char code[3] = {src_get(s), src_get(s), 0};
                 c = strtol(code, NULL, 16);
+                if (!c) {
+                    mila_free(buf);
+                    return verror("NULL BYTE ISNT SUPPORTED.");
+                }
             }
             break;
             case 'u':
             { // \uXXXX (16-bit unicode)
                 char code[5] = {src_get(s), src_get(s), src_get(s), src_get(s), 0};
                 uint32_t cp = strtol(code, NULL, 16);
+                if (!cp) {
+                    mila_free(buf);
+                    return verror("NULL BYTE ISNT SUPPORTED.");
+                }
                 if (cp < 0x80) {
                     c = cp;
                 } else if (cp < 0x800) {
@@ -3206,6 +3278,10 @@ inline Value *parse_string(Src *s)
                 char code[9] = {src_get(s), src_get(s), src_get(s), src_get(s), 
                                 src_get(s), src_get(s), src_get(s), src_get(s), 0};
                 uint32_t cp = strtol(code, NULL, 16);
+                if (!cp) {
+                    mila_free(buf);
+                    return verror("NULL BYTE ISNT SUPPORTED.");
+                }
                 if (cp < 0x80) {
                     c = cp;
                 } else if (cp < 0x800) {
@@ -3257,6 +3333,10 @@ inline Value *parse_string(Src *s)
             { // \0oo (octal) escape codes
                 char code[3] = {src_get(s), src_get(s), 0};
                 c = strtol(code, NULL, 8);
+                if (!c) {
+                    mila_free(buf);
+                    return verror("NULL BYTE ISNT SUPPORTED.");
+                }
             }
             break;
             case '\n':
@@ -3329,7 +3409,7 @@ char *dup_substr(Src *s, int a, int b)
 }
 
 // parse comma-separated identifiers (for parameters)
-FunctionParameters *parse_param_list(Src *s, Env* env)
+FunctionParameters *parse_param_list(Src *s)
 {
     skip_ws(s);
     if (!match_char(s, '('))
@@ -4135,7 +4215,7 @@ Value *eval_primary(Src *s, Env *env)
         // consume keyword
         s->pos += strlen("fn");
         // parse params
-        FunctionParameters *params = parse_param_list(s, env);
+        FunctionParameters *params = parse_param_list(s);
         char **contextuals = parse_context_list(s);
         char **names;
         Env *closure = env_new(NULL);
@@ -6136,7 +6216,7 @@ Value *eval_statement(Src *s, Env *env)
         char *name = parse_ident(s);
         if (!name)
             return verror("Function needs a name!");
-        FunctionParameters *params = parse_param_list(s, env);
+        FunctionParameters *params = parse_param_list(s);
         char **contextuals = parse_context_list(s);
         char **names;
         Env *closure = env_new(NULL);

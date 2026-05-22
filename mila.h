@@ -15,6 +15,7 @@
 #include "ml_maths.c"
 
 #define MAX_NUMBER_DIGITS 19
+#define MILA_N_ESCAPE_DIGITS 10
 #define MAX_PATH_LENGTH 1028
 
 // MiLa produces an alternative string representation
@@ -497,7 +498,8 @@ extern Value *parse_number(Src *s);
 extern Value *parse_string(Src *s);
 extern int is_keyword_at(Src *s, const char *kw);
 char *dup_substr(Src *s, int a, int b);
-FunctionParameters *parse_param_list(Src *s, Env* env);
+FunctionParameters *parse_param_list(Src *s);
+char** parse_context_list(Src *s);
 Value *eval_block(Src *s, Env *env);
 extern Value *eval_primary(Src *s, Env *env);
 Value *binary_op(Value *a, MethodType op, Value *b);

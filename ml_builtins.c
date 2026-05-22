@@ -1362,6 +1362,19 @@ Value *native_json_dumps(Env* env, int argc, Value** argv) {
     return vstring_take(mila_to_json(argv[0]));
 }
 
+Value *native_mjson_loads(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("mjson.loads(str): Expects one argument.");
+    Src* s = src_new(GET_STRING(argv[0]));
+    Value* res = parse_mjson(s);
+    src_free(s);
+    return res;
+}
+
+Value *native_mjson_dumps(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("mjson.dumps(value): Expects one argument.");
+    return vstring_take(mila_to_mjson(argv[0]));
+}
+
 #ifdef EXT_SOCK
 #include "addon/ml_socket.c"
 #endif
@@ -1499,6 +1512,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "dict.set", native_set_dict);
     env_register_native(g, "dict.get", native_get_dict);
     env_register_native(g, "dict.rem", native_rem_dict);
+    env_register_native(g, "dict.keys", native_keys_dict);
     // === Casting
     env_register_native(g, "cast.int", native_cast_int);
     env_register_native(g, "cast.float", native_cast_float);
@@ -1510,6 +1524,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "typeof", native_type_of);
     env_register_native(g, "is_numeric", native_is_numeric);
     // === JSON
+    env_register_native(g, "mjson.loads", native_mjson_loads);
+    env_register_native(g, "mjson.dumps", native_mjson_dumps);
     env_register_native(g, "json.loads", native_json_loads);
     env_register_native(g, "json.dumps", native_json_dumps);
     // === String

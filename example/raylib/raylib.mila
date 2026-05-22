@@ -77,7 +77,7 @@ fn step(v1, v2, speed) {
     Vector2.set_y(v1, Vector2.get_y(v1) + (dy / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
 }
 
-var food_num = 10;
+var food_num = 10000;
 var foods = list();
 
 foreach i : range(food_num) {
@@ -103,7 +103,7 @@ while (not(WindowShouldClose()))
     var speedX = screen_w * 0.5;
     var speedY = screen_h * 1;
 
-    set old = new ?? 0; // FIX: big delta spike at the start
+    set old = new ?? 0; // FIX: big delta spike at first frame
     set new = get_time();
 
     var delta = new - old; // We calculate the delta

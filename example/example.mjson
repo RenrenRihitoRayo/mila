@@ -1,6 +1,5 @@
-// MiLa suppports comments also ID as keys and trailing commas
-// but thats about its difference from JSON.
-// referred to as JSON2.5
+// MiLa JS Object Notation (MJSON, JSON2.5 superset)
+// Supports lambdas
 {
     "name": "example.json",
     "details": "test for MiLa's json parser",
@@ -11,7 +10,12 @@
         "what": 90,
         "ey": [90]
     },
-    "null": null
+    "null": null,
+    "add": fn(a, b)
+        return a + b;,
+    "add": fn(a, b) { // both syntaxes are supported
+        return a + b;
+    }
 }
 /*
 Bellow could also be done

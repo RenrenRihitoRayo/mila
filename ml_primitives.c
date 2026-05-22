@@ -188,6 +188,19 @@ Value *native_new_dict(Env *env, int argc, Value **argv)
     return verror("couldnt make a dict.");
 }
 
+Value* native_list_append(Env*, int, Value**);
+
+Value *native_keys_dict(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("dict.keys(d): Expects one argument!");
+    Value* arr = call_native_with(NULL, native_list_new, NULL);
+    Value** keys = dict_keys((Dict*)GET_OPAQUE(argv[0]));
+    for (size_t i=0; keys[i]; ++i) {
+        val_release(call_native_with(NULL, native_list_append, val_retain(arr), keys[i], NULL));
+    }
+    free(keys);
+    return arr;
+}
+
 Value *native_set_dict(Env *env, int argc, Value **argv)
 {
     (void)env;

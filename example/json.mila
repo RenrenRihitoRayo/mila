@@ -1,6 +1,6 @@
 // Test JSON2.5 and MJSON support
 
-println(repr_raw("\N{10}JSON TEST: \n"));
+println("JSON TEST: \n");
 
 var file = open("example.json", "r");
 fseek(file, 0, SEEK_END);

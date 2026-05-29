@@ -36,6 +36,22 @@ int file_exists(const char *p) {
   return stat(p, &st) == 0;
 }
 
+int is_file(const char *p) {
+    struct stat st;
+    if (stat(p, &st) != 0) {
+        return 0;
+    }
+    return S_ISREG(st.st_mode);
+}
+
+int is_dir(const char *p) {
+    struct stat st;
+    if (stat(p, &st) != 0) {
+        return 0;
+    }
+    return S_ISDIR(st.st_mode);
+}
+
 void normalize_slashes(char *buf) {
 #ifdef _WIN32
   const char from = '/', to = '\\';
@@ -174,7 +190,11 @@ char* path_join_alloc(char* path, ...) {
   while (1) {
     const char *part = va_arg(args, const char *);
     if (!part) break;
+#ifdef _WIN32
+    our_asprintf(&out, "\\%s", part);
+#else
     our_asprintf(&out, "/%s", part);
+#endif
   }
   va_end(args);
   normalize_slashes(out);
@@ -382,6 +402,17 @@ char *path_basename_alloc(const char *path) {
     return mila_strdup(slash + 1);
 }
 
+char *path_basename_id_alloc(const char *path) {
+    char *base = path_basename_alloc(path);
+    for (char *p = base; *p; p++) {
+        if (!isalpha((unsigned char)*p)) {
+            *p = '\0';
+            break;
+        }
+    }
+    return base;
+}
+
 void path_list_free(path_list *pl) {
   if (!pl)
     return;
@@ -463,8 +494,19 @@ char *path_list_find(path_list *pl, const char *file) {
     return NULL;
 
   char *tfile = transform_path(file);
-  if (file_exists(tfile))
-    return tfile;
+  if (!tfile)
+    return NULL;
+
+  int is_absolute = (tfile[0] == '/' || tfile[0] == '\\');
+#ifdef _WIN32
+  if (!is_absolute && tfile[1] == ':') is_absolute = 1;
+#endif
+
+  if (is_absolute) {
+    if (file_exists(tfile)) return tfile;
+    free(tfile);
+    return NULL;
+  }
 
   for (int i = 0; i < pl->count ; ++i) {
     const char *root = pl->items[i];
@@ -472,8 +514,8 @@ char *path_list_find(path_list *pl, const char *file) {
     size_t fl = strlen(tfile);
     size_t need = rl + 1 + fl + 1;
     char *full = malloc(need);
+    if (!full) continue;
     strcpy(full, root);
-    // add separator if missing
     char sep =
 #ifdef _WIN32
         '\\';
@@ -493,14 +535,10 @@ char *path_list_find(path_list *pl, const char *file) {
   return NULL;
 }
 
-// other
-
-// Return malloc'd absolute path of current working directory. Caller must free.
 char *path_get_cwd(void) {
-  char *cwd = PATH_GETCWD(NULL, 0); // allocate buffer
+  char *cwd = PATH_GETCWD(NULL, 0);
   if (!cwd)
     return NULL;
-
   normalize_slashes(cwd);
   return cwd;
 }
@@ -519,6 +557,7 @@ void path_dirname(const char *path, char *out, size_t outsize);
 void path_basename(const char *path, char *out, size_t outsize);
 char* path_dirname_alloc(const char *path);
 char* path_basename_alloc(const char *path);
+char* path_basename_id_alloc(const char *path);
 void path_list_free(path_list *pl);
 int path_list_add(path_list *pl, const char *path);
 int path_list_remove(path_list *pl, const char *path);

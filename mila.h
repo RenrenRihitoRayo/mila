@@ -524,6 +524,8 @@ Value *eval_source(Src *s, Env *env);
 Value *eval_str(char *src, Env *env);
 int run_file(char *name, Env *env);
 Value* run_file_keep_res(char *name, Env *env);
+int invoke_file(char *name, Env *env);
+Value* invoke_file_keep_res(char *name, Env *env);
 double get_unix_timestamp();
 char *read_input(void);
 int load_library(Env *env, const char *libpath);

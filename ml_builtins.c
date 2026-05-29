@@ -320,7 +320,7 @@ Value *native_cast_string(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.string(any): Expected 1 argument (any) any.\n");
+        return verror("cast.str(any): Expected 1 argument (any) any.\n");
     }
     return vnull();
 }
@@ -437,6 +437,42 @@ Value *native_fflush(Env *env, int argc, Value **argv)
         argv[0]->v.opaque = NULL; // Prevent double close
     }
     return vnull();
+}
+
+Value *native_file_exists(Env *env, int argc, Value **argv)
+{
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) verror("file.exists(f: \"string\"): Expects a path!");
+    char* file = path_list_find(search_path, GET_STRING(argv[0]));
+    if (file && file_exists(file)) {
+        free(file);
+        return vbool(1);
+    }
+    free(file);
+    return vbool(0);
+}
+
+Value *native_file_is_file(Env *env, int argc, Value **argv)
+{
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) verror("file.is_file(f: \"string\"): Expects a path!");
+    char* file = path_list_find(search_path, GET_STRING(argv[0]));
+    if (file && is_file(file)) {
+        free(file);
+        return vbool(1);
+    }
+    free(file);
+    return vbool(0);
+}
+
+Value *native_file_is_dir(Env *env, int argc, Value **argv)
+{
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) verror("file.is_dir(f: \"string\"): Expects a path!");
+    char* file = path_list_find(search_path, GET_STRING(argv[0]));
+    if (file && is_dir(file)) {
+        free(file);
+        return vbool(1);
+    }
+    free(file);
+    return vbool(0);
 }
 
 Value *native_fprint(Env *env, int argc, Value **argv)
@@ -659,6 +695,42 @@ Value *native_run(Env *env, int argc, Value **argv)
             vstring_dup("dir_path"), val_copy(by_dir_path),
         NULL));
         Value *res = run_file_keep_res(path, frame);
+        if (GET_TYPE(res) == T_ERROR)
+        {
+            return res;
+        }
+        mila_free(path);
+        env_free(frame);
+        return res;
+    }
+
+    return vnull();
+}
+
+Value *native_invoke(Env *env, int argc, Value **argv)
+{
+    if (argc != 1 || argv[0]->type != T_STRING)
+    {
+        return verror("invalid number of arguments given or incorrect types.");
+    }
+
+    if (search_path)
+    {
+        char *path = path_list_find(search_path, argv[0]->v.s);
+        if (!path)
+        {
+            return verror("run(filename) did not find the file.");
+        }
+        Env *frame = env_new(env);
+        Value *by = env_get(env, "__name__");
+        Value *by_path = env_get(env, "__path__");
+        Value *by_dir_path = env_get(env, "__dir_path__");
+        env_set_local_raw(frame, "__importer__", call_native_with(env, native_new_dict,
+            vstring_dup("name"), val_copy(by),
+            vstring_dup("path"), val_copy(by_path),
+            vstring_dup("dir_path"), val_copy(by_dir_path),
+        NULL));
+        Value *res = invoke_file_keep_res(path, frame);
         if (GET_TYPE(res) == T_ERROR)
         {
             return res;
@@ -1443,6 +1515,9 @@ void env_register_builtins(Env *g)
     env_register_native(g, "fseek", native_fseek);
     env_register_native(g, "ftell", native_ftell);
     env_register_native(g, "fflush", native_fflush);
+    env_register_native(g, "file.exists", native_file_exists);
+    env_register_native(g, "file.is_file", native_file_is_file);
+    env_register_native(g, "file.is_dir", native_file_is_dir);
     env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
     env_set_raw(g, "SEEK_END", vint(SEEK_END));
     env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
@@ -1516,7 +1591,7 @@ void env_register_builtins(Env *g)
     // === Casting
     env_register_native(g, "cast.int", native_cast_int);
     env_register_native(g, "cast.float", native_cast_float);
-    env_register_native(g, "cast.string", native_cast_string);
+    env_register_native(g, "cast.str", native_cast_string);
     env_register_native(g, "cast.i2f", native_cast_int_to_float);
     env_register_native(g, "cast.i2u", native_cast_int_to_uint);
     env_register_native(g, "cast.u2i", native_cast_uint_to_int);
@@ -1611,6 +1686,7 @@ void env_register_builtins(Env *g)
     // === Modules
 #ifndef VMM_BUILD
     env_register_native(g, "run", native_run);   // runs file
+    env_register_native(g, "invoke", native_run);   // invokes file
     env_register_native(g, "load", native_load); // loads dlls or so file
     env_register_native(g, "eval", native_eval); // runs string
 #endif

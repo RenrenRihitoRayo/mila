@@ -1,0 +1,61 @@
+%YAML 1.2
+---
+name: MiLa
+file_extensions: [mila]
+scope: source.mila
+
+contexts:
+  main:
+    - include: comment-block
+    - include: comment-line
+    - include: string
+    - include: keyword
+    - include: builtin
+    - include: constant
+    - include: number
+    - include: operator
+
+  comment-line:
+    - match: '//.*$'
+      scope: comment.line.mila
+
+  comment-block:
+    - match: '/\*'
+      scope: comment.block.mila
+      push:
+        - meta_scope: comment.block.mila
+        - match: '\*/'
+          pop: true
+
+  string:
+    - match: '"'
+      scope: string.quoted.double.mila
+      push:
+        - meta_scope: string.quoted.double.mila
+        - match: '\\[ntr0\\\"''abfvx]|\\x[0-9a-fA-F]{2}'
+          scope: constant.character.escape.mila
+        - match: '"'
+          pop: true
+
+  keyword:
+    - match: '\b(namespace|block|catch|if|elif|else|while|fn|set|var|export|forget|return|break|continue|foreach)\b'
+      scope: keyword.control.mila
+
+  builtin:
+    - match: '\b(xor|and|or|not|println|printr|print|input|printf|array|dict|typeof|open|fread|fprint|ftell|fseek|floor|ceil|pow|tan|cos|sin|atan2|sqrt|fabs|abs|run|eval|load|own|unown|report)\b'
+      scope: support.function.mila
+      
+    - match: '\b(str|str.(contains|caseless_contains|find|caseless_find|startswith|endswith|join|split|patch))\b'
+      scope: support.function.mila
+
+  constant:
+    - match: '\b(true|false|null|none|stderr|stdout|SEEK_SET|SEEK_END|SEEK_CUR)\b'
+      scope: constant.language.mila
+
+  number:
+    - match: '\b\d+\.?\d*u?\b'
+      scope: constant.numeric.mila
+
+  operator:
+    - match: '\+\=|\-\=|\*\=|\/\=|\%\=|\=\=|\!\=|\?\?|\<\=|\>\=|\&\&|\|\||[+\-*/=<>!:%?&|]'
+      scope: keyword.operator.mila

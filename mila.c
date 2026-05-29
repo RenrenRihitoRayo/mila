@@ -2579,8 +2579,7 @@ int skip_primary(Src *s)
                     }
                 }
                 return depth ? 1 : 0;
-            } else
-                return 1;
+            }
             return 0;
         }
         return 0; // variable read
@@ -4186,6 +4185,8 @@ Value *eval_primary(Src *s, Env *env)
                 mila_free(args);
                 HANDLE_RETURN(res);
                 return res;
+            } else {
+                return obj;
             }
         }
         return expr;
@@ -4571,6 +4572,9 @@ Value *eval_primary(Src *s, Env *env)
                 mila_free(args);
                 HANDLE_RETURN(res);
                 return res;
+            } else {
+                mila_free(id);
+                return val_retain(function);
             }
         }
         else
@@ -6456,20 +6460,7 @@ Value *eval_source(Src *s, Env *env)
         last = st;
         if (last)
         {
-            if (last->type == T_ERROR)
-            {
-                printf("\n= Error: %s\n", last->v.message);
-                return last;
-            }
-            if (last->type == T_TAGGED_ERROR)
-            {
-                if (last->v.tagged_error.type == E_THREAD_HALT) return last;
-                if (IS_FATAL(last))
-                    printf("\n= FATAL ERROR[%s]: %s\n", GET_ERRORNAME(last),
-                           last->v.tagged_error.message);
-                else
-                    printf("\n= Error[%s]: %s\n", GET_ERRORNAME(last),
-                           last->v.tagged_error.message);
+            if (IS_ERROR(last)) {
                 return last;
             }
             else if (last->type == T_RETURN)
@@ -6491,12 +6482,31 @@ Value *eval_str(char *src, Env *env)
     return res;
 }
 
+void print_error(Value* v) {
+    if (v->type == T_ERROR)
+    {
+        printf("\n= Error: %s\n", v->v.message);
+    }
+    if (v->type == T_TAGGED_ERROR)
+    {
+        if (v->v.tagged_error.type == E_THREAD_HALT) return;
+        if (IS_FATAL(v))
+            printf("\n= FATAL ERROR[%s]: %s\n", GET_ERRORNAME(v),
+                   v->v.tagged_error.message);
+        else
+            printf("\n= Error[%s]: %s\n", GET_ERRORNAME(v),
+                   v->v.tagged_error.message);
+    }
+}
+
 int run_file(char *name, Env *env)
 {
 #ifndef VMM_BUILD
+    char* loc_dir = path_dirname_alloc(name);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
-    env_set_local_raw(env, "__dir_path__", vstring_take(path_dirname_alloc(name)));
+    env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
+    path_list_add(search_path, loc_dir);
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -6517,15 +6527,21 @@ int run_file(char *name, Env *env)
     val_release(res);
     src_free(S);
     mila_free(src_text);
+#ifndef VMM_BUILD
+    path_list_remove(search_path, loc_dir);
+    free(loc_dir);
+#endif
     return 0;
 }
 
 Value *run_file_keep_res(char *name, Env *env)
 {
 #ifndef VMM_BUILD
+    char* loc_dir = path_dirname_alloc(name);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
-    env_set_local_raw(env, "__dir_path__", vstring_take(path_dirname_alloc(name)));
+    env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
+    path_list_add(search_path, loc_dir);
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -6544,6 +6560,125 @@ Value *run_file_keep_res(char *name, Env *env)
     Value *res = eval_source(S, env);
     src_free(S);
     mila_free(src_text);
+#ifndef VMM_BUILD
+    path_list_remove(search_path, loc_dir);
+    free(loc_dir);
+#endif
+    return res;
+}
+
+int invoke_file(char *name, Env *env)
+{
+#ifndef VMM_BUILD
+    char* _loc_dir = path_dirname_alloc(name);
+    char* cwd = path_get_cwd();
+    char* loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+    free(_loc_dir);
+    free(cwd);
+    env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
+    env_set_local_raw(env, "__path__", vstring_dup(name));
+    env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
+    path_list_add(search_path, loc_dir);
+
+    char* setup_name = path_list_find(search_path, "init.setup-mila");
+    Env* setup_env = env_new(env);
+
+    env_set_raw(setup_env, "setup_for", call_native_with(env, native_new_dict,
+        vstring_dup("name"), vstring_take(path_basename_alloc(name)),
+        vstring_dup("id_name"), vstring_take(path_basename_id_alloc(name)),
+        vstring_dup("path"), vstring_dup(name),
+        vstring_dup("dir_path"), vstring_dup(loc_dir),
+    NULL));
+
+    Value* setup_res = run_file_keep_res(setup_name, setup_env);
+    env_free(setup_env);
+    free(setup_name);
+    if (IS_ERROR(setup_res)) {
+        Value* err = verror("Setup file %s returned %s", setup_name, GET_ERROR_MESSAGE(setup_res));
+        print_error(err);
+        val_release(setup_res);
+        return 1;
+    }
+    val_release(setup_res);
+#endif
+    char *src_text = NULL;
+    FILE *f = fopen(name, "rb");
+    if (!f)
+    {
+        fprintf(stderr, "Cannot open %s\n", name);
+        return 1;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    src_text = mila_malloc(size + 1);
+    fread(src_text, 1, size, f);
+    src_text[size] = 0;
+    fclose(f);
+    Src *S = src_new(src_text);
+    Value *res = eval_source(S, env);
+    val_release(res);
+    src_free(S);
+    mila_free(src_text);
+#ifndef VMM_BUILD
+    path_list_remove(search_path, loc_dir);
+    free(loc_dir);
+#endif
+    return 0;
+}
+
+Value *invoke_file_keep_res(char *name, Env *env)
+{
+#ifndef VMM_BUILD
+    char* _loc_dir = path_dirname_alloc(name);
+    char* cwd = path_get_cwd();
+    char* loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+    free(_loc_dir);
+    free(cwd);
+    env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
+    env_set_local_raw(env, "__path__", vstring_dup(name));
+    env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
+    path_list_add(search_path, loc_dir);
+
+    char* setup_name = path_list_find(search_path, "init.setup-mila");
+    Env* setup_env = env_new(env);
+
+    env_set_raw(setup_env, "setup_for", call_native_with(env, native_new_dict,
+        vstring_dup("name"), vstring_take(path_basename_alloc(name)),
+        vstring_dup("id_name"), vstring_take(path_basename_id_alloc(name)),
+        vstring_dup("path"), vstring_dup(name),
+        vstring_dup("dir_path"), vstring_dup(loc_dir),
+    NULL));
+
+    Value* setup_res = run_file_keep_res(setup_name, setup_env);
+    env_free(setup_env);
+    free(setup_name);
+    if (IS_ERROR(setup_res)) {
+        return setup_res;
+    }
+    val_release(setup_res);
+#endif
+    char *src_text = NULL;
+    FILE *f = fopen(name, "rb");
+    if (!f)
+    {
+        return verror("Cannot open %s\n", name);
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    src_text = mila_malloc(size + 1);
+    fread(src_text, 1, size, f);
+    src_text[size] = 0;
+    fclose(f);
+    Src *S = src_new(src_text);
+    Value *res = eval_source(S, env);
+    src_free(S);
+    mila_free(src_text);
+#ifndef VMM_BUILD
+    path_list_remove(search_path, loc_dir);
+    free(loc_dir);
+#endif
     return res;
 }
 
@@ -6676,33 +6811,17 @@ int main(int argc, char **argv)
         }
         env_set_raw(g, "argv", array);
         env_set_raw(g, "__argv", vopaque(argv));
-
-        char* path = path_join_alloc(cwd, argv[1], NULL);
-        char* local = path_dirname_alloc(path);
-        env_set_local_raw(g, "__name__", vstring_dup("__main__"));
-        env_set_local_raw(g, "__path__", vstring_take(path));
-        env_set_local_raw(g, "__dir_path__", vstring_take(local));
-        path_list_add_top(search_path, local);
         free(cwd);
 
-
-        // read file
-        fseek(f, 0, SEEK_END);
-        long size = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        src_text = mila_malloc(size + 1);
-        fread(src_text, 1, size, f);
-        src_text[size] = 0;
-        fclose(f);
-
-        Src *S = src_new(src_text);
-        Value *res = eval_source(S, g);
+        Value *res = invoke_file_keep_res(argv[1], g);
+        if (IS_ERROR(res)) {
+            print_error(res);
+        }
 
         path_list_free(search_path);
 
         // cleanup
         val_release(res);
-        src_free(S);
 
         mila_free(src_text);
 
@@ -6816,6 +6935,8 @@ int main(int argc, char **argv)
                     printf("  : ");
                     print_value_repr(res);
                     putchar('\n');
+                } else {
+                    print_error(res);
                 }
 
                 val_release(res);
@@ -6841,124 +6962,4 @@ int main(int argc, char **argv)
     free(cwd);
     return 0;
 }
-
-#else
-
-int repr()
-{
-    BlrHistory hist;
-    if (blr_history_init(&hist, 100)) {
-        perror("blr_history_init");
-        return 1;
-    }
-    // read file if provided or use built-in demo
-    char *src_text = NULL;
-
-    // prepare global env
-    // register native functions
-    Env *g = mila_init();
-
-    // Check if built ins is the canonical
-    Value *builtins_flag = env_get(g, "__mila_canonical_builtins");
-    int is_builtins = builtins_flag != NULL && builtins_flag->type == T_INT &&
-                      builtins_flag->v.i == 202603L;
-
-    printf("MiLa REPL\n");
-    printf("Running MiLa '%s'\n", env_get(g, "__mila_codename")
-                                      ? env_get(g, "__mila_codename")->v.s
-                                      : "???");
-
-    // Notify users when MiLa is built using the canonical builtins
-    if (is_builtins)
-    {
-        printf("Cannonical Builtins (%ld) version %ld\n",
-               env_get(g, "__mila_canonical_builtins")->v.i,
-               env_get(g, "__mila_canonical_builtins_version")->v.i);
-    }
-
-    char buffer[2048]; // accumulated snippet
-    buffer[0] = 0;
-
-    printf(">>> ");
-    fflush(stdout);
-
-    char* ps;
-    ps = ">>> ";
-    char* line = NULL;
-    while ((line = blr_rec_read(ps, &hist)) != NULL)
-    {
-        // append line to buffer
-        strcat(buffer, line);
-        free(line);
-        fflush(stdout);
-
-        // debugging
-        if (strncmp(buffer, ".mempro", 7) == 0)
-        {
-            FILE *f = fopen("/proc/self/status", "r");
-            char line[256];
-
-            while (fgets(line, sizeof(line), f))
-            {
-                if (strncmp(line, "VmRSS:", 6) == 0 ||
-                    strncmp(line, "VmData:", 7) == 0 ||
-                    strncmp(line, "VmStack:", 8) == 0 ||
-                    strncmp(line, "VmExe:", 6) == 0 ||
-                    strncmp(line, "VmStk:", 6) == 0)
-                {
-                    printf("%s", line);
-                }
-            }
-            fclose(f);
-            fflush(stdout);
-            buffer[0] = 0;
-            continue;
-        }
-        else if (strncmp(buffer, ".mem", 4) == 0)
-        {
-            print_memory_usage();
-            buffer[0] = 0;
-            fflush(stdout);
-            continue;
-        }
-        else if (strncmp(buffer, ".quit", 4) == 0)
-        {
-            break;
-        }
-
-        // check if expression is syntactically complete
-        if (!needs_more(buffer))
-        {
-            // evaluate accumulated buffer
-            Src *S = src_new(buffer);
-            Value *res = eval_source(S, g);
-
-            if (GET_TYPE(res) != T_NULL && !IS_ERROR(res))
-            {
-                printf("  : ");
-                print_value_repr(res);
-                putchar('\n');
-            }
-
-            val_release(res);
-            src_free(S);
-
-            // clear buffer
-            buffer[0] = 0;
-
-            ps=">>> ";
-            fflush(stdout);
-        }
-        else
-        {
-            // prompt for continuation
-            ps="... ";
-            fflush(stdout);
-        }
-    }
-
-    mila_deinit(g);
-    return 0;
-}
-
 #endif // VMM_BUILD

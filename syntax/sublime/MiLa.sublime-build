@@ -1,0 +1,11 @@
+{
+    "cmd": ["mila", "$file"],
+    "working_dir": "$file_path",
+    "selector": "source.mila",
+    "variants": [
+        {
+            "name": "Run",
+            "cmd": ["mila", "$file"]
+        }
+    ]
+}

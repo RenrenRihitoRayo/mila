@@ -3450,6 +3450,9 @@ FunctionParameters *parse_param_list(Src *s)
             for (int i = 0; i < cnt; i++)
                 mila_free(arr[i]);
             mila_free(arr);
+            for (int i = 0; i < cnt; i++)
+                mila_free(def[i]);
+            mila_free(def);
             return NULL;
         }
         if (match_char(s, ':'))
@@ -3483,7 +3486,7 @@ FunctionParameters *parse_param_list(Src *s)
     }
     fnp->params = arr;
     fnp->defaults = def;
-    fnp->count = cnt-1;
+    fnp->count = cnt;
     return fnp;
 }
 
@@ -3831,6 +3834,11 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             } else {
                 env_set_local(frame, p[i], a);
             }
+        }
+        i--;
+        for (int j=i; fnval->v.fn->params[j]; ++j) {
+            if (strncmp("...", p[i], 3) == 0) env_set_local_raw(frame, p[i]+3, vnull());
+            else env_set_local_raw(frame, p[i], vnull());
         }
         // set contextual values
         p = fnval->v.fn->contextuals;
@@ -6640,6 +6648,134 @@ int invoke_file(char *name, Env *env)
     return 0;
 }
 
+Value *invoke_main_file(char *name, Env *env, int argc, char* argv[])
+{
+#ifndef VMM_BUILD
+    char* _loc_dir = path_dirname_alloc(name);
+    char* cwd = path_get_cwd();
+    char* loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+    free(_loc_dir);
+    free(cwd);
+    env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
+    env_set_local_raw(env, "__path__", vstring_dup(name));
+    env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
+    path_list_add(search_path, loc_dir);
+
+    char* setup_name = path_list_find(search_path, "init.setup-mila");
+    if (setup_name) {
+        Env* setup_env = env_new(env);
+
+        env_set_raw(setup_env, "setup_for", call_native_with(env, native_new_dict,
+            vstring_dup("name"), vstring_take(path_basename_alloc(name)),
+            vstring_dup("id_name"), vstring_take(path_basename_id_alloc(name)),
+            vstring_dup("path"), vstring_dup(name),
+            vstring_dup("dir_path"), vstring_dup(loc_dir),
+        NULL));
+
+        Value* setup_res = run_file_keep_res(setup_name, setup_env);
+        env_free(setup_env);
+        free(setup_name);
+        if (IS_ERROR(setup_res)) {
+            path_list_remove(search_path, loc_dir);
+            free(loc_dir);
+            return setup_res;
+        }
+        val_release(setup_res);
+    }
+#endif
+    char *src_text = NULL;
+    FILE *f = fopen(name, "rb");
+    if (!f)
+    {
+        return verror("Cannot open %s\n", name);
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    src_text = mila_malloc(size + 1);
+    fread(src_text, 1, size, f);
+    src_text[size] = 0;
+    fclose(f);
+    Src *S = src_new(src_text);
+
+    // no comments
+    if (src_peek(S) == '#') {
+        src_get(S);
+        if (!match_char(S, '!')) return verror("Invalid shebang!");
+        while (src_peek(S) != '\n') src_get(S);
+    }
+
+    skip_ws(S);
+    if (src_peek(S) == '!') {
+        src_get(S);
+        if (is_keyword_at(S, "fn")) {
+            S->pos += 2;
+            FunctionParameters* fnp = parse_param_list(S);
+            for (int i=1; i<argc && fnp->params[i]; ++i) {
+                env_set_raw(env, fnp->params[i], vstring_dup(argv[i]));
+                if (strncmp("...", fnp->params[i], 3) == 0) {
+                    Value* list = call_native_with(env, native_list_new, NULL);
+                    env_set_local_raw(env, fnp->params[i]+3, list);
+                    val_release(call_native_with(env, native_list_append, val_retain(list), vstring_dup(argv[i]), NULL));
+                    for (i++; i<argc; ++i) {
+                        val_release(call_native_with(env, native_list_new, val_retain(list), vstring_dup(argv[i]), NULL));
+                    }
+                    break;
+                } else {
+                    env_set_local_raw(env, fnp->params[i], vstring_dup(argv[i]));
+                }
+            }
+            int pass = argc; // 1 because of argc
+            for (int i=argc; i<fnp->count && fnp->defaults[i]; ++i) {
+                if (strncmp("...", fnp->params[i], 3) == 0) {
+                    env_set_raw(env, fnp->params[i]+3, eval_str(fnp->defaults[i], env));
+                } else {
+                    env_set_raw(env, fnp->params[i], eval_str(fnp->defaults[i], env));
+                }
+                pass++;
+            }
+            pass--;
+            for (int i=1+pass; i<fnp->count && fnp->params[i]; ++i) {
+                if (strncmp("...", fnp->params[i], 3) == 0) env_set_raw(env, fnp->params[i]+3, vnull()); // avoid passing through to upper env
+                else env_set_raw(env, fnp->params[i], vnull()); // avoid passing through to upper env
+            }
+            for (int i=0; i<fnp->count; ++i) {
+                if (fnp->defaults[i])
+                    mila_free(fnp->defaults[i]);
+                mila_free(fnp->params[i]);
+            }
+            mila_free(fnp->params);
+            mila_free(fnp->defaults);
+            mila_free(fnp);
+
+            if (is_keyword_at(S, "->")) {
+                S->pos += 2;
+                skip_ws(S);
+                if (!match_char(S, '"')) {
+                    src_free(S);
+                    mila_free(src_text);
+#ifndef VMM_BUILD
+                    path_list_remove(search_path, loc_dir);
+                    free(loc_dir);
+#endif
+                    return verror("Expected string annotation!");
+                }
+                S->pos--; // parse_string expects openning quote
+                val_release(parse_string(S));
+            }
+        }
+    }
+
+    Value *res = eval_source(S, env);
+    src_free(S);
+    mila_free(src_text);
+#ifndef VMM_BUILD
+    path_list_remove(search_path, loc_dir);
+    free(loc_dir);
+#endif
+    return res;
+}
+
 Value *invoke_file_keep_res(char *name, Env *env)
 {
 #ifndef VMM_BUILD
@@ -6830,7 +6966,7 @@ int main(int argc, char **argv)
         env_set_raw(g, "__argv", vopaque(argv));
         free(cwd);
 
-        Value *res = invoke_file_keep_res(argv[1], g);
+        Value *res = invoke_main_file(argv[1], g, argc, argv);
         if (IS_ERROR(res)) {
             print_error(res);
         }

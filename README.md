@@ -82,18 +82,15 @@ Less than most programming languages' number of keywords!
 ## Example
 
 ### Hello world
-```
+```MiLa
 println("Hello, world!");
 ```
 
-### Threads
+### Fibbonacci
+```MiLa
+println("Hello, world!");
 ```
-var th = thread.make(!{
-    time_sleep(10);
-});
 
-thread.join(th); // wait till thread finishes
-```
 
 ## Example of using MiLa (in C)
 

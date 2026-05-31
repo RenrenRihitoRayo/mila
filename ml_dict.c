@@ -201,6 +201,42 @@ Value *dict_get_str(Dict *dict, const char *key) {
   return NULL;
 }
 
+int dict_set_str(Dict *dict, char *str_key, Value *value) {
+  if (!dict || !str_key)
+    return 0;
+
+  if ((double)dict->size / dict->capacity > LOAD_FACTOR) {
+    dict_resize(dict);
+  }
+
+  char* key = NULL;
+  our_asprintf(&key, "\"%s\"", str_key);
+
+  unsigned long index = hash_string(key) % dict->capacity;
+  DictEntry *entry = dict->buckets[index];
+
+  while (entry) {
+    if (strcmp(entry->key, key) == 0) {
+      val_release(entry->value);
+      entry->value = val_retain(value);
+      return 1; // updated existing
+    }
+    entry = entry->next;
+  }
+
+  DictEntry *new_entry = dict_entry_create(key, value);
+  if (!new_entry) {
+    mila_free(key);
+    return 0;
+  }
+  new_entry->key_type = T_INT;
+  new_entry->next = dict->buckets[index];
+  dict->buckets[index] = new_entry;
+  dict->size++;
+  mila_free(key);
+  return 1; // new insertion
+}
+
 Value *dict_get(Dict *dict, Value *key) {
   if (!dict || !key)
     return NULL;

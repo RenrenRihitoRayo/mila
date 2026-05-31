@@ -4121,7 +4121,7 @@ Value *eval_primary(Src *s, Env *env)
                 if (!function)
                 {
                     Value *err =
-                        verror("Function %s didnt exist in expression", GET_STRING(attr));
+                        verror("Attribute %s didnt exist in expression", GET_STRING(attr));
                     return err;
                 }
             }
@@ -4500,7 +4500,7 @@ Value *eval_primary(Src *s, Env *env)
                     ((binary_method)obj->method_table[BMethodGetItem])(obj, attr);
                 if (!function)
                 {
-                    Value *err = verror("Function %s didnt exist in value %s",
+                    Value *err = verror("Attribute %s didnt exist in value %s",
                                         GET_STRING(attr), id);
                     val_release(attr);
                     mila_free(id);

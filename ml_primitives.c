@@ -1,4 +1,9 @@
 // This project is licensed under the GNU Affero General Public License
+
+/*
+    Primitives as in syntax supported.
+    And or are crucial container types.
+*/
 #pragma once
 
 #include "mila.h"

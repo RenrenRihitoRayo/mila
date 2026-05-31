@@ -32,7 +32,6 @@ void http_cleanup(void) {
 #endif
 }
 
-// Parse URL to extract host and path
 static void parse_url(const char *url, char *host, char *path) {
     const char *p = url;
     if (strncmp(p, "http://", 7) == 0) p += 7;
@@ -49,7 +48,6 @@ static void parse_url(const char *url, char *host, char *path) {
     }
 }
 
-// Connect to host and return socket
 static int connect_socket(const char *host) {
     struct hostent *he = gethostbyname(host);
     if (!he) return -1;
@@ -69,7 +67,6 @@ static int connect_socket(const char *host) {
     return sock;
 }
 
-// Send HTTP request and read response
 static HttpResponse send_request(int sock, const char *request) {
     HttpResponse resp = {0, NULL, 0, NULL};
     
@@ -83,16 +80,13 @@ static HttpResponse send_request(int sock, const char *request) {
     CLOSE_SOCKET(sock);
     buffer[total] = '\0';
     
-    // Parse status code
     sscanf(buffer, "HTTP/%*s %d", &resp.status_code);
     
-    // Find headers/body split
     char *body_start = strstr(buffer, "\r\n\r\n");
     if (!body_start) body_start = strstr(buffer, "\n\n");
     
     int header_len = body_start ? (int)(body_start - buffer) : total;
     
-    // Parse headers
     char *headers_copy = malloc(header_len + 1);
     strncpy(headers_copy, buffer, header_len);
     headers_copy[header_len] = '\0';
@@ -129,7 +123,6 @@ static HttpResponse send_request(int sock, const char *request) {
         line = strtok(NULL, "\r\n");
     }
     
-    // Extract body
     if (body_start) {
         int body_offset = (strstr(buffer, "\r\n\r\n") ? 4 : 2);
         resp.body = malloc(total - (body_start - buffer) - body_offset + 1);
@@ -190,6 +183,44 @@ void http_response_free(HttpResponse response) {
     free(response.body);
 }
 
+// Convert mila dict to HttpHeader array
+static HttpHeader* dict_to_headers(Value* dict_val, int* out_count) {
+    *out_count = 0;
+    if (!dict_val || dict_val->type != T_OPAQUE) return NULL;
+    
+    Dict* dict = (Dict*)GET_OPAQUE(dict_val);
+    if (!dict || dict->size == 0) return NULL;
+    
+    HttpHeader* headers = (HttpHeader*)malloc(dict->size * sizeof(HttpHeader));
+    if (!headers) return NULL;
+    
+    int idx = 0;
+    for (size_t i = 0; i < dict->capacity; i++) {
+        DictEntry* entry = dict->buckets[i];
+        while (entry && idx < (int)dict->size) {
+            Value* tmp = eval_str(entry->key, NULL);
+            headers[idx].key = as_c_string(tmp);
+            val_release(tmp);
+            headers[idx].value = as_c_string(entry->value);
+            idx++;
+            entry = entry->next;
+        }
+    }
+    
+    *out_count = idx;
+    return headers;
+}
+
+// Free headers converted from dict (only free values, not keys)
+static void free_headers_from_dict(HttpHeader* headers, int count) {
+    if (!headers) return;
+    for (int i = 0; i < count; i++) {
+        mila_free(headers[i].value);
+        mila_free(headers[i].key);
+    }
+    free(headers);
+}
+
 Value* native_http_init(Env* e, int argc, Value** argv) {
     http_init();
     return vnull();
@@ -201,18 +232,60 @@ Value* native_http_cleanup(Env* e, int argc, Value** argv) {
 }
 
 Value* native_http_post(Env* e, int argc, Value** argv) {
-    HttpResponse resp = http_post(GET_STRING(argv[0]), GET_STRING(argv[1]), NULL, 0);
-    Value* d = call_native_with(NULL, native_new_dict, NULL);
-    val_release(call_native_with(NULL, native_set_dict,
-        val_retain(d), vstring_dup("body"), vstring_dup(resp.body), NULL));
-    val_release(call_native_with(NULL, native_set_dict,
-        val_retain(d), vstring_dup("status"), vint(resp.status_code), NULL));
+    const char* url = GET_STRING(argv[0]);
+    const char* body = GET_STRING(argv[1]);
+    int header_count = 0;
+    HttpHeader* headers = NULL;
+    
+    if (argc > 2 && argv[2]) {
+        headers = dict_to_headers(argv[2], &header_count);
+    }
+    
+    HttpResponse resp = http_post(url, body, headers, header_count);
+    
+    Value* d = call_native_with(NULL, native_new_dict,
+        vstring_dup("body"), vstring_dup(resp.body),
+        vstring_dup("status"), vint(resp.status_code),
+        NULL);
     Value* header = call_native_with(NULL, native_new_dict, NULL);
-    for (int i=0; i<resp.header_count; ++i)
-        val_release(call_native_with(NULL, native_set_dict,
-        val_retain(header), vstring_dup(resp.headers[i].key), vstring_dup(resp.headers[i].value), NULL));
-    val_release(call_native_with(NULL, native_set_dict,
-        val_retain(d), vstring_dup("headers"), val_retain(header), NULL));
+    for (int i=0; i<resp.header_count; ++i) {
+        Value* value = vstring_dup(resp.headers[i].value);
+        dict_set_str(GET_OPAQUE(header), resp.headers[i].key, value);
+        val_release(value);
+    }
+    dict_set_str(GET_OPAQUE(d), "header", header);
+    val_release(header);
+    
+    free_headers_from_dict(headers, header_count);
+    http_response_free(resp);
+    return d;
+}
+
+Value* native_http_get(Env* e, int argc, Value** argv) {
+    const char* url = GET_STRING(argv[0]);
+    int header_count = 0;
+    HttpHeader* headers = NULL;
+    
+    if (argc > 1 && argv[1]) {
+        headers = dict_to_headers(argv[1], &header_count);
+    }
+    
+    HttpResponse resp = http_get(url, headers, header_count);
+    
+    Value* d = call_native_with(NULL, native_new_dict,
+        vstring_dup("body"), vstring_dup(resp.body),
+        vstring_dup("status"), vint(resp.status_code),
+        NULL);
+    Value* header = call_native_with(NULL, native_new_dict, NULL);
+    for (int i=0; i<resp.header_count; ++i) {
+        Value* value = vstring_dup(resp.headers[i].value);
+        dict_set_str(GET_OPAQUE(header), resp.headers[i].key, value);
+        val_release(value);
+    }
+    dict_set_str(GET_OPAQUE(d), "header", header);
+    val_release(header);
+    
+    free_headers_from_dict(headers, header_count);
     http_response_free(resp);
     return d;
 }
@@ -220,5 +293,6 @@ Value* native_http_post(Env* e, int argc, Value** argv) {
 void env_register_http_ext(Env* g) {
     env_register_native(g, "http.init", native_http_init);
     env_register_native(g, "http.post", native_http_post);
+    env_register_native(g, "http.get", native_http_get);
     env_register_native(g, "http.cleanup", native_http_cleanup);
 }

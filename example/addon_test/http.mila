@@ -1,0 +1,36 @@
+// Test HTML Addon for MiLa
+
+http.init();
+var header = [@"User-Agent" = "MiLa Script"];
+println("Waiting for response.");
+var data = http.get("http://eu.httpbin.org/anything?id=90", "this is the body", header);
+var res = json.loads(data:body);
+if (res) println(json.dumps(res));
+else println(data:body);
+http.cleanup();
+
+/*
+Response should be somewhere like
+{
+  "origin": "ur IP here",
+  "json": null,
+  "data": "this is the body",
+  "headers": {
+    "Content-Length": "16",
+    "User-Agent": "MiLa Script",
+    "Host": "eu.httpbin.org",
+    "X-Amzn-Trace-Id": "Root=..."
+  },
+  "args": {
+    "id": "90"
+  },
+  "method": "POST",
+  "url": "http://eu.httpbin.org/anything?id=90",
+  "files": {
+
+  },
+  "form": {
+
+  }
+}
+*/

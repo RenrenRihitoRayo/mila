@@ -1,0 +1,29 @@
+
+var rules = [@
+    "###" = ".",
+    "##." = "#",
+    "#.#" = "#",
+    "#.." = ".",
+    ".##" = "#",
+    ".#." = "#",
+    "..#" = "#",
+    "..." = "."
+];
+
+fn update(row):[rule] {
+    var result = "";
+    foreach index : range(str.len(row)) {
+        var start = str.index(row, index - 1) ?? str.index(row, str.len(row) - 1);
+        var middle = str.index(row, index);
+        var end = str.index(row, index + 1) ?? str.index(row, 0);
+        set result += rules[start+middle+end] ?? ".";
+    }
+    return result;
+}
+
+var gens = "............#............";
+println("Rule110 in MiLa\nPress enter for each generation\n"+gens);
+while (true) {
+    set gens = update(gens);
+    input(gens);
+}

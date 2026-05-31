@@ -1477,6 +1477,10 @@ Value *native_mjson_dumps(Env* env, int argc, Value** argv) {
 #include "addon/ml_socket.c"
 #endif
 
+#ifdef EXT_HTTP
+#include "addon/http/http.c"
+#endif
+
 void env_register_builtins(Env *g)
 {
 #ifndef VMM_BUILD
@@ -1724,5 +1728,8 @@ void env_register_builtins(Env *g)
 #endif
 #ifdef EXT_SOCK
     env_register_socket_ext(g);
+#endif
+#ifdef EXT_HTTP
+    env_register_http_ext(g);
 #endif
 }

@@ -1,0 +1,9 @@
+{
+	"lib": "tools",
+	"packages": [
+		{
+			"name": "setup",
+			"details": "Just setting up stuff"
+		}
+	]
+}

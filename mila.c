@@ -3411,8 +3411,16 @@ char *dup_substr(Src *s, int a, int b)
 FunctionParameters *parse_param_list(Src *s)
 {
     skip_ws(s);
-    if (!match_char(s, '('))
-        return NULL;
+    if (!match_char(s, '(')) {
+        FunctionParameters* fnp = (FunctionParameters*)mila_malloc(sizeof(FunctionParameters));
+        char **p = mila_malloc(sizeof(char *));
+        char **d = mila_malloc(sizeof(char *));
+        p[0] = NULL;
+        d[0] = NULL;
+        fnp->params = p;
+        fnp->defaults = d;
+        return fnp;
+    }
     skip_ws(s);
     // empty
     FunctionParameters* fnp = (FunctionParameters*)mila_malloc(sizeof(FunctionParameters));
@@ -6581,25 +6589,30 @@ int invoke_file(char *name, Env *env)
     path_list_add(search_path, loc_dir);
 
     char* setup_name = path_list_find(search_path, "init.setup-mila");
-    Env* setup_env = env_new(env);
+    if (setup_name) {
+        Env* setup_env = env_new(env);
 
-    env_set_raw(setup_env, "setup_for", call_native_with(env, native_new_dict,
-        vstring_dup("name"), vstring_take(path_basename_alloc(name)),
-        vstring_dup("id_name"), vstring_take(path_basename_id_alloc(name)),
-        vstring_dup("path"), vstring_dup(name),
-        vstring_dup("dir_path"), vstring_dup(loc_dir),
-    NULL));
+        env_set_raw(setup_env, "setup_for", call_native_with(env, native_new_dict,
+            vstring_dup("name"), vstring_take(path_basename_alloc(name)),
+            vstring_dup("id_name"), vstring_take(path_basename_id_alloc(name)),
+            vstring_dup("path"), vstring_dup(name),
+            vstring_dup("dir_path"), vstring_dup(loc_dir),
+        NULL));
 
-    Value* setup_res = run_file_keep_res(setup_name, setup_env);
-    env_free(setup_env);
-    free(setup_name);
-    if (IS_ERROR(setup_res)) {
-        Value* err = verror("Setup file %s returned %s", setup_name, GET_ERROR_MESSAGE(setup_res));
-        print_error(err);
+        Value* setup_res = run_file_keep_res(setup_name, setup_env);
+        env_free(setup_env);
+        if (IS_ERROR(setup_res)) {
+            Value* err = verror("Setup file %s returned %s", setup_name, GET_ERROR_MESSAGE(setup_res));
+            free(setup_name);
+            print_error(err);
+            val_release(setup_res);
+            path_list_remove(search_path, loc_dir);
+            free(loc_dir);
+            return 1;
+        }
+        free(setup_name);
         val_release(setup_res);
-        return 1;
     }
-    val_release(setup_res);
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -6641,22 +6654,26 @@ Value *invoke_file_keep_res(char *name, Env *env)
     path_list_add(search_path, loc_dir);
 
     char* setup_name = path_list_find(search_path, "init.setup-mila");
-    Env* setup_env = env_new(env);
+    if (setup_name) {
+        Env* setup_env = env_new(env);
 
-    env_set_raw(setup_env, "setup_for", call_native_with(env, native_new_dict,
-        vstring_dup("name"), vstring_take(path_basename_alloc(name)),
-        vstring_dup("id_name"), vstring_take(path_basename_id_alloc(name)),
-        vstring_dup("path"), vstring_dup(name),
-        vstring_dup("dir_path"), vstring_dup(loc_dir),
-    NULL));
+        env_set_raw(setup_env, "setup_for", call_native_with(env, native_new_dict,
+            vstring_dup("name"), vstring_take(path_basename_alloc(name)),
+            vstring_dup("id_name"), vstring_take(path_basename_id_alloc(name)),
+            vstring_dup("path"), vstring_dup(name),
+            vstring_dup("dir_path"), vstring_dup(loc_dir),
+        NULL));
 
-    Value* setup_res = run_file_keep_res(setup_name, setup_env);
-    env_free(setup_env);
-    free(setup_name);
-    if (IS_ERROR(setup_res)) {
-        return setup_res;
+        Value* setup_res = run_file_keep_res(setup_name, setup_env);
+        env_free(setup_env);
+        free(setup_name);
+        if (IS_ERROR(setup_res)) {
+            path_list_remove(search_path, loc_dir);
+            free(loc_dir);
+            return setup_res;
+        }
+        val_release(setup_res);
     }
-    val_release(setup_res);
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");

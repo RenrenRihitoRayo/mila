@@ -518,6 +518,32 @@ Value *native_fread(Env *env, int argc, Value **argv)
     return vstring_take(buf);
 }
 
+Value *native_fread_all(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1 || argv[0]->type != T_OPAQUE)
+    {
+        return verror("= fread_all(file) expects handle.\n");
+    }
+    FILE *f = (FILE *)argv[0]->v.opaque;
+    if (!f)
+    {
+        return verror("= fread_all: file handle is closed or invalid.\n");
+    }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char *buf = mila_malloc(n + 1);
+    if (!buf)
+        return vnull();
+
+    size_t read_bytes = fread(buf, 1, n, f);
+    buf[read_bytes] = '\0';
+
+    return vstring_take(buf);
+}
+
 Value *native_fseek(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -1512,6 +1538,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "fclose", native_fclose);
     env_register_native(g, "fprint", native_fprint);
     env_register_native(g, "fread", native_fread);
+    env_register_native(g, "fread_all", native_fread_all);
     env_register_native(g, "fseek", native_fseek);
     env_register_native(g, "ftell", native_ftell);
     env_register_native(g, "fflush", native_fflush);

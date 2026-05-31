@@ -37,7 +37,7 @@ println(
     [1, 2, 3], typeof([1, 2, 3]),// "canon:list" c linked list
     [@ 1 = 2], typeof([@ 1 = 2]),// "canon:dict" c hash table (djb2 hash)
     fn{},      typeof(fn{}),     // "function"   c struct FunctionV
-    print,     typeof(print)     // "native"     c `Value*(**)(Env*, int, value**)` or struct NativeV
+    print,     typeof(print)     // "native"     c struct FunctionV or struct NativeV
 );
 
 // Asserts are also available
@@ -82,4 +82,4 @@ foreach thread : threads {
     thread.join(thread);
 }
 var end = get_time() - start;
-println("Should be around 5s: " + end + "s");
+println("Should be around 1s: " + end + "s");

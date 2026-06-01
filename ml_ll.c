@@ -1,6 +1,7 @@
 // This project is licensed under the GNU Affero General Public License
 #pragma once
 #include "mila.h"
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -149,4 +150,25 @@ Value **ll_to_iter(LinkedList *list) {
   }
   arr[i] = NULL;
   return arr;
+}
+
+typedef struct {
+  LLNode* current;
+} LLIterState;
+
+LLIterState* ll_iter_init(Value* self) {
+  LLIterState* state = (LLIterState*)mila_malloc(sizeof(LLIterState));
+  state->current = ((LinkedList*)GET_OPAQUE(self))->head;
+  return state;
+}
+
+Value* ll_iter_next(LLIterState* state) {
+  if (!state->current) return NULL;
+  Value* val = state->current->value;
+  state->current = state->current->next;
+  return val_retain(val);
+}
+
+void ll_iter_cleanup(LLIterState* state) {
+  free(state);
 }

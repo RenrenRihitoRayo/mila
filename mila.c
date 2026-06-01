@@ -6301,37 +6301,200 @@ Value *eval_statement(Src *s, Env *env)
                 return verror("Foreach lacking ':'");
             }
             Value *iter_obj = eval_expr(s, env);
-
             if (IS_ERROR(iter_obj))
             {
                 mila_free(id);
                 return iter_obj;
             }
-
             Value **value = NULL;
 
-            if (iter_obj->method_table && iter_obj->method_table[UMethodToIter])
+            // check new improved Iter method first
+            if (iter_obj->method_table && iter_obj->method_table[UMethodStepIterInit] && iter_obj->method_table[UMethodStepIter] && iter_obj->method_table[UMethodStepIterClean])
             {
-                Value *v =
-                    ((unary_method)iter_obj->method_table[UMethodToIter])(iter_obj);
-                if (IS_ERROR(v))
+                void *iter_state =
+                    ((unary_method)iter_obj->method_table[UMethodStepIterInit])(iter_obj);
+                if (!iter_state)
                 {
                     mila_free(id);
-                    return v;
+                    return verror("Iterable initialization returned C null!");
                 }
-                if (!v)
+
+                skip_ws(s);
+                uint64_t body_start_pos = s->pos;
+                skip_block(s);
+                uint64_t body_end_pos = s->pos;
+                Value *bod = NULL;
+
+                while (1)
+                {
+                    Value* v = ((unary_method)iter_obj->method_table[UMethodStepIter])(iter_state);
+                    if (!v) {
+                        s->pos = body_end_pos;
+                        mila_free(id);
+                        ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                        val_release(iter_obj);
+                        return vnull();
+                    }
+                    // reset the position to the start of the body for execution
+                    s->pos = body_start_pos;
+                    Env *frame = env_new(env);
+                    env_set_local_raw(frame, id, v);
+                    bod = eval_block_raw(s, frame);
+                    val_release(v);
+                    env_remove(frame, id);
+
+                    env_free(frame);
+                    // --- Handle body result ---
+                    switch (GET_TYPE(bod))
+                    {
+                        case T_BREAK:
+                        {
+                            s->pos = body_end_pos;
+                            val_release(bod);
+                            mila_free(value);
+                            mila_free(id);
+                            ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                            val_release(iter_obj);
+                            return vnull();
+                        }
+                        case T_CONTINUE:
+                        {
+                            s->pos = body_start_pos;
+                            if (bod)
+                                val_release(bod);
+                            mila_free(v);
+                            mila_free(value);
+                            mila_free(id);
+                            ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                            val_release(iter_obj);
+                            continue;
+                        }
+                        case T_RETURN:
+                        {
+                            s->pos = body_end_pos;
+                            mila_free(value);
+                            mila_free(id);
+                            ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                            val_release(iter_obj);
+                            return bod;
+                        }
+                        case T_TAGGED_ERROR:
+                        case T_ERROR:
+                        {
+                            s->pos = body_end_pos;
+                            mila_free(value);
+                            mila_free(id);
+                            ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                            val_release(iter_obj);
+                            return bod;
+                        }
+                        default:;
+                    }
+
+                    val_release(bod);
+                }
+                s->pos = body_end_pos;
+                mila_free(id);
+                mila_free(value);
+            }
+            else if (iter_obj->method_table && iter_obj->method_table[UMethodToIter])
+            {
+                Value *iter_instance =
+                    ((unary_method)iter_obj->method_table[UMethodToIter])(iter_obj);
+                if (IS_ERROR(iter_instance))
+                {
+                    mila_free(id);
+                    return iter_instance;
+                }
+                if (!iter_instance)
                 {
                     mila_free(id);
                     return verror("Iterable is cnull!");
                 }
-                value = v->v.opaque;
+                value = iter_instance->v.opaque;
                 if (!value)
                 {
                     mila_free(id);
                     return verror("Value returned null!");
                 }
-                val_kill(v);
-            }
+                val_kill(iter_instance);
+
+                skip_ws(s);
+                val_release(iter_obj);
+
+                uint64_t body_start_pos = s->pos;
+                skip_block(s);
+                uint64_t body_end_pos = s->pos;
+                Value *bod = NULL;
+
+                // we execute the loop until the condition is false or a control-flow
+                // statement is hit
+                size_t i = 0;
+                Value *v = value[i];
+                i++;
+                for (; v; v = value[i++])
+                {
+                    // reset the position to the start of the body for execution
+                    s->pos = body_start_pos;
+                    Env *frame = env_new(env);
+                    env_set_local_raw(frame, id, v);
+                    bod = eval_block_raw(s, frame);
+                    val_release(v);
+                    env_remove(frame, id);
+
+                    env_free(frame);
+                    // --- Handle body result ---
+                    switch (GET_TYPE(bod))
+                    {
+                        case T_BREAK:
+                        {
+                            s->pos = body_end_pos;
+                            for (;value[i]; ++i)
+                                val_release(value[i]);
+                            val_release(bod);
+                            mila_free(value);
+                            mila_free(id);
+                            return vnull();
+                        }
+                        case T_CONTINUE:
+                        {
+                            s->pos = body_start_pos;
+                            if (bod)
+                                val_release(bod);
+                            for (;value[i]; ++i)
+                                val_release(value[i]);
+                            mila_free(v);
+                            mila_free(value);
+                            mila_free(id);
+                            continue;
+                        }
+                        case T_RETURN:
+                        {
+                            s->pos = body_end_pos;
+                            for (;value[i]; ++i)
+                                val_release(value[i]);
+                            mila_free(value);
+                            mila_free(id);
+                            return bod;
+                        }
+                        case T_TAGGED_ERROR:
+                        case T_ERROR:
+                        {
+                            s->pos = body_end_pos;
+                            for (;value[i]; ++i)
+                                val_release(value[i]);
+                            mila_free(value);
+                            mila_free(id);
+                            return bod;
+                        }
+                        default:;
+                    }
+                    val_release(bod);
+                }
+                s->pos = body_end_pos;
+                mila_free(id);
+                mila_free(value);
+            } 
             else
             {
                 mila_free(id);
@@ -6340,82 +6503,6 @@ Value *eval_statement(Src *s, Env *env)
                 val_release(iter_obj);
                 return err;
             }
-            skip_ws(s);
-            val_release(iter_obj);
-
-            uint64_t body_start_pos = s->pos;
-            skip_block(s);
-            uint64_t body_end_pos = s->pos;
-            Value *bod = NULL;
-
-            // we execute the loop until the condition is false or a control-flow
-            // statement is hit
-            size_t i = 0;
-            Value *v = value[i];
-            i++;
-            for (; v; v = value[i++])
-            {
-                // reset the position to the start of the body for execution
-                s->pos = body_start_pos;
-                Env *frame = env_new(env);
-                env_set_local_raw(frame, id, v);
-                bod = eval_block_raw(s, frame);
-                val_release(v);
-                env_remove(frame, id);
-
-                env_free(frame);
-                // --- Handle body result ---
-                switch (GET_TYPE(bod))
-                {
-                    case T_BREAK:
-                    {
-                        s->pos = body_end_pos;
-                        for (;value[i]; ++i)
-                            val_release(value[i]);
-                        val_release(bod);
-                        mila_free(value);
-                        mila_free(id);
-                        return vnull();
-                    }
-                    case T_CONTINUE:
-                    {
-                        s->pos = body_start_pos;
-                        if (bod)
-                            val_release(bod);
-                        for (;value[i]; ++i)
-                            val_release(value[i]);
-                        mila_free(v);
-                        mila_free(value);
-                        mila_free(id);
-                        continue;
-                    }
-                    case T_RETURN:
-                    {
-                        s->pos = body_end_pos;
-                        for (;value[i]; ++i)
-                            val_release(value[i]);
-                        mila_free(value);
-                        mila_free(id);
-                        return bod;
-                    }
-                    case T_TAGGED_ERROR:
-                    case T_ERROR:
-                    {
-                        s->pos = body_end_pos;
-                        for (;value[i]; ++i)
-                            val_release(value[i]);
-                        mila_free(value);
-                        mila_free(id);
-                        return bod;
-                    }
-                    default:;
-                }
-
-                val_release(bod);
-            }
-            s->pos = body_end_pos;
-            mila_free(id);
-            mila_free(value);
             return vnull();
         }
     }
@@ -7002,8 +7089,8 @@ Value *invoke_main_file(char *name, Env *env, int argc, char* argv[])
                     env_set_local_raw(env, fnp->params[i], vstring_dup(argv[i]));
                 }
             }
-            int pass = argc; // 1 because of argc
-            for (int i=argc; i<fnp->count && fnp->defaults[i]; ++i) {
+            size_t pass = argc; // 1 because of argc
+            for (size_t i=argc; i<fnp->count && fnp->defaults[i]; ++i) {
                 if (strncmp("...", fnp->params[i], 3) == 0) {
                     env_set_raw(env, fnp->params[i]+3, eval_str(fnp->defaults[i], env));
                 } else {
@@ -7012,11 +7099,11 @@ Value *invoke_main_file(char *name, Env *env, int argc, char* argv[])
                 pass++;
             }
             pass--;
-            for (int i=1+pass; i<fnp->count && fnp->params[i]; ++i) {
+            for (size_t i=1+pass; i<fnp->count && fnp->params[i]; ++i) {
                 if (strncmp("...", fnp->params[i], 3) == 0) env_set_raw(env, fnp->params[i]+3, vnull()); // avoid passing through to upper env
                 else env_set_raw(env, fnp->params[i], vnull()); // avoid passing through to upper env
             }
-            for (int i=0; i<fnp->count; ++i) {
+            for (size_t i=0; i<fnp->count; ++i) {
                 if (fnp->defaults[i])
                     mila_free(fnp->defaults[i]);
                 mila_free(fnp->params[i]);

@@ -1,4 +1,5 @@
 #include <emscripten.h>
+#define MILA_PROTO
 #include "../mila.h"
 
 Value* native_dom(Env* e, int argc, Value** argv);

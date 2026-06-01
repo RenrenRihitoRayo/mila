@@ -283,6 +283,9 @@ Value *array_to_str(Value *self)
         return vstring_take(buffer);
     }
 
+    if (arr->size > MAX_ITEMS_DISPLAYED)
+        return vstring_fmt("array(%i items)", arr->size);
+
     our_asprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
     {
@@ -319,9 +322,6 @@ Value *array_to_repr(Value *self)
         our_asprintf(&buffer, "<null-array-data>");
         return vstring_take(buffer);
     }
-
-    if (arr->size > MAX_ITEMS_DISPLAYED)
-        return vstring_fmt("array(%i items)", arr->size);
 
     our_asprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
@@ -370,6 +370,31 @@ Value *array_to_iter(Value *self)
     }
 
     return vopaque(values);
+}
+
+typedef struct {
+  Value** array;
+  size_t index;
+  size_t end;
+} ArrayIterState;
+
+ArrayIterState* array_iter_init(Value* self) {
+  ArrayIterState* state = (ArrayIterState*)mila_malloc(sizeof(ArrayIterState));
+  Array* arr = (Array*)GET_OPAQUE(self);
+  state->array = arr->array;
+  state->end = arr->size;
+  state->index = 0;
+  return state;
+}
+
+Value* array_iter_next(ArrayIterState* state) {
+  state->index++;
+  if (state->index > state->end) return NULL;
+  return state->array[state->index-1] ? val_retain(state->array[state->index-1]) : vnull();
+}
+
+void array_iter_cleanup(ArrayIterState* state) {
+  free(state);
 }
 
 typedef struct

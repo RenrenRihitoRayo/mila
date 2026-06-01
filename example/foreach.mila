@@ -1,0 +1,23 @@
+
+// uses step based iteration rather than materializing an array
+foreach item : array.from(1, 2, 3) {
+	println(item);
+}
+
+// uses step based iteration rather than materializing an array
+foreach item : [1, 2, 3] {
+	println(item);
+}
+
+/*
+	Pros:
+	Better logic, memory management isnt all over the place.
+	Arrays finally dont take O(n^2) to iterate over and now is O(n)
+	Lists are now also O(n) and basically becomes stream based (since its a linked
+	list, so no indexing just dereferencing)
+	Cons:
+	Cache misses goes through the roof if not implemented properly.
+
+	Note:
+	Old array based iteration is still available.
+*/

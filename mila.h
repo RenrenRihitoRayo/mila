@@ -74,32 +74,6 @@
 
 #define GET_OVERLOAD(obj, method) ((obj)->type_name && strcmp((obj)->type_name, MILA_LPREFIX "dict") == 0) ? dict_get_str((Dict*)(obj)->v.opaque, method) : NULL
 
-// Left Operators
-const char* OVERLOAD_ADD = ":+";
-const char* OVERLOAD_SUB = ":-";
-const char* OVERLOAD_MUL = ":*";
-const char* OVERLOAD_DIV = ":/";
-const char* OVERLOAD_MOD = ":%";
-const char* OVERLOAD_RSHIFT = ":>>";
-const char* OVERLOAD_LSHIFT = ":<<";
-const char* OVERLOAD_DEFAULT = ":??";
-
-// Right Operators
-const char* OVERLOAD_R_ADD = "+:";
-const char* OVERLOAD_R_SUB = "-:";
-const char* OVERLOAD_R_MUL = "*:";
-const char* OVERLOAD_R_DIV = "/:";
-const char* OVERLOAD_R_MOD = "%:";
-const char* OVERLOAD_R_RSHIFT = ">>:";
-const char* OVERLOAD_R_LSHIFT = "<<:";
-const char* OVERLOAD_R_DEFAULT = "??:";
-
-// More complex overloads
-const char* OVERLOAD_DISPLAY = ":display";
-const char* OVERLOAD_COPY = ":copy";
-const char* OVERLOAD_COPYSHALLOW = ":copyshallow";
-const char* OVERLOAD_TO_BOOL = ":to_bool";
-
 #define FN_UNUSED __attribute__((unused))
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
@@ -195,12 +169,64 @@ const int MILA_ERROR_COUNT = E_THREAD_HALT;
 
 path_list *search_path;
 
+// Left Operators
+const char* OVERLOAD_ADD = ":+";
+const char* OVERLOAD_SUB = ":-";
+const char* OVERLOAD_MUL = ":*";
+const char* OVERLOAD_DIV = ":/";
+const char* OVERLOAD_MOD = ":%";
+const char* OVERLOAD_RSHIFT = ":>>";
+const char* OVERLOAD_LSHIFT = ":<<";
+const char* OVERLOAD_DEFAULT = ":??";
+
+// Right Operators
+const char* OVERLOAD_R_ADD = "+:";
+const char* OVERLOAD_R_SUB = "-:";
+const char* OVERLOAD_R_MUL = "*:";
+const char* OVERLOAD_R_DIV = "/:";
+const char* OVERLOAD_R_MOD = "%:";
+const char* OVERLOAD_R_RSHIFT = ">>:";
+const char* OVERLOAD_R_LSHIFT = "<<:";
+const char* OVERLOAD_R_DEFAULT = "??:";
+
+// More complex overloads
+const char* OVERLOAD_DISPLAY = ":display";
+const char* OVERLOAD_COPY = ":copy";
+const char* OVERLOAD_COPYSHALLOW = ":copyshallow";
+const char* OVERLOAD_TO_BOOL = ":to_bool";
+
 #else
 extern path_list *search_path;
 extern char **MILA_TYPE_NAMES;
 extern char **MILA_ERROR_NAMES;
 extern int MILA_ERROR_COUNT;
 extern int MILA_TYPE_COUNT;
+
+// Left Operatorshttps
+extern char* OVERLOAD_ADD;
+extern char* OVERLOAD_SUB;
+extern char* OVERLOAD_MUL;
+extern char* OVERLOAD_DIV;
+extern char* OVERLOAD_MOD;
+extern char* OVERLOAD_RSHIFT;
+extern char* OVERLOAD_LSHIFT;
+extern char* OVERLOAD_DEFAULT;
+
+// Right Operators
+extern char* OVERLOAD_R_ADD;
+extern char* OVERLOAD_R_SUB;
+extern char* OVERLOAD_R_MUL;
+extern char* OVERLOAD_R_DIV;
+extern char* OVERLOAD_R_MOD;
+extern char* OVERLOAD_R_RSHIFT;
+extern char* OVERLOAD_R_LSHIFT;
+extern char* OVERLOAD_R_DEFAULT;
+
+// More complex overloads
+extern char* OVERLOAD_DISPLAY;
+extern char* OVERLOAD_COPY;
+extern char* OVERLOAD_COPYSHALLOW;
+extern char* OVERLOAD_TO_BOOL;
 #endif
 
 // each of these methods may be reffered to as
@@ -239,6 +265,9 @@ typedef enum __attribute__((packed))
 
     // foreach syntax
     UMethodToIter,
+    UMethodStepIter, // step update
+    UMethodStepIterInit, // initializes state for iterator
+    UMethodStepIterClean, // initializes state for iterator
     UMethodToGen,  // Method to turn collections into generators
 
     UMethodFree,

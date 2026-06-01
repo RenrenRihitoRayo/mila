@@ -5,12 +5,12 @@ targets_web = ./build/web/mila.wasm ./build/web/mila.js
 
 libraries ?= -lm
 eflags ?= 
-cflags = -O3 $(libraries) -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -std=c11 $(eflags)
+cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -std=c11 $(eflags)
 
 .PHONY: web
 
 all: $(files)
-	$(cc) $(libraries) $(eflags) -O0 -o mila mila.c -fsanitize=address -g\
+	$(cc) $(libraries) $(eflags) -O0 -o mila mila.c -fsanitize=address -g
 
 # dont include asan, compile with debug logging
 debug: $(files)
@@ -66,7 +66,7 @@ smallest: $(files)
 	strip mila
 
 release: $(files)
-	$(cc) $(cflags) -o mila mila.c -march=native
+	$(cc) $(cflags) -o mila mila.c
 	strip mila
 
 web $(targets_web): $(files_web)

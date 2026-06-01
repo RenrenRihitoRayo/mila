@@ -1169,7 +1169,7 @@ Value *istring_to_iter(Value *self)
     return vopaque(iter);
 }
 
-Value *string_genth_worker(CGenData *cgen_data)
+Value *istring_genth_worker(CGenData *cgen_data)
 {
     ThreadContext *ctx = cgen_data->ctx;
     char *data = GET_STRING(cgen_data->data);
@@ -1186,7 +1186,7 @@ Value *string_genth_worker(CGenData *cgen_data)
 
 Value *istring_to_gen(Value *self)
 {
-    int th_id = make_cgen(string_genth_worker, self);
+    int th_id = make_cgen(istring_genth_worker, self);
     return vint(th_id);
 }
 
@@ -1490,7 +1490,7 @@ Value* native_list_deconstruct_v1(Env* env, int argc, Value** argv) {
     
     char* save_ptr = NULL;
     char* token = strtok_r(p, ",", &save_ptr);
-    int idx = 0;
+    size_t idx = 0;
     char* spread_name = NULL;
     Value* rest_list = NULL;
     Value* result = call_native_with(env, native_new_dict, NULL);
@@ -1549,7 +1549,7 @@ Value* native_list_deconstruct(Env* env, int argc, Value** argv) {
     while (end > p && (*end == ']' || *end == ' ' || *end == '\t')) end--;
     end[1] = '\0';
     
-    int idx = 0;
+    size_t idx = 0;
     char* spread_name = NULL;
     Value* rest_list = NULL;
     Value* result = call_native_with(env, native_new_dict, NULL);
@@ -1685,7 +1685,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "printr", native_printr);
     env_register_native(g, "println", native_println);
     env_register_native(g, "input", native_input);
-    // === Logic
+    // === Logic and Bitwise
     env_register_native(g, "and", native_bitwise_and);
     env_register_native(g, "or", native_bitwise_or);
     env_register_native(g, "xor", native_bitwise_xor);
@@ -1725,18 +1725,24 @@ void env_register_builtins(Env *g)
     val_set_method_table(list_meta, UMethodToRepr, list_repr);
     val_set_method_table(list_meta, UMethodToString, list_str);
     val_set_method_table(list_meta, UMethodFree, list_free);
-    val_set_method_table(list_meta, UMethodToIter, list_to_iter);
+    // val_set_method_table(list_meta, UMethodToIter, list_to_iter);
     val_set_method_table(list_meta, BMethodGetItem, get_list);
     val_set_method_table(list_meta, TMethodSetItem, set_list);
+    val_set_method_table(list_meta, UMethodStepIterInit, ll_iter_init);
+    val_set_method_table(list_meta, UMethodStepIter, ll_iter_next);
+    val_set_method_table(list_meta, UMethodStepIterClean, ll_iter_cleanup);
 
     array_meta = val_make_table();
 
-    val_set_method_table(array_meta, UMethodToIter, array_to_iter);
+    // val_set_method_table(array_meta, UMethodToIter, array_to_iter);
     val_set_method_table(array_meta, UMethodToString, array_to_str);
     val_set_method_table(array_meta, UMethodToRepr, array_to_repr);
     val_set_method_table(array_meta, BMethodGetItem, get_array);
     val_set_method_table(array_meta, TMethodSetItem, set_array);
     val_set_method_table(array_meta, UMethodFree, free_array);
+    val_set_method_table(array_meta, UMethodStepIterInit, array_iter_init);
+    val_set_method_table(array_meta, UMethodStepIter, array_iter_next);
+    val_set_method_table(array_meta, UMethodStepIterClean, array_iter_cleanup);
 
     range_meta = val_make_table();
 

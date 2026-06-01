@@ -67,10 +67,13 @@ greet_alexey();
 var threads = [];
 foreach num : range(3) {
     list.append(threads,
-            thread.make(fn(thread_id):[println, time_sleep]{
-            println("Working: thread #" + thread_id);
-            time_sleep(1);
-        }, fn(thread_id):[println] {println("Thread done #" + thread_id + ": " + _reason);})
+            thread.make(
+            fn(thread_id):[println, time_sleep]{
+                println("Working: thread #" + thread_id);
+                time_sleep(1);
+            }, fn(thread_id):[println] {
+                println("Thread done #" + thread_id + ": " + _reason);
+            })
     );
 }
 

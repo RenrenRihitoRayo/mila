@@ -331,7 +331,7 @@ Value* val_copy(Value *src)
         } break;
         case T_NONE:
         case T_NULL:
-            /* Null: no-op */
+            copy->type = src->type;
             break;
 
         default:
@@ -1187,7 +1187,6 @@ int raw_print_value_repr(Value *v)
         Value* fn = dict_get_str((Dict*)v->v.opaque, ":display");
         if (fn)
             val_release(call_function_with(NULL, fn, val_retain(v), NULL));
-        return 0;
     }
     if (v->method_table && v->method_table[UMethodToRepr])
     {
@@ -1656,7 +1655,7 @@ cleanup:;
         mila_free(v->method_table);
 }
 
-// ---------- Environment (simple linked list of frames + variables) ----------
+// Environment (simple linked list of frames + variables)
 
 Env *env_new(Env *parent)
 {
@@ -1665,6 +1664,18 @@ Env *env_new(Env *parent)
     e->contextual_vars = NULL;
     e->parent = parent;
     return e;
+}
+
+void env_copy(Env* dest, Env* src) {
+    if (!src || !dest)
+        return;
+    Var *v = src->vars;
+    while (v)
+    {
+        Var *nx = v->next;
+        env_set_local(dest, v->name, v->value);
+        v = nx;
+    }
 }
 
 void env_free(Env *e)
@@ -2462,23 +2473,29 @@ int match_char(Src *s, char c)
     return 0;
 }
 
-// Parse-only skip functions - move position without evaluation
+// Fixed skip_parse functions for MiLa
 
 int skip_primary(Src *s)
 {
     skip_ws(s);
     char c = src_peek(s);
     
-    if (isdigit((unsigned char)c) || (c == '-' && isdigit((unsigned char)s->src[s->pos + 1])) ||
-        (c == '+' && isdigit((unsigned char)s->src[s->pos + 1]))) {
+    // Numbers
+    if (isdigit((unsigned char)c) || 
+        ((c == '-' || c == '+') && s->pos + 1 < s->len && isdigit((unsigned char)s->src[s->pos + 1])))
+    {
+        if (c == '-' || c == '+') src_get(s);
         while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.' || 
-               src_peek(s) == 'x' || src_peek(s) == 'X' || src_peek(s) == '~' ||
-               isxdigit((unsigned char)src_peek(s))) src_get(s);
+               src_peek(s) == 'x' || src_peek(s) == 'X' || 
+               isxdigit((unsigned char)src_peek(s)) || src_peek(s) == '~') 
+            src_get(s);
         if (src_peek(s) == 'u' || src_peek(s) == 'U') src_get(s);
         if (src_peek(s) == '%') src_get(s);
         return 0;
     }
-    else if (c == '"') {
+    // Strings
+    else if (c == '"')
+    {
         src_get(s);
         while (!src_eof(s)) {
             char ch = src_get(s);
@@ -2487,7 +2504,9 @@ int skip_primary(Src *s)
         }
         return 0;
     }
-    else if (c == '[') {
+    // Lists/arrays
+    else if (c == '[')
+    {
         src_get(s);
         int depth = 1;
         while (depth > 0 && !src_eof(s)) {
@@ -2502,24 +2521,44 @@ int skip_primary(Src *s)
                 }
             }
         }
-        return 0;
+        return depth ? 1 : 0;
     }
-    else if (c == '(') {
+    // Parentheses and function calls
+    else if (c == '(')
+    {
         src_get(s);
-        return skip_parse_expr(s);
+        int depth = 1;
+        while (depth > 0 && !src_eof(s)) {
+            char ch = src_get(s);
+            if (ch == '(') depth++;
+            else if (ch == ')') depth--;
+            else if (ch == '"') {
+                while (!src_eof(s)) {
+                    char x = src_get(s);
+                    if (x == '"') break;
+                    if (x == '\\') src_get(s);
+                }
+            }
+        }
+        return depth ? 1 : 0;
     }
-    else if (c == '{') {
+    // Blocks
+    else if (c == '{')
+    {
         return skip_parse_block(s);
     }
-    else if (c == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == '{') {
+    else if (c == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == '{')
+    {
         src_get(s);
         return skip_parse_block(s);
     }
-    else if (is_ident_start(c)) {
-        char *id = parse_ident(s);
-        mila_free(id);
+    // Function literals
+    else if (is_keyword_at(s, "fn"))
+    {
+        s->pos += 2;
         skip_ws(s);
         
+        // Skip parameters
         if (src_peek(s) == '(') {
             src_get(s);
             int depth = 1;
@@ -2536,8 +2575,63 @@ int skip_primary(Src *s)
                 }
             }
             if (depth) return 1;
-            return 0;
         }
+        
+        // Skip context list [...]
+        if (src_peek(s) == '[') {
+            while (src_peek(s) == '[') {
+                src_get(s);
+                int depth = 1;
+                while (depth > 0 && !src_eof(s)) {
+                    char ch = src_get(s);
+                    if (ch == '[') depth++;
+                    else if (ch == ']') depth--;
+                }
+                if (depth) return 1;
+            }
+        }
+        
+        // Skip return type annotation ->
+        if (is_keyword_at(s, "->")) {
+            s->pos += 2;
+            skip_ws(s);
+            if (src_peek(s) == '"') {
+                src_get(s);
+                while (!src_eof(s) && src_get(s) != '"');
+            }
+        }
+        
+        // Skip body block
+        return skip_parse_block(s);
+    }
+    // Identifiers, variables, keywords
+    else if (is_ident_start(c))
+    {
+        char *id = parse_ident(s);
+        if (!id) return 1;
+        mila_free(id);
+        
+        skip_ws(s);
+        
+        // Function call
+        if (src_peek(s) == '(') {
+            src_get(s);
+            int depth = 1;
+            while (depth > 0 && !src_eof(s)) {
+                char ch = src_get(s);
+                if (ch == '(') depth++;
+                else if (ch == ')') depth--;
+                else if (ch == '"') {
+                    while (!src_eof(s)) {
+                        char x = src_get(s);
+                        if (x == '"') break;
+                        if (x == '\\') src_get(s);
+                    }
+                }
+            }
+            return depth ? 1 : 0;
+        }
+        // Subscripts
         else if (src_peek(s) == '[') {
             while (src_peek(s) == '[') {
                 src_get(s);
@@ -2558,6 +2652,7 @@ int skip_primary(Src *s)
             }
             return 0;
         }
+        // Method call
         else if (src_peek(s) == ':') {
             src_get(s);
             char *method = parse_ident(s);
@@ -2582,15 +2677,14 @@ int skip_primary(Src *s)
             }
             return 0;
         }
-        return 0; // variable read
+        return 0;
     }
     return 1;
 }
 
 int skip_expr_prec(Src *s, int min_prec)
 {
-    int i = skip_primary(s);
-    if (i) return i;
+    if (skip_primary(s)) return 1;
     
     for (;;) {
         int saved_pos = s->pos;
@@ -2598,7 +2692,7 @@ int skip_expr_prec(Src *s, int min_prec)
         char a = src_peek(s);
         if (a == '\0') return 0;
         
-        char b = s->src[s->pos + 1];
+        char b = s->pos + 1 < s->len ? s->src[s->pos + 1] : '\0';
         MethodType op = MethodNone;
         int prec = 0;
         
@@ -2630,7 +2724,7 @@ int skip_expr_prec(Src *s, int min_prec)
             return 0;
         }
         
-        return skip_expr_prec(s, prec + 1);
+        if (skip_expr_prec(s, prec + 1)) return 1;
     }
 }
 
@@ -2642,14 +2736,22 @@ int skip_parse_expr(Src *s)
 int skip_parse_statement(Src *s)
 {
     skip_ws(s);
-    
-    // Check keywords and skip appropriately
     int is_err = 0;
+    
     if (is_keyword_at(s, "var")) {
         s->pos += 3;
         char *id = parse_ident(s);
         mila_free(id);
-        if (match_char(s, ':')) is_err = skip_parse_expr(s);
+        if (match_char(s, ':')) {
+            if (src_peek(s) == '"') {
+                src_get(s);
+                while (!src_eof(s)) {
+                    char ch = src_get(s);
+                    if (ch == '"') break;
+                    if (ch == '\\') src_get(s);
+                }
+            } else return 1;
+        }
         if (match_char(s, '=')) is_err = skip_parse_expr(s);
         match_char(s, ';');
         return is_err;
@@ -2658,97 +2760,61 @@ int skip_parse_statement(Src *s)
         s->pos += 3;
         char *id = parse_ident(s);
         mila_free(id);
-        while (match_char(s, '[')) is_err = skip_parse_expr(s);
-        if (match_char(s, '+') || match_char(s, '-') || match_char(s, '*') ||
-            match_char(s, '/') || match_char(s, '%')) skip_ws(s);
+        while (match_char(s, '[')) {
+            is_err = skip_parse_expr(s);
+            if (!match_char(s, ']')) return 1;
+        }
+        if (src_peek(s) == '+' || src_peek(s) == '-' || src_peek(s) == '*' || 
+            src_peek(s) == '/' || src_peek(s) == '%') src_get(s);
+        skip_ws(s);
         if (match_char(s, '=')) is_err = skip_parse_expr(s);
         else if (match_char(s, ':')) is_err = skip_parse_statement(s);
+        else return 1;
         match_char(s, ';');
         return is_err;
     }
-    else if (is_keyword_at(s, "if")) {
-        s->pos += 2;
-        if (match_char(s, '(')) is_err = skip_parse_expr(s);
-        else return 1;
-        if (match_char(s, '{')) {
-            s->pos--;
-            is_err = skip_parse_block(s);
-        }
-        else is_err = skip_parse_statement(s);
-        if (is_err) return is_err;
-        while (is_keyword_at(s, "elif")) {
-            s->pos += 4;
-            if (match_char(s, '(')) is_err = skip_parse_expr(s);
-            else return 1;
-            if (match_char(s, '{')) {
-                s->pos--;
-                is_err = skip_parse_block(s);
-            }
-            else is_err = skip_parse_statement(s);
-            if (is_err) return is_err;
-        }
-        if (is_keyword_at(s, "else")) {
-            s->pos += 4;
-            if (match_char(s, '{')) {
-                s->pos--;
-                is_err = skip_parse_block(s);
-            }
-            else is_err = skip_parse_statement(s);
-        }
-        return is_err;
-    }
-    else if (is_keyword_at(s, "while")) {
-        s->pos += 5;
-        if (match_char(s, '(')) skip_expr(s);
-        else return 1;
-        skip_block(s);
-        return 0;
-    }
-    else if (is_keyword_at(s, "foreach")) {
-        s->pos += 7;
+    else if (is_keyword_at(s, "contextual")) {
+        s->pos += 10;
         char *id = parse_ident(s);
         mila_free(id);
-        if (match_char(s, ':')) skip_parse_expr(s);
-        else return 1;
-        skip_block(s);
+        if (is_keyword_at(s, "as")) {
+            s->pos += 2;
+            id = parse_ident(s);
+            mila_free(id);
+        }
+        match_char(s, ';');
         return 0;
     }
-    else if (is_keyword_at(s, "fn")) {
-        s->pos += 2;
-        char *name = parse_ident(s);
-        mila_free(name);
-        if (match_char(s, '(')) {
-            while (!match_char(s, ')')) {
-                parse_ident(s);
-                if (match_char(s, ':')) skip_parse_expr(s);
-                if (match_char(s, '=')) skip_parse_expr(s);
-                match_char(s, ',');
-            }
-        }
-        if (match_char(s, '[')) {
-            while (!match_char(s, ']')) {
-                parse_ident(s);
-                match_char(s, ',');
-            }
-        }
-        if (match_char(s, ':')) {
-            if (match_char(s, '[')) {
-                while (!match_char(s, ']')) {
-                    parse_ident(s);
-                    match_char(s, ',');
-                }
-            }
-        }
-        if (is_keyword_at(s, "->")) {
-            s->pos += 2;
-            if (src_peek(s) == '"') {
-                src_get(s);
-                while (!src_eof(s) && src_get(s) != '"');
-            }
-        }
-        if (match_char(s, '{')) is_err = skip_parse_block(s);
-        else is_err = skip_parse_statement(s);
+    else if (is_keyword_at(s, "sync")) {
+        s->pos += 4;
+        char *id = parse_ident(s);
+        mila_free(id);
+        if (match_char(s, '=')) is_err = skip_parse_expr(s);
+        match_char(s, ';');
         return is_err;
+    }
+    else if (is_keyword_at(s, "export")) {
+        s->pos += 6;
+        char *id = parse_ident(s);
+        mila_free(id);
+        if (match_char(s, '=')) is_err = skip_parse_expr(s);
+        else if (match_char(s, ':')) is_err = skip_parse_statement(s);
+        else return 1;
+        return is_err;
+    }
+    else if (is_keyword_at(s, "forget")) {
+        s->pos += 6;
+        skip_ws(s);
+        if (src_peek(s) == '[') {
+            char **names = parse_context_list(s);
+            for (int i = 0; names && names[i]; i++) mila_free(names[i]);
+            mila_free(names);
+        } else {
+            char *id = parse_ident(s);
+            mila_free(id);
+        }
+        match_char(s, ';');
+        return 0;
     }
     else if (is_keyword_at(s, "return")) {
         s->pos += 6;
@@ -2756,9 +2822,197 @@ int skip_parse_statement(Src *s)
         match_char(s, ';');
         return 0;
     }
+    else if (is_keyword_at(s, "if")) {
+        s->pos += 2;
+        if (!match_char(s, '(')) return 1;
+        is_err = skip_parse_expr(s);
+        if (!match_char(s, ')')) return 1;
+        if (match_char(s, '{')) {
+            s->pos--;
+            is_err = skip_parse_block(s);
+        } else {
+            is_err = skip_parse_statement(s);
+        }
+        if (is_err) return is_err;
+        
+        while (is_keyword_at(s, "elif")) {
+            s->pos += 4;
+            if (!match_char(s, '(')) return 1;
+            is_err = skip_parse_expr(s);
+            if (!match_char(s, ')')) return 1;
+            if (match_char(s, '{')) {
+                s->pos--;
+                is_err = skip_parse_block(s);
+            } else {
+                is_err = skip_parse_statement(s);
+            }
+            if (is_err) return is_err;
+        }
+        
+        if (is_keyword_at(s, "else")) {
+            s->pos += 4;
+            if (match_char(s, '{')) {
+                s->pos--;
+                is_err = skip_parse_block(s);
+            } else {
+                is_err = skip_parse_statement(s);
+            }
+        }
+        return is_err;
+    }
+    else if (is_keyword_at(s, "while")) {
+        s->pos += 5;
+        if (!match_char(s, '(')) return 1;
+        skip_parse_expr(s);
+        if (!match_char(s, ')')) return 1;
+        return skip_parse_block(s);
+    }
+    else if (is_keyword_at(s, "foreach")) {
+        s->pos += 7;
+        char *id = parse_ident(s);
+        
+        if (id && strcmp(id, "yield") == 0) {
+            mila_free(id);
+            id = parse_ident(s);
+        }
+        
+        mila_free(id);
+        if (!match_char(s, ':')) return 1;
+        skip_parse_expr(s);
+        return skip_parse_block(s);
+    }
+    else if (is_keyword_at(s, "block")) {
+        s->pos += 5;
+        char *name = parse_ident(s);
+        mila_free(name);
+        return skip_parse_block(s);
+    }
+    else if (is_keyword_at(s, "namespace")) {
+        s->pos += 9;
+        char *name = parse_ident(s);
+        mila_free(name);
+        return skip_parse_block(s);
+    }
+    else if (is_keyword_at(s, "catch")) {
+        s->pos += 5;
+        char *id = parse_ident(s);
+        mila_free(id);
+        return skip_parse_block(s);
+    }
+    else if (is_keyword_at(s, "fn")) {
+        s->pos += 2;
+        char *name = parse_ident(s);
+        mila_free(name);
+        
+        // Skip parameters
+        if (src_peek(s) == '(') {
+            src_get(s);
+            while (!match_char(s, ')')) {
+                char *p = parse_ident(s);
+                mila_free(p);
+                if (match_char(s, ':')) {
+                    if (src_peek(s) == '"') {
+                        src_get(s);
+                        while (!src_eof(s)) {
+                            char ch = src_get(s);
+                            if (ch == '"') break;
+                            if (ch == '\\') src_get(s);
+                        }
+                    } else return 1;
+                }
+                if (match_char(s, '=')) skip_parse_expr(s);
+                match_char(s, ',');
+            }
+        }
+        
+        // Skip context list
+        if (src_peek(s) == '[') {
+            while (!match_char(s, ']')) {
+                char *p = parse_ident(s);
+                mila_free(p);
+                match_char(s, ',');
+            }
+        }
+        
+        // Skip closure bindings
+        if (match_char(s, ':')) {
+            if (src_peek(s) == '[') {
+                while (!match_char(s, ']')) {
+                    char *p = parse_ident(s);
+                    mila_free(p);
+                    match_char(s, ',');
+                }
+            }
+        }
+        
+        // Skip return type
+        if (is_keyword_at(s, "->")) {
+            s->pos += 2;
+            if (src_peek(s) == '"') parse_string(s);
+        }
+        
+        if (match_char(s, '{')) {
+            s->pos--;
+            is_err = skip_parse_block(s);
+        } else {
+            is_err = skip_parse_statement(s);
+        }
+        return is_err;
+    }
+    else if (is_keyword_at(s, "object")) {
+        s->pos += 6;
+        char *name = parse_ident(s);
+        mila_free(name);
+        
+        if (is_keyword_at(s, "with")) {
+            s->pos += 4;
+            char *obj = parse_ident(s);
+            mila_free(obj);
+        }
+        
+        return skip_parse_block(s);
+    }
+    else if (src_peek(s) == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == 'f' && 
+             s->pos + 2 < s->len && s->src[s->pos + 2] == 'n') {
+        src_get(s); // consume !
+        s->pos += 2; // skip "fn"
+        skip_ws(s);
+        
+        // Skip parameters
+        if (!match_char(s, '(')) return 1;
+        while (!match_char(s, ')')) {
+            char *p = parse_ident(s);
+            mila_free(p);
+            if (match_char(s, ':')) {
+                if (src_peek(s) == '"') {
+                    src_get(s);
+                    while (!src_eof(s)) {
+                        char ch = src_get(s);
+                        if (ch == '"') break;
+                        if (ch == '\\') src_get(s);
+                    }
+                } else return 1;
+            }
+            if (match_char(s, '=')) skip_parse_expr(s);
+            match_char(s, ',');
+        }
+        
+        // Skip return type
+        if (is_keyword_at(s, "->")) {
+            s->pos += 2;
+            if (src_peek(s) == '"') {
+                src_get(s);
+                while (!src_eof(s) && src_get(s) != '"');
+            }
+        }
+        
+        if (!match_char(s, '{')) return 1;
+        s->pos--;
+        is_err = skip_parse_block(s);
+        return is_err;
+    }
     else if (src_peek(s) == '{') {
-        skip_block(s);
-        return 0;
+        return skip_parse_block(s);
     }
     else {
         is_err = skip_parse_expr(s);
@@ -2770,8 +3024,8 @@ int skip_parse_statement(Src *s)
 
 int skip_parse_block(Src* s) {
     if (!match_char(s, '{')) return 1;
-    while (!match_char(s, '}'))
-    {
+    while (!match_char(s, '}')) {
+        if (src_eof(s)) return 1;
         int i = skip_parse_statement(s);
         if (i) return i;
     }
@@ -2779,8 +3033,15 @@ int skip_parse_block(Src* s) {
 }
 
 int skip_parse_source(Src* s) {
-    while (s->pos < s->len)
-    {
+    // Skip shebang if present
+    if (src_peek(s) == '#') {
+        src_get(s);
+        if (!match_char(s, '!')) return 1;
+        while (!src_eof(s) && src_peek(s) != '\n') src_get(s);
+        if (src_peek(s) == '\n') src_get(s);
+    }
+    
+    while (s->pos < s->len) {
         int i = skip_parse_statement(s);
         if (i) return i;
     }
@@ -3836,7 +4097,11 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             }
         }
         i--;
-        for (int j=i; fnval->v.fn->params[j]; ++j) {
+        // cursed
+        int limit = 0;
+        for (int meep=0; fnval->v.fn->params[meep]; ++meep) limit++;
+        limit--;
+        for (int j=i; j<limit; ++j) {
             if (strncmp("...", p[i], 3) == 0) env_set_local_raw(frame, p[i]+3, vnull());
             else env_set_local_raw(frame, p[i], vnull());
         }
@@ -4242,7 +4507,12 @@ Value *eval_primary(Src *s, Env *env)
             names = parse_context_list(s); // reused parse_context_list
             for (int i = 0; names[i]; ++i)
             {
-                env_set_local(closure, names[i], env_get(env, names[i]));
+                if (strlen(names[i]) > 5 && strncmp("@env:", names[i], 5) == 0) {
+                    Env* new_env = env_new(NULL);
+                    env_copy(new_env, env);
+                    env_set_local_raw(closure, names[i]+5, vopaque_extra(new_env, NULL, "environment"));
+                }
+                else env_set_local(closure, names[i], env_get(env, names[i]));
                 mila_free(names[i]);
             }
             mila_free(names);
@@ -6157,16 +6427,18 @@ Value *eval_statement(Src *s, Env *env)
         if (!name)
             return verror("Block needs a name!");
         skip_ws(s);
-        Value *res = eval_block(s, env);
+        Env* frame = env_new(env);
+        env_set_local_raw(frame, "@block_name", vstring_take(name));
+        Value *res = eval_block_raw(s, frame);
         if (IS_ERROR(res))
         {
+            env_free(frame);
             Value *new_res =
                 verror("Block %s reported an error: %s", name, res->v.message);
             val_release(res);
-            mila_free(name);
             return new_res;
         }
-        mila_free(name);
+        env_free(frame);
         return res;
     }
     if (is_keyword_at(s, "namespace"))
@@ -6246,7 +6518,12 @@ Value *eval_statement(Src *s, Env *env)
             names = parse_context_list(s);
             for (int i = 0; names[i]; ++i)
             {
-                env_set_local(closure, names[i], env_get(env, names[i]));
+                if (strlen(names[i]) > 5 && strncmp("@env:", names[i], 5) == 0) {
+                    Env* new_env = env_new(NULL);
+                    env_copy(new_env, env);
+                    env_set_local_raw(closure, names[i]+5, vopaque_extra(new_env, NULL, "environment"));
+                }
+                else env_set_local(closure, names[i], env_get(env, names[i]));
                 mila_free(names[i]);
             }
             mila_free(names);
@@ -6925,6 +7202,29 @@ int main(int argc, char **argv)
                    "  --help    | -h = Prints this list\n");
             return 0;
         }
+    } else if (argc == 3) {
+        if (strcmp(argv[1], "--check") == 0)
+        {
+            printf("Syntax Checker - IN PROGRESS\n");
+            FILE *f = fopen(argv[2], "rb");
+            if (!f)
+            {
+                fprintf(stderr, "Cannot open %s: Missing or not a file.\n", argv[1]);
+                return 1;
+            }
+            fseek(f, 0, SEEK_END);
+            long size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            src_text = mila_malloc(size + 1);
+            fread(src_text, 1, size, f);
+            src_text[size] = 0;
+            fclose(f);
+            Src *S = src_new(src_text);
+            syn_check(S);
+            src_free(S);
+            mila_free(src_text);
+            return 0;
+        }
     }
     Value *array = NULL;
 
@@ -7086,7 +7386,7 @@ int main(int argc, char **argv)
                 if (GET_TYPE(res) != T_NULL && !IS_ERROR(res))
                 {
                     printf("  : ");
-                    print_value_repr(res);
+                    raw_print_value_repr(res);
                     putchar('\n');
                 } else {
                     print_error(res);

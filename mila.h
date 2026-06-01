@@ -326,6 +326,8 @@ struct Env
 
 // Make an environment
 Env *env_new(Env *parent);
+// Copy an environment
+void env_copy(Env* dest, Env* src);
 // Print environment info
 void env_dump(Env *e);
 // Free an environment and disown variables

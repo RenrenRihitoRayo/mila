@@ -1,27 +1,28 @@
 
-var default_name = "[user]";
-
-var counter = 0;
-
-fn count() {
-    set counter += 1;
-    return counter;
-}
-
-// New update now removes the eval once on definition
-fn greet(name=default_name, additional=name) {
-    println("Hello " + name + "! " + additional);
-}
-
-greet("Ren"); // additional is Ren
-greet(); // additional is [user]
-
-object what {
-    fn get_test(self) {
-        return self["test"];
+block closure_test {
+    println('@block_name' + " test!");
+    fn make_closure() {
+        var num = -1;
+        return fn():[num] { set num += 1; return num; }
     }
+
+    var counter = make_closure();
+    println(counter());
+    println(counter());
+    println(counter());
+
+    fn capture_env():['@env:env'] {
+        println(env);
+        env.free(env); // manually free captured env
+    }
+
+    capture_env();
 }
 
-object test with what {}
-
-println(test);
+block contextual_test {
+    println('@block_name' + " test!");
+    fn get_env()['@env:what'] {
+        println(what);
+    }
+    get_env();
+}

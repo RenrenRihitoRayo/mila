@@ -9,16 +9,18 @@
 typedef struct CGenData CGenData;
 typedef Value*(*Generator)(CGenData*);
 
+typedef long MThreadID;
+
 /* Thread context for language-level threads */
 typedef struct
 {
     int is_cgen; // creepy type shenanigans
     Generator c_gen;     /* either src or this is set at a time */
-    char *src;           /* Source code to execute */
-    char *on_kill;       /* ran when thread dies */
-    Env *env;            /* Environment (child of creator's env) */
+    Value *func;           /* Source code to execute */
+    Value *on_kill;       /* ran when thread dies */
     Value *result;       /* Result value */
     pthread_t thread_id; /* POSIX thread ID */
+    MThreadID public_thread_id; /* MiLa visible thread ID */
     int status;          /* 0 = pending, 1 = running, 2 = done */
     int is_deamon;       /* Doesnt keep MiLa awake */
     int is_cancelled;    /* True if thread is cancelled. */
@@ -38,14 +40,13 @@ struct CGenData
     Value* data;
 };
 
-// TODO: Change into a linked list to be able to clean
-// Dead threads to avoid build up across program
-// lifetime
+// Note: this stays as is
 typedef struct
 {
     ThreadContext **threads;
-    int count;
-    int capacity;
+    // we use MThreadID to ensure IDs are in bounds ie Max IDs = Max Cap/Count
+    MThreadID count;
+    MThreadID capacity;
     pthread_mutex_t lock;
 } ThreadRegistry;
 
@@ -164,26 +165,12 @@ Value *thread_get_yield(ThreadContext *ctx)
 
 static void *mila_thread_worker(void *arg)
 {
-    Value *result;
+    Value *result = NULL;
     if (!((ThreadContext*)arg)->is_cgen) {
         // ctx here is ThreadContext
         ThreadContext *ctx = (ThreadContext *)arg;
-        if (!ctx || !ctx->src || !ctx->env)
-        {
-            if (ctx)
-                ctx->status = 2;
-            return NULL;
-        }
         ctx->status = 1;
-        Src *S = src_new(ctx->src);
-        if (!S)
-        {
-            ctx->result = verror("Failed to create source");
-            ctx->status = 2;
-            return NULL;
-        }
-        result = eval_source(S, ctx->env);
-        src_free(S);
+        result = call_function_with(NULL, ctx->func, vint(ctx->public_thread_id), NULL);
         if (IS_ERROR_TAGGED(result) && GET_ERROR(result) == E_THREAD_HALT)
         {
             val_release(result);
@@ -201,10 +188,14 @@ static void *mila_thread_worker(void *arg)
         pthread_cond_signal(&ctx->yield_cond);
     } else {
         // ctx here is actually a CGenData
-        result = (((CGenData*)arg)->ctx)->c_gen((CGenData*)arg);
+        ThreadContext *ctx = (((CGenData*)arg)->ctx);
+        ctx->c_gen((CGenData*)arg);
+        ctx->finished = 1;
+        val_release(ctx->result);
+        ctx->result = NULL;
+        pthread_cond_signal(&ctx->yield_cond);
         free(arg);
     }
-    /* Handle thread halt error */
     
     return NULL;
 }
@@ -243,8 +234,7 @@ Value *native_mutex_unlock(Env *env, int argc, Value **argv)
 
 int make_cthread(Generator c_gen) {
     ThreadContext *ctx = mila_malloc(sizeof(ThreadContext));
-    ctx->src = NULL;
-    ctx->env = NULL;
+    ctx->func = NULL;
     ctx->c_gen = c_gen;
     ctx->result = NULL;
     ctx->status = 0;
@@ -255,6 +245,7 @@ int make_cthread(Generator c_gen) {
     ctx->finished = 0;
     ctx->is_generator = 0;
     ctx->is_cgen = 1;
+    ctx->public_thread_id = -1;
 
     CGenData* cgen_data = (CGenData*)malloc(sizeof(CGenData));
     cgen_data->ctx = ctx;
@@ -277,8 +268,7 @@ int make_cthread(Generator c_gen) {
 
 int make_cgen(Generator c_gen, Value* val) {
     ThreadContext *ctx = mila_malloc(sizeof(ThreadContext));
-    ctx->src = NULL;
-    ctx->env = NULL;
+    ctx->func = NULL;
     ctx->c_gen = c_gen;
     ctx->result = NULL;
     ctx->status = 0;
@@ -289,6 +279,7 @@ int make_cgen(Generator c_gen, Value* val) {
     ctx->finished = 0;
     ctx->is_generator = 0;
     ctx->is_cgen = 1;
+    ctx->public_thread_id = -1;
 
     CGenData* cgen_data = (CGenData*)malloc(sizeof(CGenData));
     cgen_data->ctx = ctx;
@@ -316,16 +307,13 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
         return verror("thread.make(code, on_kill?): Requires source code");
     }
 
-    if (argv[0]->type != T_STRING || (argc == 2 && argv[1]->type != T_STRING))
+    if (argv[0]->type != T_FUNCTION || (argc == 2 && argv[1]->type != T_FUNCTION))
     {
-        return verror("thread.make(code, on_kill?): Requires string argument");
+        return verror("thread.make(code, on_kill?): Requires function argument");
     }
 
-    Env *child_env = env_new(env);
-
     ThreadContext *ctx = mila_malloc(sizeof(ThreadContext));
-    ctx->src = mila_strdup(argv[0]->v.s);
-    ctx->env = child_env;
+    ctx->func = val_retain(argv[0]);
     ctx->c_gen = NULL;
     ctx->result = NULL;
     ctx->status = 0;
@@ -336,20 +324,21 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
     ctx->finished = 0;
     ctx->is_generator = 0;
     ctx->is_cgen = 0;
+    ctx->public_thread_id = -1;
     
     pthread_mutex_init(&ctx->yield_lock, NULL);
     pthread_cond_init(&ctx->yield_cond, NULL);
     
     if (argc == 2)
     {
-        ctx->on_kill = mila_strdup(argv[1]->v.s);
+        ctx->on_kill = val_retain(argv[1]);
     }
 
     int thread_id = thread_registry_add(ctx);
+    ctx->public_thread_id = thread_id;
     if (thread_id < 0)
     {
-        mila_free(ctx->src);
-        env_free(child_env);
+        val_release(ctx->func);
         mila_free(ctx);
         return verror("Failed to register thread");
     }
@@ -358,8 +347,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
                                     mila_thread_worker, ctx);
     if (pth_result != 0)
     {
-        mila_free(ctx->src);
-        env_free(child_env);
+        val_release(ctx->func);
         mila_free(ctx);
         return verror("pthread_create failed: %d", pth_result);
     }
@@ -387,14 +375,18 @@ Value *native_thread_join(Env *env, int argc, Value **argv)
         return verror("Invalid thread ID: %d", thread_id);
     }
 
+    if (ctx->is_cancelled) return verror("Thread %i was already cancelled!", thread_id);
+
     pthread_join(ctx->thread_id, NULL);
 
     /* Execute cleanup handler if registered */
     if (ctx->on_kill)
     {
-        env_set_local_raw(ctx->env, "_reason", vstring_dup("normal"));
-        val_release(eval_str(ctx->on_kill, ctx->env));
-        free(ctx->on_kill);
+        Env* frame = env_new(NULL);
+        env_set_local_raw(frame, "_reason", vstring_dup("normal"));
+        val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+        val_release(ctx->on_kill);
+        env_free(frame);
         ctx->on_kill = NULL;
     }
 
@@ -527,9 +519,11 @@ Value *native_thread_cancel(Env *env, int argc, Value **argv)
     /* Execute cleanup handler if registered */
     if (ctx->on_kill)
     {
-        env_set_local_raw(ctx->env, "_reason", vstring_dup("cancelled"));
-        val_release(eval_str(ctx->on_kill, ctx->env));
-        free(ctx->on_kill);
+        Env* frame = env_new(NULL);
+        env_set_local_raw(frame, "_reason", vstring_dup("cancelled"));
+        val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+        val_release(ctx->on_kill);
+        env_free(frame);
         ctx->on_kill = NULL;
     }
 
@@ -582,36 +576,41 @@ void mila_threads_cleanup(void)
     thread_registry_init();
     pthread_mutex_lock(&thread_registry.lock);
 
-    for (int i = 0; i < thread_registry.count; i++)
+    for (MThreadID i = 0; i < thread_registry.count; i++)
     {
         ThreadContext *ctx = thread_registry.threads[i];
         if (!ctx) continue;
 
         /* Non-daemon threads: join and cleanup normally */
-        if (ctx->status < 2 && !ctx->is_deamon)
+        if (ctx->status < 2 && !ctx->is_deamon && !ctx->is_cgen)
         {
             pthread_join(ctx->thread_id, NULL);
             if (ctx->on_kill)
             {
-                env_set_local_raw(ctx->env, "_reason", vstring_dup("normal"));
-                val_release(eval_str(ctx->on_kill, ctx->env));
-                free(ctx->on_kill);
+                Env* frame = env_new(NULL);
+                env_set_local_raw(frame, "_reason", vstring_dup("normal"));
+                val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+                val_release(ctx->on_kill);
+                env_free(frame);
                 ctx->on_kill = NULL;
             }
         }
         /* Daemon threads: execute cleanup handler on halt */
-        else if (ctx->on_kill)
+        if (ctx->on_kill)
         {
-            env_set_local_raw(ctx->env, "_reason", vstring_dup("interpreter halt"));
-            val_release(eval_str(ctx->on_kill, ctx->env));
-            free(ctx->on_kill);
+            ctx->is_cancelled = 1;
+            Env* frame = env_new(NULL);
+            env_set_local_raw(frame, "_reason", vstring_dup("interpreter halt"));
+            val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+            val_release(ctx->on_kill);
+            env_free(frame);
             ctx->on_kill = NULL;
         }
 
         pthread_mutex_destroy(&ctx->yield_lock);
         pthread_cond_destroy(&ctx->yield_cond);
-        if (ctx->src) mila_free(ctx->src);
-        if (ctx->env) env_free(ctx->env);
+        if (ctx->result) val_release(ctx->result);
+        if (ctx->func) val_release(ctx->func);
         mila_free(ctx);
     }
 

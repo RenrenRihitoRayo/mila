@@ -1258,7 +1258,7 @@ Value *native_assert(Env *env, int argc, Value **argv)
     if (argc != 2)
         return verror("assert(cond, message): Needs two arguments!");
     if (!is_truthy(argv[0]))
-        return verror("%s", GET_STRING(argv[1]));
+        return vtagged_error(E_ASSERT, "%s", GET_STRING(argv[1]));
     return vnull();
 }
 
@@ -1473,6 +1473,160 @@ Value *native_mjson_dumps(Env* env, int argc, Value** argv) {
     return vstring_take(mila_to_mjson(argv[0]));
 }
 
+Value* native_list_deconstruct_v1(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("ll_deconstruct(pattern, list): Expected 2 args!");
+    if (GET_TYPE(argv[0]) != T_STRING) return verror("Pattern must be string");
+    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX"list")) return verror("Must be list");
+    
+    char* pattern = GET_STRING(argv[0]);
+    LinkedList* list = (LinkedList*)GET_OPAQUE(argv[1]);
+    
+    char* pat_copy = mila_strdup(pattern);
+    char* p = pat_copy;
+    
+    if (*p == '[') p++;
+    char* bracket = strchr(p, ']');
+    if (bracket) *bracket = '\0';
+    
+    char* save_ptr = NULL;
+    char* token = strtok_r(p, ",", &save_ptr);
+    int idx = 0;
+    char* spread_name = NULL;
+    Value* rest_list = NULL;
+    Value* result = call_native_with(env, native_new_dict, NULL);
+    
+    while (token) {
+        while (*token == ' ' || *token == '\t') token++;
+        char* tok_end = token + strlen(token) - 1;
+        while (tok_end > token && (*tok_end == ' ' || *tok_end == '\t')) {
+            *tok_end = '\0';
+            tok_end--;
+        }
+        
+        if (strncmp(token, "...", 3) == 0) {
+            spread_name = mila_strdup(token + 3);
+            rest_list = call_native_with(env, native_list_new, NULL);
+        } else if (!spread_name && idx < list->size) {
+            Value* val = ll_get(list, idx);
+            val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(token), 
+                                       val ? val_retain(val) : vnull(), NULL));
+            val_release(val);
+            idx++;
+        }
+        
+        token = strtok_r(NULL, ",", &save_ptr);
+    }
+    
+    if (spread_name) {
+        while (idx < list->size) {
+            Value* val = ll_get(list, idx++);
+            val_release(call_native_with(env, native_list_append, val_retain(rest_list), 
+                                        val ? val_retain(val) : vnull(), NULL));
+        }
+        val_release(call_native_with(env, native_set_dict, result, vstring_dup(spread_name), 
+                                rest_list, NULL));
+    }
+    
+    mila_free(pat_copy);
+    if (spread_name) mila_free(spread_name);
+    
+    return result;
+}
+
+Value* native_list_deconstruct(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("ll_deconstruct(pattern, list): Expected 2 args!");
+    if (GET_TYPE(argv[0]) != T_STRING) return verror("Pattern must be string");
+    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX"list")) return verror("Must be list");
+    
+    char* pattern = GET_STRING(argv[0]);
+    LinkedList* list = (LinkedList*)GET_OPAQUE(argv[1]);
+    
+    char* pat_copy = mila_strdup(pattern);
+    char* p = pat_copy;
+    
+    if (*p == '[') p++;
+    char* end = p + strlen(p) - 1;
+    while (end > p && (*end == ']' || *end == ' ' || *end == '\t')) end--;
+    end[1] = '\0';
+    
+    int idx = 0;
+    char* spread_name = NULL;
+    Value* rest_list = NULL;
+    Value* result = call_native_with(env, native_new_dict, NULL);
+    
+    char* curr = p;
+    while (*curr) {
+        while (*curr == ' ' || *curr == '\t') curr++;
+        if (!*curr) break;
+        
+        char* tok_start = curr;
+        int depth = 0;
+        
+        while (*curr && (depth > 0 || (*curr != ',' && *curr != '\0'))) {
+            if (*curr == '[') depth++;
+            else if (*curr == ']') depth--;
+            curr++;
+        }
+        
+        char* tok_end = curr - 1;
+        while (tok_end > tok_start && (*tok_end == ' ' || *tok_end == '\t')) tok_end--;
+        
+        char token_buf[512];
+        int tok_len = tok_end - tok_start + 1;
+        if (tok_len > 0 && tok_len < 511) {
+            memcpy(token_buf, tok_start, tok_len);
+            token_buf[tok_len] = '\0';
+            
+            if (strncmp(token_buf, "...", 3) == 0) {
+                spread_name = mila_strdup(token_buf + 3);
+                rest_list = call_native_with(env, native_list_new, NULL);
+            } else if (!spread_name && idx < list->size) {
+                Value* val = ll_get(list, idx);
+                
+                if (*token_buf == '[') {
+                    Value* nested = call_native_with(env, native_list_deconstruct, vstring_dup(token_buf), 
+                                                    val_retain(val), NULL);
+                    if (nested && nested->type == T_OPAQUE) {
+                        Dict* nested_dict = (Dict*)GET_OPAQUE(nested);
+                        Value** keys = dict_keys(nested_dict);
+                        for (size_t i = 0; keys[i]; i++) {
+                            Value* v = dict_get(nested_dict, keys[i]);
+                            val_release(call_native_with(env, native_set_dict, val_retain(result), keys[i], 
+                                                                   val_retain(v), NULL));
+                            val_release(v);
+                        }
+                        free(keys);
+                        val_release(nested);
+                    }
+                } else {
+                    val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(token_buf), 
+                                                   val ? val : vnull(), NULL));
+                }
+                idx++;
+            }
+        }
+        
+        if (*curr == ',') curr++;
+    }
+    
+    if (spread_name) {
+        while (idx < list->size) {
+            Value* val = ll_get(list, idx++);
+            val_release(call_native_with(env, native_list_append, val_retain(rest_list), 
+                                        val ? val_retain(val) : vnull(), NULL));
+        }
+        val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(spread_name), 
+                                rest_list, NULL));
+        val_release(rest_list);
+    }
+    
+    mila_free(pat_copy);
+    if (spread_name) mila_free(spread_name);
+    
+    return result;
+}
+
+
 #ifdef EXT_SOCK
 #include "addon/ml_socket.c"
 #endif
@@ -1558,7 +1712,6 @@ void env_register_builtins(Env *g)
     file_meta = val_make_table();
     val_set_method_table(file_meta, UMethodToString, file_printer);
 #endif
-    // === Lists
 
     dict_meta = val_make_table();
 
@@ -1599,6 +1752,7 @@ void env_register_builtins(Env *g)
     val_set_method_table(istring_meta, UMethodToString, istring_to_str);
     val_set_method_table(istring_meta, UMethodToGen, istring_to_gen);
 
+    // === Lists
     env_register_native(g, "list", native_list_new);
     env_register_native(g, "list.set", native_list_set);
     env_register_native(g, "list.get", native_list_get);
@@ -1607,6 +1761,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "list.append", native_list_append);
     env_register_native(g, "list.contains", native_list_contains);
     env_register_native(g, "list.index", native_list_index);
+    env_register_native(g, "list.deconstruct", native_list_deconstruct);
     // === Array
     env_register_native(g, "array", native_new_array);
     env_register_native(g, "array.from", native_from_array);

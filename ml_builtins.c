@@ -51,8 +51,25 @@
 
 #include <time.h>
 
+// Month edition started
 #define MILA_EDITION 202603
-#define MILA_VERSION 2
+// Incremented per edition update (optimally maxes out to 9)
+#define MILA_VERSION 1
+// Patch number
+#define MILA_PATCH 0
+
+/*
+    To avoid compat issues
+    and enforce compatibility among patches
+
+    Ed.Ver is the minimal versioning for MiLa
+    (for implementation level discernment)
+
+    while it will use
+
+    Ed.Ver.Patch for referring to specific versions of MiLa
+    (for source level discernment)
+*/
 
 #include "ml_primitives.c"
 #include "ml_platform_specific.c"
@@ -349,7 +366,7 @@ Value *native_is_numeric(Env *env, int argc, Value **argv)
     return vbool(is_number(argv[0]));
 }
 
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
 
 Value *file_printer(Value *self)
 {
@@ -696,7 +713,7 @@ Value *native_time_sleep_ms(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
 Value *native_run(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
@@ -1473,6 +1490,28 @@ Value *native_mjson_dumps(Env* env, int argc, Value** argv) {
     return vstring_take(mila_to_mjson(argv[0]));
 }
 
+Value *native_hash(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("hash(value): Expects one argument.");
+    return vuint(hash_value(argv[0]));
+}
+
+Value *native_hash_set_seed(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("hash.set_seed(value): Expects one integer.");
+    if (GET_UINTEGER(argv[0]) == 0) return verror("hash.set_seed(value): Hash cannot be zero!");
+    hash_set_seed(GET_UINTEGER(argv[0]));
+    return vnull();
+}
+
+Value *native_hash_get_seed(Env* env, int argc, Value** argv) {
+    if (argc != 0) return verror("hash._get_seed(): Expects no arguments.");
+    return vuint(HASH_SEED);
+}
+
+Value *native_sys_get_pid(Env* env, int argc, Value** argv) {
+    if (argc != 0) return verror("sys.get_pid(): Expects no arguments.");
+    return vuint(get_process_id());
+}
+
 Value* native_list_deconstruct_v1(Env* env, int argc, Value** argv) {
     if (argc != 2) return verror("ll_deconstruct(pattern, list): Expected 2 args!");
     if (GET_TYPE(argv[0]) != T_STRING) return verror("Pattern must be string");
@@ -1637,26 +1676,17 @@ Value* native_list_deconstruct(Env* env, int argc, Value** argv) {
 
 void env_register_builtins(Env *g)
 {
-#ifndef VMM_BUILD
     // === Setup
     // canonical builtins reports edition (2026 march)
-    env_set_raw(g, "__mila_canonical_builtins", vint(202603L));
+    env_set_raw(g, "__mila_edition", vint(MILA_EDITION));
     // canonical builtins version reports actual version (integer, any changes
     // means ver++)
-    env_set_raw(g, "__mila_canonical_builtins_version", vint(1));
+    env_set_raw(g, "__mila_version", vint(MILA_VERSION));
     // tell users what implementation it is
-    // heres its canon since this is the base implementation.
-    env_set_raw(g, "__mila_codename", vstring_dup("canon"));
+#ifndef SAFE_BUILD
+    env_set_raw(g, "__mila_codename", vstring_dup("mila:safe_canon"));
 #else
-    // === Setup
-    // canonical builtins reports edition (2026 march)
-    env_set_raw(g, "__mila_canonical_builtins", vint(202603L));
-    // canonical builtins version reports actual version (integer, any changes
-    // means ver++)
-    env_set_raw(g, "__mila_canonical_builtins_version", vint(1));
-    // tell users what implementation it is
-    // heres its canon since this is the base implementation.
-    env_set_raw(g, "__mila_codename", vstring_dup("vmm"));
+    env_set_raw(g, "__mila_codename", vstring_dup("mila:canon"));
 #endif
     env_set_raw(g, "INF", vfloat(INFINITY));
     env_set_raw(g, "NINF", vfloat(-INFINITY));
@@ -1680,6 +1710,9 @@ void env_register_builtins(Env *g)
     env_register_native(g, "crandom", native_crandom);
     env_register_native(g, "dump_search_paths", native_dump_search_list);
     env_register_native(g, "is", native_is);
+    env_register_native(g, "hash", native_hash);
+    env_register_native(g, "hash.set_seed", native_hash_set_seed);
+    env_register_native(g, "hash._get_seed", native_hash_get_seed);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
@@ -1690,7 +1723,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "or", native_bitwise_or);
     env_register_native(g, "xor", native_bitwise_xor);
     env_register_native(g, "not", native_not);
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     // === File IO
     env_register_native(g, "open", native_open);
     env_register_native(g, "fclose", native_fclose);
@@ -1875,22 +1908,35 @@ void env_register_builtins(Env *g)
     env_register_native(g, "system", native_system);
     env_register_native(g, "sys.get_platform", native_sys_get_platform);
     env_register_native(g, "sys.get_arch", native_sys_get_arch);
+    env_register_native(g, "sys.get_pid", native_sys_get_pid);
     // === Modules
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     env_register_native(g, "run", native_run);   // runs file
     env_register_native(g, "invoke", native_run);   // invokes file
     env_register_native(g, "load", native_load); // loads dlls or so file
     env_register_native(g, "eval", native_eval); // runs string
 #endif
-    // ==== EXTENSIONS ====
+
+    // ==== EXTENSIONS (not meant for prod) ====
+    // _has_ext standardizes what to check to ensure ext exists
+    // this makes sure users dont check function for this
 #ifdef EXT_WEB
 #include "addon/ml_web.h"
+    env_set_local_raw(g, "_has_ext.web", vbool(1));
     env_register_web_ext(g);
+#else
+    env_set_local_raw(g, "_has_ext.web", vbool(0));
 #endif
 #ifdef EXT_SOCK
+    env_set_local_raw(g, "_has_ext.socket", vbool(1));
     env_register_socket_ext(g);
+#else
+    env_set_local_raw(g, "_has_ext.socket", vbool(0));
 #endif
 #ifdef EXT_HTTP
+    env_set_local_raw(g, "_has_ext.http", vbool(1));
     env_register_http_ext(g);
+#else
+    env_set_local_raw(g, "_has_ext.http", vbool(0));
 #endif
 }

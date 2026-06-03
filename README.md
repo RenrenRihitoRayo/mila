@@ -88,7 +88,20 @@ println("Hello, world!");
 
 ### Fibbonacci
 ```MiLa
-println("Hello, world!");
+fn fib(n) {
+    var a = 1;
+    var b = 0;
+    var c = 0;
+    while (n > 0) {
+        set c = a + b;
+        set b = a;
+        set a = c;
+        set n -= 1;
+    }
+    return b;
+}
+
+println(fib(10)); // 55
 ```
 
 

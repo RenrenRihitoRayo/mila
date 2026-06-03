@@ -6,11 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifndef VMM_BUILD
-#define MILA_LPREFIX "canon:"
-#else
-#define MILA_LPREFIX "vmm:"
-#endif
+#define MILA_LPREFIX "mila:"
+#define ML(x) MILA_LPREFIX x
 
 #include "ml_maths.c"
 
@@ -22,6 +19,38 @@
 // when collections' item amounts exceed this number
 #define MAX_ITEMS_DISPLAYED 1000
 
+// ====== PUBLIC API
+
+// Error constants (for syntax checking)
+#define ERR_SUCCESS NULL
+#define ERR_EOF "Unexpected end of file"
+#define ERR_BLOCK_UNCLOSED "Block not closed with '}'"
+#define ERR_PAREN_UNCLOSED "Parenthesis not closed with ')'"
+#define ERR_BRACKET_UNCLOSED "Bracket not closed with ']'"
+#define ERR_INVALID_IDENT "Invalid identifier"
+#define ERR_INVALID_EXPR "Invalid expression"
+#define ERR_INVALID_STMT "Invalid statement"
+#define ERR_INVALID_FN_CALL "Invalid function call"
+#define ERR_INVALID_FN_ARGS "Invalid function arguments"
+#define ERR_INVALID_PARAM_LIST "Invalid parameter list"
+#define ERR_INVALID_CONTEXT_LIST "Invalid context list"
+#define ERR_EXPECTED_PAREN "Expected '('"
+#define ERR_EXPECTED_BRACKET "Expected '['"
+#define ERR_EXPECTED_BRACE "Expected '{'"
+#define ERR_EXPECTED_COMMA "Expected ','"
+#define ERR_EXPECTED_SEMICOLON "Expected ';'"
+#define ERR_EXPECTED_EQUALS "Expected '='"
+#define ERR_EXPECTED_COLON "Expected ':'"
+#define ERR_EXPECTED_PIPE "Expected '|'"
+#define ERR_INVALID_CONDITION "Invalid if condition"
+#define ERR_INVALID_LOOP "Invalid loop"
+#define ERR_INVALID_FOREACH "Invalid foreach"
+#define ERR_INVALID_FN_DEF "Invalid function definition"
+#define ERR_INVALID_OBJECT "Invalid object definition"
+#define ERR_STRING_UNCLOSED "String not terminated"
+#define ERR_EXPECTED_TYPE_ANNOTATION "Expected type annotation (string)"
+
+// Public getters for types
 #define IS_ERROR(v) (GET_TYPE(v) == T_ERROR || GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_ERROR_TAGGED(v) (GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_FATAL(v) ((GET_ERROR(v) == E_FATAL || GET_ERROR(v) == E_SYNTAX_ERROR || GET_ERROR(v) == E_THREAD_HALT))
@@ -39,67 +68,68 @@
 #define GET_ERROR_TAGGED(val) (val ? val->v.tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
-#define WEAK(val) (val->type = T_WEAK_OPAQUE)
 
-#define GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
-#define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
-#define GET_ERROR(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
-#define GET_TYPE(v) (v ? v->type : T_WHAT )
+#define GET_METHOD(v, m) ((v->method_table && v->method_table[m - v->table_offset]) ? v->method_table[m - v->table_offset] : NULL)
 
-#define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
-
-#define HANDLE_CONTROL(val) \
-    {\
-        if (val->type == T_BREAK)\
-            return val;\
-        if (val->type == T_CONTINUE)\
-            return val;\
-        return val;\
-    }\
-
-#define HANDLE_CONTROL_LOOP(val) \
-    {\
-        if (!val) return val;\
-        if (val->type == T_BREAK)\
-            return val;\
-        if (val->type == T_CONTINUE)\
-            return val;\
-        if (val->type == T_RETURN)\
-        {\
-            Value *res = (Value*)val->v.opaque;\
-            val_kill(val);\
-            return res;\
-        }\
-    }\
-
-#define GET_OVERLOAD(obj, method) ((obj)->type_name && strcmp((obj)->type_name, MILA_LPREFIX "dict") == 0) ? dict_get_str((Dict*)(obj)->v.opaque, method) : NULL
-
-#define FN_UNUSED __attribute__((unused))
-
-#define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
-
-typedef struct Value Value;
-typedef struct Env Env;
-typedef Value *(*NativeFn)(Env *env, int argc, Value **argv);
-typedef char *(*Printer)(Value *self);
-
-typedef struct
+// each of these methods may be reffered to as
+// type{method name}
+// like array{UMethodToIter}
+// or simply UMethodToIter
+// This is used for Value Instance Operator Overloading (good for speed, bad for flexibility)
+typedef enum __attribute__((packed))
 {
-    char *name;
-    NativeFn func;
-} NativeEntry;
+    MethodNone = -1,
+    // value op value syntax
+    BMethodAdd,
+    BMethodSub,
+    BMethodMul,
+    BMethodDiv,
+    BMethodMod,
+    BMethodLshift,
+    BMethodRshift,
+    BMethodLE,
+    BMethodGE,
+    BMethodLess,
+    BMethodGreat,
+    BMethodEq,
+    BMethodNe,
 
-typedef enum
+    BMethodGetItem, // name[...] syntax
+    TMethodSetItem, // set name[...] syntax
+
+    // when converting objects into strings
+    UMethodToString,
+    UMethodToRepr,
+
+    // foreach syntax
+    UMethodToIter,
+    UMethodStepIter, // step update
+    UMethodStepIterInit, // initializes state for iterator
+    UMethodStepIterClean, // initializes state for iterator
+    UMethodToGen,  // Method to turn collections into generators
+
+    UMethodFree,
+    UMethodKill,
+
+    UMethodCopy, // Deep copy by default
+    UMethodCopyShallow,
+
+    MethodTotalCount
+} MethodType;
+
+typedef enum __attribute__((packed))
 {
-    E_SYNTAX_ERROR, // Self explanatory
-    E_PRE_RUNTIME,  // Must always be fatal!
-    E_RUNTIME,      // Errors such as undefined variables
-    E_TYPE_ERROR,   // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
-    E_FATAL,        // Errors that should be fatal, like syntax errors
-    E_GENERIC,      // Errors that cannot be classified as ones above
-    E_ASSERT,       // Errors triggered by a faulty assert
-    E_THREAD_HALT
-} ErrorType;
+    BMethodAnd = BMethodGetItem,
+    BMethodOr,
+    BMethodGlob,
+    BMethodDefault,
+} MethodType_Internal; // not used by VIOO instances
+
+// == Environment
+
+// When writing your own mila kernel
+// these functions bellow (env and value related) might be the only
+// part of mila youll ever touch.
 
 typedef enum
 {
@@ -126,48 +156,12 @@ typedef enum
     T_ARG_END
 } ValueType;
 
-typedef struct path_list path_list;
 #ifndef MILA_PROTO
-// Simple trick
-const char *MILA_TYPE_NAMES[] = {
-    "null",
-    "int",
-    "uint",
-    "float",
-    "bint",
-    "bfloat",
-    "string",
-    "bool",
-    "function",
-    "native",
-    "opaque",
-    "owned_opaque",
-    "weak_opaque",
-    "return",
-    "none",
-    "error",
-    "break",
-    "continue",
-    "tagged_error",
-    "arg_end",
-};
 
-const int MILA_TYPE_COUNT = T_ARG_END;
-
-const char *MILA_ERROR_NAMES[] = {
-    "SyntaxError",
-    "PreRuntime",
-    "Runtime",
-    "TypeError",
-    "Fatal",
-    "Generic",
-    "AssertionError",
-    "ThreadHalt"
-};
-
-const int MILA_ERROR_COUNT = E_THREAD_HALT;
-
-path_list *search_path;
+// OVERLOAD_* can be used by users, ensures users dont use constant strings and maintains
+// consistency accross possible updates
+// You see object operator overloading isnt really MiLas... priority
+// so updates might change so fast developers might get whiplash
 
 // Left Operators
 const char* OVERLOAD_ADD = ":+";
@@ -177,7 +171,12 @@ const char* OVERLOAD_DIV = ":/";
 const char* OVERLOAD_MOD = ":%";
 const char* OVERLOAD_RSHIFT = ":>>";
 const char* OVERLOAD_LSHIFT = ":<<";
-const char* OVERLOAD_DEFAULT = ":??";
+const char* OVERLOAD_EQ = ":==";
+const char* OVERLOAD_NE = ":!=";
+const char* OVERLOAD_GT = ":>";
+const char* OVERLOAD_LT = ":<";
+const char* OVERLOAD_GE = ":>=";
+const char* OVERLOAD_LE = ":<=";
 
 // Right Operators
 const char* OVERLOAD_R_ADD = "+:";
@@ -188,6 +187,12 @@ const char* OVERLOAD_R_MOD = "%:";
 const char* OVERLOAD_R_RSHIFT = ">>:";
 const char* OVERLOAD_R_LSHIFT = "<<:";
 const char* OVERLOAD_R_DEFAULT = "??:";
+const char* OVERLOAD_R_EQ = "==:";
+const char* OVERLOAD_R_NE = "!=:";
+const char* OVERLOAD_R_GT = ">:";
+const char* OVERLOAD_R_LT = "<:";
+const char* OVERLOAD_R_GE = ">=:";
+const char* OVERLOAD_R_LE = "<=:";
 
 // More complex overloads
 const char* OVERLOAD_DISPLAY = ":display";
@@ -195,150 +200,25 @@ const char* OVERLOAD_COPY = ":copy";
 const char* OVERLOAD_COPYSHALLOW = ":copyshallow";
 const char* OVERLOAD_TO_BOOL = ":to_bool";
 
-#else
-extern path_list *search_path;
-extern char **MILA_TYPE_NAMES;
-extern char **MILA_ERROR_NAMES;
-extern int MILA_ERROR_COUNT;
-extern int MILA_TYPE_COUNT;
+#endif // MILA_PROTO
 
-// Left Operatorshttps
-extern char* OVERLOAD_ADD;
-extern char* OVERLOAD_SUB;
-extern char* OVERLOAD_MUL;
-extern char* OVERLOAD_DIV;
-extern char* OVERLOAD_MOD;
-extern char* OVERLOAD_RSHIFT;
-extern char* OVERLOAD_LSHIFT;
-extern char* OVERLOAD_DEFAULT;
-
-// Right Operators
-extern char* OVERLOAD_R_ADD;
-extern char* OVERLOAD_R_SUB;
-extern char* OVERLOAD_R_MUL;
-extern char* OVERLOAD_R_DIV;
-extern char* OVERLOAD_R_MOD;
-extern char* OVERLOAD_R_RSHIFT;
-extern char* OVERLOAD_R_LSHIFT;
-extern char* OVERLOAD_R_DEFAULT;
-
-// More complex overloads
-extern char* OVERLOAD_DISPLAY;
-extern char* OVERLOAD_COPY;
-extern char* OVERLOAD_COPYSHALLOW;
-extern char* OVERLOAD_TO_BOOL;
-#endif
-
-// each of these methods may be reffered to as
-// type{method name}
-// like array{UMethodToIter}
-// or simple UMethodToIter
-typedef enum __attribute__((packed))
+typedef enum
 {
-    MethodNone = -1,
-    // value op value syntax
-    BMethodAdd,
-    BMethodSub,
-    BMethodMul,
-    BMethodDiv,
-    BMethodMod,
-    BMethodLshift,
-    BMethodRshift,
-    BMethodLE,
-    BMethodGE,
-    BMethodLess,
-    BMethodGreat,
-    BMethodEq,
-    BMethodNe,
-    BMethodAnd,
-    BMethodOr,
-    BMethodDefault,
-    BMethodGlob,
-    BMethodIs,
+    E_SYNTAX_ERROR, // Self explanatory
+    E_PRE_RUNTIME,  // Must always be fatal!
+    E_RUNTIME,      // Errors such as undefined variables
+    E_TYPE_ERROR,   // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
+    E_FATAL,        // Errors that should be fatal, like syntax errors
+    E_GENERIC,      // Errors that cannot be classified as ones above
+    E_ASSERT,       // Errors triggered by a faulty assert
+    E_THREAD_HALT,  // Signal threads to halt (propagates like an error)
+} ErrorType;
 
-    BMethodGetItem, // name[...] syntax
-    TMethodSetItem, // set name[...] syntax
-
-    // when converting objects into strings
-    UMethodToString,
-    UMethodToRepr,
-
-    // foreach syntax
-    UMethodToIter,
-    UMethodStepIter, // step update
-    UMethodStepIterInit, // initializes state for iterator
-    UMethodStepIterClean, // initializes state for iterator
-    UMethodToGen,  // Method to turn collections into generators
-
-    UMethodFree,
-    UMethodKill,
-
-    UMethodCopy, // Deep copy by default
-    UMethodCopyShallow,
-
-    MethodTotalCount
-} MethodType;
-
-typedef Value *(*trinary_method)(Value *self, Value *b, Value* c);
-typedef Value *(*binary_method)(Value *self, Value *other);
-typedef Value *(*unary_method)(Value *self);
-
+typedef struct Value Value;
+typedef struct Env Env;
+typedef Value *(*NativeFn)(Env *env, int argc, Value **argv);
 typedef void* MethodTable;
 
-typedef struct
-{
-    char **params;  // NULL-terminated
-    char **defaults;  // NULL-terminated
-    char **contextuals; // NULL_terminated
-    char *body_src; // pointer to function body source (we'll keep a copy)
-    // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
-    char *name;
-    Env* closure;
-} FunctionV;
-
-typedef struct {
-    char** params;
-    char** defaults;
-    size_t count;
-} FunctionParameters;
-
-typedef struct
-{
-    NativeFn fn;
-    void *userdata;
-    char *name;
-} NativeFunctionV;
-
-// Primitives are <50 bytes gauranteed.
-// worst case is 300+ Bytes (especially variables with methods
-struct Value
-{
-    MethodTable *method_table; // 8 bytes ptr
-    char *type_name;           // 8 bytes ptr
-    ValueType type;            // 4 bytes
-    int refcount;              // simple refcount (4 bytes)
-    char owns_table;           // check if table can be freed or not (1 bytes)
-    union {
-        char * s;
-        char * message;
-        _Bool b;
-        double f;
-        mila_float128_internal bf;
-        __int128 bi;
-        void *opaque;
-        long i;
-        unsigned long ui;
-        // function
-        FunctionV *fn;
-        NativeFunctionV *native;
-        struct {
-            char* message;
-            ErrorType type;
-        } tagged_error;
-    } v; // around 8 bytes
-};
-
-// == Environment
 typedef struct Var
 {
     char *name;
@@ -379,10 +259,6 @@ void env_register_native(Env *env, const char *name, NativeFn fn);
 void env_register_builtins(Env *g);
 
 // == Value Related
-
-// When writing your own mila kernel
-// these functions might be the only
-// part of mila youll ever touch.
 
 // Convert a 128 bit into a string
 char *i128toa(__int128 value);
@@ -495,6 +371,200 @@ __int128 atoi128(char* num);
 char* i128toa(__int128 num);
 #endif
 
+// ================= NOT SO PUBLIC APIS (or spicy api stuff, depends on your mood)
+
+// THESE ARE INTERNAL
+#define GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
+#define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
+#define GET_ERROR(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
+#define GET_TYPE(v) (v ? v->type : T_WHAT )
+
+#define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
+
+#define HANDLE_CONTROL(val) \
+    {\
+        if (val->type == T_BREAK)\
+            return val;\
+        if (val->type == T_CONTINUE)\
+            return val;\
+        return val;\
+    }
+
+#define HANDLE_CONTROL_LOOP(val) \
+    {\
+        if (!val) return val;\
+        if (val->type == T_BREAK)\
+            return val;\
+        if (val->type == T_CONTINUE)\
+            return val;\
+        if (val->type == T_RETURN)\
+        {\
+            Value *res = (Value*)val->v.opaque;\
+            val_kill(val);\
+            return res;\
+        }\
+    }
+
+#define GET_OVERLOAD(obj, method) ((obj)->type_name && strcmp((obj)->type_name, MILA_LPREFIX "dict") == 0) ? dict_get_str((Dict*)(obj)->v.opaque, method) : NULL
+
+#define FN_UNUSED __attribute__((unused))
+
+#define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
+
+typedef char *(*Printer)(Value *self);
+
+typedef struct
+{
+    char *name;
+    NativeFn func;
+} NativeEntry;
+
+typedef struct path_list path_list;
+#ifndef MILA_PROTO
+// Simple trick (use GET_TYPENAME rather than use this directly)
+const char *MILA_TYPE_NAMES[] = {
+    "null",
+    "int",
+    "uint",
+    "float",
+    "bint",
+    "bfloat",
+    "string",
+    "bool",
+    "function",
+    "native",
+    "opaque",
+    "owned_opaque",
+    "weak_opaque",
+    "return",
+    "none",
+    "error",
+    "break",
+    "continue",
+    "tagged_error",
+    "arg_end",
+};
+
+const int MILA_TYPE_COUNT = T_ARG_END;
+
+// Use (GET_ERRORNAME than this)
+const char *MILA_ERROR_NAMES[] = {
+    "SyntaxError",
+    "PreRuntime",
+    "Runtime",
+    "TypeError",
+    "Fatal",
+    "Generic",
+    "AssertionError",
+    "ThreadHalt"
+};
+
+const int MILA_ERROR_COUNT = E_THREAD_HALT;
+
+path_list *search_path;
+
+#else
+extern path_list *search_path;
+extern char **MILA_TYPE_NAMES;
+extern char **MILA_ERROR_NAMES;
+extern int MILA_ERROR_COUNT;
+extern int MILA_TYPE_COUNT;
+
+// Left Operatorshttps
+extern char* OVERLOAD_ADD;
+extern char* OVERLOAD_SUB;
+extern char* OVERLOAD_MUL;
+extern char* OVERLOAD_DIV;
+extern char* OVERLOAD_MOD;
+extern char* OVERLOAD_RSHIFT;
+extern char* OVERLOAD_LSHIFT;
+extern char* OVERLOAD_EQ;
+extern char* OVERLOAD_NE;
+extern char* OVERLOAD_GT;
+extern char* OVERLOAD_LT;
+extern char* OVERLOAD_GE;
+extern char* OVERLOAD_LE;
+
+// Right Operators
+extern char* OVERLOAD_R_ADD;
+extern char* OVERLOAD_R_SUB;
+extern char* OVERLOAD_R_MUL;
+extern char* OVERLOAD_R_DIV;
+extern char* OVERLOAD_R_MOD;
+extern char* OVERLOAD_R_RSHIFT;
+extern char* OVERLOAD_R_LSHIFT;
+extern char* OVERLOAD_R_EQ;
+extern char* OVERLOAD_R_NE;
+extern char* OVERLOAD_R_GT;
+extern char* OVERLOAD_R_LT;
+extern char* OVERLOAD_R_GE;
+extern char* OVERLOAD_R_LE;
+
+// More complex overloads
+extern char* OVERLOAD_DISPLAY;
+extern char* OVERLOAD_COPY;
+extern char* OVERLOAD_COPYSHALLOW;
+extern char* OVERLOAD_TO_BOOL;
+#endif // MILA_PROTO
+
+typedef Value *(*trinary_method)(Value *self, Value *b, Value* c);
+typedef Value *(*binary_method)(Value *self, Value *other);
+typedef Value *(*unary_method)(Value *self);
+
+typedef struct
+{
+    char **params;  // NULL-terminated
+    char **defaults;  // NULL-terminated
+    char **contextuals; // NULL_terminated
+    char *body_src; // pointer to function body source (we'll keep a copy)
+    // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
+    char *name;
+    Env* closure;
+} FunctionV;
+
+typedef struct {
+    char** params;
+    char** defaults;
+    size_t count;
+} FunctionParameters;
+
+typedef struct
+{
+    NativeFn fn;
+    void *userdata;
+    char *name;
+} NativeFunctionV;
+
+// Primitives are <50 bytes gauranteed.
+// worst case is 300+ Bytes (especially variables with methods
+struct Value
+{
+    MethodTable *method_table; // 8 bytes ptr
+    char *type_name;           // 8 bytes ptr
+    ValueType type;            // 4 bytes
+    unsigned short refcount;   // simple refcount (4 bytes)
+    unsigned char table_offset;
+    char owns_table;           // check if table can be freed or not (1 bytes)
+    union {
+        char * s;
+        char * message;
+        void *opaque;
+        _Bool b;
+        // function
+        FunctionV *fn;
+        NativeFunctionV *native;
+        double f;
+        mila_float128_internal bf;
+        __int128 bi;
+        long i;
+        unsigned long ui;
+        struct {
+            char* message;
+            ErrorType type;
+        } tagged_error;
+    } v; // around 8 bytes
+};
+
 // == Parsing
 
 /*
@@ -561,9 +631,9 @@ double get_unix_timestamp();
 char *read_input(void);
 int load_library(Env *env, const char *libpath);
 void mila_add_atexit(Value* fn);
-int skip_parse_block(Src* s);
-int skip_parse_statement(Src* s);
-int skip_parse_expr(Src* s);
+const char* skip_parse_block(Src* s);
+const char* skip_parse_statement(Src* s);
+const char* skip_parse_expr(Src* s);
 
 // Initialize a minimal environment for a MiLa script
 // This will automatically inject built ins
@@ -574,3 +644,5 @@ extern void* mila_malloc(size_t size);
 extern void* mila_realloc(void* ptr, size_t size);
 extern void mila_free(void* ptr);
 
+// Misc
+unsigned long get_process_id(void);

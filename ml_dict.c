@@ -39,9 +39,15 @@ typedef struct {
 #define INITIAL_CAPACITY 16
 #define LOAD_FACTOR 0.75
 
+unsigned long HASH_SEED = 5381;
+
+void hash_set_seed(unsigned long seed) {
+  HASH_SEED = seed;
+}
+
 // Simple djb2 hash function
 static unsigned long hash_string(const char *str) {
-  unsigned long hash = 5381;
+  unsigned long hash = HASH_SEED;
   int c;
   while ((c = *str++))
     hash = ((hash << 5) + hash) + c;
@@ -51,7 +57,7 @@ static unsigned long hash_string(const char *str) {
 FN_UNUSED static unsigned long hash_value(Value *val) {
   char *og = as_c_string_repr(val);
   char *str = og;
-  unsigned long hash = 5381;
+  unsigned long hash = HASH_SEED;
   int c;
   while ((c = *str++))
     hash = ((hash << 5) + hash) + c;

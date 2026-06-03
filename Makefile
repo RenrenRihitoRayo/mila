@@ -4,8 +4,8 @@ files_web = $(files) ./addon/ml_web.c
 targets_web = ./build/web/mila.wasm ./build/web/mila.js
 
 libraries ?= -lm
-eflags ?= 
-cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -std=c11 $(eflags)
+eflags ?=
+cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 $(eflags)
 
 .PHONY: web
 

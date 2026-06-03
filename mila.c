@@ -39,7 +39,7 @@
 #include <unistd.h>
 #endif
 
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
 #include "ml_paths.c"
 #endif
 
@@ -80,6 +80,18 @@ void print_memory_usage()
 
     printf("Memory usage: %.2f %s\n", memory_usage_d, units[unit_index]);
 }
+
+#ifdef _WIN32
+unsigned long get_process_id(void)
+{
+    return GetCurrentProcessId();
+}
+#else
+unsigned long get_process_id(void)
+{
+    return (unsigned long)getpid();
+}
+#endif
 
 path_list *search_path = NULL;
 
@@ -344,6 +356,7 @@ Value* val_copy(Value *src)
 Value *val_new(ValueType t)
 {
     Value *p = mila_malloc(sizeof(Value));
+    p->table_offset = 0; // no offset yet
     p->type = t;
     p->refcount = 1;
     p->type_name = NULL;
@@ -375,6 +388,12 @@ void val_set_table(Value *v, MethodTable *t)
 {
     v->owns_table = 0;
     v->method_table = t;
+    // future update
+    // for (unsigned char i=0; i < 255; ++i) {
+    //     if (t[i]) {
+    //         v->table_offset = i;
+    //     }
+    // }
 }
 
 void val_set_method(Value *v, MethodType t, void *func)
@@ -410,7 +429,7 @@ inline int is_truthy(Value *value)
             printf("  ?? Recieved candidate for overloading!\n  `");
             print_value(value); puts("`");
 #endif
-            Value* fn = dict_get_str((Dict*)value->v.opaque, ":to_bool");
+            Value* fn = dict_get_str((Dict*)value->v.opaque, OVERLOAD_TO_BOOL);
             if (fn) {
                 Value* tmp = call_function_with(NULL, fn, val_retain(value), NULL);
                 int res = is_truthy(tmp);
@@ -419,6 +438,8 @@ inline int is_truthy(Value *value)
             }
         }
         return GET_OPAQUE(value) ? 1 : 0;
+    case T_ERROR: case T_TAGGED_ERROR: case T_RETURN: case T_BREAK: case T_CONTINUE:
+        return 1;
     } break;
     default:;
     }
@@ -504,7 +525,7 @@ inline Value *vnone() { return val_new(T_NONE); }
 inline Value *vbreak() { return val_new(T_BREAK); }
 inline Value *vcontinue() { return val_new(T_CONTINUE); }
 
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
 __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
                                                            char *fmt, ...)
 {
@@ -2004,7 +2025,7 @@ void env_remove_contextual(Env *env, const char *name)
     }
 }
 
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
 
 int load_library(Env *env, const char *libpath)
 {
@@ -2473,17 +2494,47 @@ int match_char(Src *s, char c)
     return 0;
 }
 
-// Fixed skip_parse functions for MiLa
+// Return type: const char* (NULL = success, non-NULL = error message)
+const char* skip_expr_prec(Src *s, int min_prec);
 
-int skip_primary(Src *s)
-{
+const char* skip_fn_call_args(Src *s) {
+    if (!match_char(s, '(')) return ERR_EXPECTED_PAREN;
+    skip_ws(s);
+    if (match_char(s, ')')) return ERR_SUCCESS;
+    
+    for (;;) {
+        const char* err = skip_expr_prec(s, 1);
+        if (err) return err;
+        
+        skip_ws(s);
+        if (match_char(s, ',')) {
+            skip_ws(s);
+            continue;
+        }
+        if (match_char(s, ')')) return ERR_SUCCESS;
+        return ERR_EXPECTED_COMMA;
+    }
+}
+
+const char* skip_parse_block(Src* s) {
+    if (!match_char(s, '{')) return ERR_EXPECTED_BRACE;
+    
+    while (!src_eof(s)) {
+        skip_ws(s);
+        if (match_char(s, '}')) return ERR_SUCCESS;
+        const char* err = skip_parse_statement(s);
+        if (err) return err;
+    }
+    return ERR_BLOCK_UNCLOSED;
+}
+
+const char* skip_primary(Src *s) {
     skip_ws(s);
     char c = src_peek(s);
     
     // Numbers
     if (isdigit((unsigned char)c) || 
-        ((c == '-' || c == '+') && s->pos + 1 < s->len && isdigit((unsigned char)s->src[s->pos + 1])))
-    {
+        ((c == '-' || c == '+') && s->pos + 1 < s->len && isdigit((unsigned char)s->src[s->pos + 1]))) {
         if (c == '-' || c == '+') src_get(s);
         while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.' || 
                src_peek(s) == 'x' || src_peek(s) == 'X' || 
@@ -2491,206 +2542,174 @@ int skip_primary(Src *s)
             src_get(s);
         if (src_peek(s) == 'u' || src_peek(s) == 'U') src_get(s);
         if (src_peek(s) == '%') src_get(s);
-        return 0;
+        return ERR_SUCCESS;
     }
+    
     // Strings
-    else if (c == '"')
-    {
+    if (c == '"') {
         src_get(s);
         while (!src_eof(s)) {
             char ch = src_get(s);
-            if (ch == '"') break;
+            if (ch == '"') return ERR_SUCCESS;
             if (ch == '\\') src_get(s);
         }
-        return 0;
+        return ERR_STRING_UNCLOSED;
     }
-    // Lists/arrays
-    else if (c == '[')
-    {
+    
+    // Lists/dicts with element validation
+    if (c == '[') {
         src_get(s);
-        int depth = 1;
-        while (depth > 0 && !src_eof(s)) {
-            char ch = src_get(s);
-            if (ch == '[') depth++;
-            else if (ch == ']') depth--;
-            else if (ch == '"') {
-                while (!src_eof(s)) {
-                    char x = src_get(s);
-                    if (x == '"') break;
-                    if (x == '\\') src_get(s);
+        char is_dict = match_char(s, '@');
+        skip_ws(s);
+        if (src_peek(s) != ']') {
+            for (;;) {
+                const char* err = skip_expr_prec(s, 1);
+                if (err) return err;
+                skip_ws(s);
+                if (match_char(s, ',') || match_char(s, '=')) {
+                    skip_ws(s);
+                    continue;
                 }
+                if (match_char(s, ']')) return ERR_SUCCESS;
+                return ERR_EXPECTED_BRACKET;
             }
+        } else {
+            src_get(s);
         }
-        return depth ? 1 : 0;
+        return ERR_SUCCESS;
     }
-    // Parentheses and function calls
-    else if (c == '(')
-    {
+    
+    // Parenthesized expressions
+    if (c == '(') {
         src_get(s);
-        int depth = 1;
-        while (depth > 0 && !src_eof(s)) {
-            char ch = src_get(s);
-            if (ch == '(') depth++;
-            else if (ch == ')') depth--;
-            else if (ch == '"') {
-                while (!src_eof(s)) {
-                    char x = src_get(s);
-                    if (x == '"') break;
-                    if (x == '\\') src_get(s);
-                }
-            }
-        }
-        return depth ? 1 : 0;
-    }
-    // Blocks
-    else if (c == '{')
-    {
-        return skip_parse_block(s);
-    }
-    else if (c == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == '{')
-    {
-        src_get(s);
-        return skip_parse_block(s);
-    }
-    // Function literals
-    else if (is_keyword_at(s, "fn"))
-    {
-        s->pos += 2;
+        const char* err = skip_expr_prec(s, 1);
+        if (err) return err;
+        skip_ws(s);
+        if (!match_char(s, ')')) return ERR_PAREN_UNCLOSED;
+        
         skip_ws(s);
         
-        // Skip parameters
+        // Function call on expression
         if (src_peek(s) == '(') {
-            src_get(s);
-            int depth = 1;
-            while (depth > 0 && !src_eof(s)) {
-                char ch = src_get(s);
-                if (ch == '(') depth++;
-                else if (ch == ')') depth--;
-                else if (ch == '"') {
-                    while (!src_eof(s)) {
-                        char x = src_get(s);
-                        if (x == '"') break;
-                        if (x == '\\') src_get(s);
-                    }
-                }
-            }
-            if (depth) return 1;
+            return skip_fn_call_args(s);
         }
         
-        // Skip context list [...]
+        // Subscripts on expression
         if (src_peek(s) == '[') {
             while (src_peek(s) == '[') {
                 src_get(s);
-                int depth = 1;
-                while (depth > 0 && !src_eof(s)) {
-                    char ch = src_get(s);
-                    if (ch == '[') depth++;
-                    else if (ch == ']') depth--;
-                }
-                if (depth) return 1;
+                err = skip_expr_prec(s, 1);
+                if (err) return err;
+                if (!match_char(s, ']')) return ERR_BRACKET_UNCLOSED;
             }
         }
         
-        // Skip return type annotation ->
+        // Method call on expression
+        if (src_peek(s) == ':') {
+            src_get(s);
+            char *method = parse_ident(s);
+            if (!method) return ERR_INVALID_IDENT;
+            mila_free(method);
+            if (src_peek(s) == '(') return skip_fn_call_args(s);
+        }
+        
+        return ERR_SUCCESS;
+    }
+    
+    // Blocks
+    if (c == '{') return skip_parse_block(s);
+    
+    // Dedent blocks
+    if (c == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == '{') {
+        src_get(s);
+        return skip_parse_block(s);
+    }
+    
+    // Function literals - validate body recursively
+    if (is_keyword_at(s, "fn")) {
+        s->pos += 2;
+        FunctionParameters *params = parse_param_list(s);
+        if (!params) return ERR_INVALID_PARAM_LIST;
+        for (int i = 0; params->params[i]; i++) {
+            mila_free(params->params[i]);
+            if (params->defaults[i]) mila_free(params->defaults[i]);
+        }
+        mila_free(params->params);
+        mila_free(params->defaults);
+        mila_free(params);
+        
+        char **ctx = parse_context_list(s);
+        if (ctx) {
+            for (int i = 0; ctx[i]; i++) mila_free(ctx[i]);
+            mila_free(ctx);
+        }
+        
+        if (match_char(s, ':')) {
+            char **closure = parse_context_list(s);
+            if (closure) {
+                for (int i = 0; closure[i]; i++) mila_free(closure[i]);
+                mila_free(closure);
+            }
+        }
+        
         if (is_keyword_at(s, "->")) {
             s->pos += 2;
             skip_ws(s);
-            if (src_peek(s) == '"') {
-                src_get(s);
-                while (!src_eof(s) && src_get(s) != '"');
-            }
+            if (src_peek(s) == '"') val_release(parse_string(s));
         }
         
-        // Skip body block
         return skip_parse_block(s);
     }
-    // Identifiers, variables, keywords
-    else if (is_ident_start(c))
-    {
+    
+    // Identifiers with potential calls/subscripts/methods
+    if (is_ident_start(c)) {
         char *id = parse_ident(s);
-        if (!id) return 1;
+        if (!id) return ERR_INVALID_IDENT;
         mila_free(id);
         
         skip_ws(s);
         
-        // Function call
+        // Function call - validate all arguments
         if (src_peek(s) == '(') {
-            src_get(s);
-            int depth = 1;
-            while (depth > 0 && !src_eof(s)) {
-                char ch = src_get(s);
-                if (ch == '(') depth++;
-                else if (ch == ')') depth--;
-                else if (ch == '"') {
-                    while (!src_eof(s)) {
-                        char x = src_get(s);
-                        if (x == '"') break;
-                        if (x == '\\') src_get(s);
-                    }
-                }
-            }
-            return depth ? 1 : 0;
+            return skip_fn_call_args(s);
         }
+        
         // Subscripts
-        else if (src_peek(s) == '[') {
-            while (src_peek(s) == '[') {
-                src_get(s);
-                int depth = 1;
-                while (depth > 0 && !src_eof(s)) {
-                    char ch = src_get(s);
-                    if (ch == '[') depth++;
-                    else if (ch == ']') depth--;
-                    else if (ch == '"') {
-                        while (!src_eof(s)) {
-                            char x = src_get(s);
-                            if (x == '"') break;
-                            if (x == '\\') src_get(s);
-                        }
-                    }
-                }
-                if (depth) return 1;
-            }
-            return 0;
+        while (src_peek(s) == '[') {
+            src_get(s);
+            const char* err = skip_expr_prec(s, 1);
+            if (err) return err;
+            if (!match_char(s, ']')) return ERR_BRACKET_UNCLOSED;
         }
+        
         // Method call
-        else if (src_peek(s) == ':') {
+        if (src_peek(s) == ':') {
             src_get(s);
             char *method = parse_ident(s);
+            if (!method) return ERR_INVALID_IDENT;
             mila_free(method);
-            
-            if (src_peek(s) == '(') {
-                src_get(s);
-                int depth = 1;
-                while (depth > 0 && !src_eof(s)) {
-                    char ch = src_get(s);
-                    if (ch == '(') depth++;
-                    else if (ch == ')') depth--;
-                    else if (ch == '"') {
-                        while (!src_eof(s)) {
-                            char x = src_get(s);
-                            if (x == '"') break;
-                            if (x == '\\') src_get(s);
-                        }
-                    }
-                }
-                return depth ? 1 : 0;
-            }
-            return 0;
+            if (src_peek(s) == '(') return skip_fn_call_args(s);
         }
-        return 0;
+        
+        return ERR_SUCCESS;
     }
-    return 1;
+    
+    skip_ws(s);
+    if (src_eof(s))
+        return ERR_SUCCESS;
+    else
+        return ERR_INVALID_EXPR;
 }
 
-int skip_expr_prec(Src *s, int min_prec)
-{
-    if (skip_primary(s)) return 1;
+const char* skip_expr_prec(Src *s, int min_prec) {
+    const char* err = skip_primary(s);
+    if (err) return err;
     
     for (;;) {
         int saved_pos = s->pos;
         skip_ws(s);
         char a = src_peek(s);
-        if (a == '\0') return 0;
+        if (a == '\0') return ERR_SUCCESS;
         
         char b = s->pos + 1 < s->len ? s->src[s->pos + 1] : '\0';
         MethodType op = MethodNone;
@@ -2716,350 +2735,313 @@ int skip_expr_prec(Src *s, int min_prec)
         
         if (op == MethodNone) {
             s->pos = saved_pos;
-            return 0;
+            return ERR_SUCCESS;
         }
         
         if (prec < min_prec) {
             s->pos = saved_pos;
-            return 0;
+            return ERR_SUCCESS;
         }
         
-        if (skip_expr_prec(s, prec + 1)) return 1;
+        err = skip_expr_prec(s, prec + 1);
+        if (err) return err;
     }
 }
 
-int skip_parse_expr(Src *s)
-{
+const char* skip_parse_expr(Src *s) {
     return skip_expr_prec(s, 1);
 }
 
-int skip_parse_statement(Src *s)
-{
+const char* skip_parse_statement(Src *s) {
     skip_ws(s);
-    int is_err = 0;
     
     if (is_keyword_at(s, "var")) {
         s->pos += 3;
         char *id = parse_ident(s);
+        if (!id) return ERR_INVALID_IDENT;
         mila_free(id);
         if (match_char(s, ':')) {
-            if (src_peek(s) == '"') {
-                src_get(s);
-                while (!src_eof(s)) {
-                    char ch = src_get(s);
-                    if (ch == '"') break;
-                    if (ch == '\\') src_get(s);
-                }
-            } else return 1;
+            skip_ws(s);
+            if (src_peek(s) != '"') return ERR_EXPECTED_TYPE_ANNOTATION;
+            val_release(parse_string(s));
         }
-        if (match_char(s, '=')) is_err = skip_parse_expr(s);
-        match_char(s, ';');
-        return is_err;
+        if (match_char(s, '=')) {
+            const char* err = skip_expr_prec(s, 1);
+            if (err) return err;
+        }
+        return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
-    else if (is_keyword_at(s, "set")) {
+    
+    if (is_keyword_at(s, "set")) {
         s->pos += 3;
         char *id = parse_ident(s);
+        if (!id) return ERR_INVALID_IDENT;
         mila_free(id);
         while (match_char(s, '[')) {
-            is_err = skip_parse_expr(s);
-            if (!match_char(s, ']')) return 1;
+            const char* err = skip_expr_prec(s, 1);
+            if (err) return err;
+            if (!match_char(s, ']')) return ERR_BRACKET_UNCLOSED;
         }
-        if (src_peek(s) == '+' || src_peek(s) == '-' || src_peek(s) == '*' || 
+        skip_ws(s);
+        if (src_peek(s) == '+' || src_peek(s) == '-' || src_peek(s) == '*' ||
             src_peek(s) == '/' || src_peek(s) == '%') src_get(s);
-        skip_ws(s);
-        if (match_char(s, '=')) is_err = skip_parse_expr(s);
-        else if (match_char(s, ':')) is_err = skip_parse_statement(s);
-        else return 1;
+        if (!match_char(s, '=')) return ERR_EXPECTED_EQUALS;
+        const char* err = skip_expr_prec(s, 1);
+        if (err) return err;
         match_char(s, ';');
-        return is_err;
+        return ERR_SUCCESS;
     }
-    else if (is_keyword_at(s, "contextual")) {
-        s->pos += 10;
-        char *id = parse_ident(s);
-        mila_free(id);
-        if (is_keyword_at(s, "as")) {
-            s->pos += 2;
-            id = parse_ident(s);
-            mila_free(id);
-        }
-        match_char(s, ';');
-        return 0;
-    }
-    else if (is_keyword_at(s, "sync")) {
-        s->pos += 4;
-        char *id = parse_ident(s);
-        mila_free(id);
-        if (match_char(s, '=')) is_err = skip_parse_expr(s);
-        match_char(s, ';');
-        return is_err;
-    }
-    else if (is_keyword_at(s, "export")) {
+    
+    if (is_keyword_at(s, "return")) {
         s->pos += 6;
-        char *id = parse_ident(s);
-        mila_free(id);
-        if (match_char(s, '=')) is_err = skip_parse_expr(s);
-        else if (match_char(s, ':')) is_err = skip_parse_statement(s);
-        else return 1;
-        return is_err;
+        const char* err = skip_expr_prec(s, 1);
+        if (err) return err;
+        return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
-    else if (is_keyword_at(s, "forget")) {
-        s->pos += 6;
-        skip_ws(s);
-        if (src_peek(s) == '[') {
-            char **names = parse_context_list(s);
-            for (int i = 0; names && names[i]; i++) mila_free(names[i]);
-            mila_free(names);
-        } else {
-            char *id = parse_ident(s);
-            mila_free(id);
-        }
-        match_char(s, ';');
-        return 0;
-    }
-    else if (is_keyword_at(s, "return")) {
-        s->pos += 6;
-        skip_parse_expr(s);
-        match_char(s, ';');
-        return 0;
-    }
-    else if (is_keyword_at(s, "if")) {
+    
+    if (is_keyword_at(s, "if")) {
         s->pos += 2;
-        if (!match_char(s, '(')) return 1;
-        is_err = skip_parse_expr(s);
-        if (!match_char(s, ')')) return 1;
+        if (!match_char(s, '(')) return ERR_EXPECTED_PAREN;
+        const char* err = skip_expr_prec(s, 1);
+        if (err) return err;
+        if (!match_char(s, ')')) return ERR_PAREN_UNCLOSED;
         if (match_char(s, '{')) {
             s->pos--;
-            is_err = skip_parse_block(s);
+            err = skip_parse_block(s);
+            if (err) return err;
         } else {
-            is_err = skip_parse_statement(s);
+            err = skip_parse_statement(s);
+            if (err) return err;
         }
-        if (is_err) return is_err;
-        
         while (is_keyword_at(s, "elif")) {
             s->pos += 4;
-            if (!match_char(s, '(')) return 1;
-            is_err = skip_parse_expr(s);
-            if (!match_char(s, ')')) return 1;
+            if (!match_char(s, '(')) return ERR_EXPECTED_PAREN;
+            err = skip_expr_prec(s, 1);
+            if (err) return err;
+            if (!match_char(s, ')')) return ERR_PAREN_UNCLOSED;
             if (match_char(s, '{')) {
                 s->pos--;
-                is_err = skip_parse_block(s);
+                err = skip_parse_block(s);
+                if (err) return err;
             } else {
-                is_err = skip_parse_statement(s);
+                err = skip_parse_statement(s);
+                if (err) return err;
             }
-            if (is_err) return is_err;
         }
-        
         if (is_keyword_at(s, "else")) {
             s->pos += 4;
             if (match_char(s, '{')) {
                 s->pos--;
-                is_err = skip_parse_block(s);
+                err = skip_parse_block(s);
+                if (err) return err;
             } else {
-                is_err = skip_parse_statement(s);
+                err = skip_parse_statement(s);
+                if (err) return err;
             }
         }
-        return is_err;
+        return ERR_SUCCESS;
     }
-    else if (is_keyword_at(s, "while")) {
+    
+    if (is_keyword_at(s, "while")) {
         s->pos += 5;
-        if (!match_char(s, '(')) return 1;
-        skip_parse_expr(s);
-        if (!match_char(s, ')')) return 1;
-        return skip_parse_block(s);
+        if (!match_char(s, '(')) return ERR_EXPECTED_PAREN;
+        const char* err = skip_expr_prec(s, 1);
+        if (err) return err;
+        if (!match_char(s, ')')) return ERR_PAREN_UNCLOSED;
+        if (match_char(s, '{')) {
+            s->pos--;
+            return skip_parse_block(s);
+        }
+        return skip_parse_statement(s);
     }
-    else if (is_keyword_at(s, "foreach")) {
+    
+    if (is_keyword_at(s, "foreach")) {
         s->pos += 7;
         char *id = parse_ident(s);
-        
-        if (id && strcmp(id, "yield") == 0) {
+        if (!id) return ERR_INVALID_IDENT;
+        if (strcmp(id, "yield") == 0) {
             mila_free(id);
             id = parse_ident(s);
+            if (!id) return ERR_INVALID_IDENT;
         }
-        
         mila_free(id);
-        if (!match_char(s, ':')) return 1;
-        skip_parse_expr(s);
-        return skip_parse_block(s);
+        if (!match_char(s, ':')) return ERR_EXPECTED_COLON;
+        const char* err = skip_expr_prec(s, 1);
+        if (err) return err;
+        if (match_char(s, '{')) {
+            s->pos--;
+            return skip_parse_block(s);
+        }
+        return skip_parse_statement(s);
     }
-    else if (is_keyword_at(s, "block")) {
-        s->pos += 5;
-        char *name = parse_ident(s);
-        mila_free(name);
-        return skip_parse_block(s);
-    }
-    else if (is_keyword_at(s, "namespace")) {
-        s->pos += 9;
-        char *name = parse_ident(s);
-        mila_free(name);
-        return skip_parse_block(s);
-    }
-    else if (is_keyword_at(s, "catch")) {
-        s->pos += 5;
-        char *id = parse_ident(s);
-        mila_free(id);
-        return skip_parse_block(s);
-    }
-    else if (is_keyword_at(s, "fn")) {
+    
+    if (is_keyword_at(s, "fn")) {
         s->pos += 2;
         char *name = parse_ident(s);
+        if (!name) return ERR_INVALID_IDENT;
         mila_free(name);
+        FunctionParameters *params = parse_param_list(s);
+        if (!params) return ERR_INVALID_PARAM_LIST;
+        for (int i = 0; params->params[i]; i++) {
+            mila_free(params->params[i]);
+            if (params->defaults[i]) mila_free(params->defaults[i]);
+        }
+        mila_free(params->params);
+        mila_free(params->defaults);
+        mila_free(params);
         
-        // Skip parameters
-        if (src_peek(s) == '(') {
-            src_get(s);
-            while (!match_char(s, ')')) {
-                char *p = parse_ident(s);
-                mila_free(p);
-                if (match_char(s, ':')) {
-                    if (src_peek(s) == '"') {
-                        src_get(s);
-                        while (!src_eof(s)) {
-                            char ch = src_get(s);
-                            if (ch == '"') break;
-                            if (ch == '\\') src_get(s);
-                        }
-                    } else return 1;
-                }
-                if (match_char(s, '=')) skip_parse_expr(s);
-                match_char(s, ',');
-            }
+        char **ctx = parse_context_list(s);
+        if (ctx) {
+            for (int i = 0; ctx[i]; i++) mila_free(ctx[i]);
+            mila_free(ctx);
         }
         
-        // Skip context list
-        if (src_peek(s) == '[') {
-            while (!match_char(s, ']')) {
-                char *p = parse_ident(s);
-                mila_free(p);
-                match_char(s, ',');
-            }
-        }
-        
-        // Skip closure bindings
         if (match_char(s, ':')) {
-            if (src_peek(s) == '[') {
-                while (!match_char(s, ']')) {
-                    char *p = parse_ident(s);
-                    mila_free(p);
-                    match_char(s, ',');
-                }
+            char **closure = parse_context_list(s);
+            if (closure) {
+                for (int i = 0; closure[i]; i++) mila_free(closure[i]);
+                mila_free(closure);
             }
         }
         
-        // Skip return type
         if (is_keyword_at(s, "->")) {
             s->pos += 2;
-            if (src_peek(s) == '"') parse_string(s);
+            skip_ws(s);
+            if (src_peek(s) == '"') val_release(parse_string(s));
         }
         
         if (match_char(s, '{')) {
             s->pos--;
-            is_err = skip_parse_block(s);
-        } else {
-            is_err = skip_parse_statement(s);
+            return skip_parse_block(s);
         }
-        return is_err;
+        return skip_parse_statement(s);
     }
-    else if (is_keyword_at(s, "object")) {
+    
+    if (is_keyword_at(s, "object")) {
         s->pos += 6;
         char *name = parse_ident(s);
+        if (!name) return ERR_INVALID_IDENT;
         mila_free(name);
-        
         if (is_keyword_at(s, "with")) {
             s->pos += 4;
             char *obj = parse_ident(s);
+            if (!obj) return ERR_INVALID_IDENT;
             mila_free(obj);
         }
-        
         return skip_parse_block(s);
-    }
-    else if (src_peek(s) == '!' && s->pos + 1 < s->len && s->src[s->pos + 1] == 'f' && 
-             s->pos + 2 < s->len && s->src[s->pos + 2] == 'n') {
-        src_get(s); // consume !
-        s->pos += 2; // skip "fn"
-        skip_ws(s);
-        
-        // Skip parameters
-        if (!match_char(s, '(')) return 1;
-        while (!match_char(s, ')')) {
-            char *p = parse_ident(s);
-            mila_free(p);
-            if (match_char(s, ':')) {
-                if (src_peek(s) == '"') {
-                    src_get(s);
-                    while (!src_eof(s)) {
-                        char ch = src_get(s);
-                        if (ch == '"') break;
-                        if (ch == '\\') src_get(s);
-                    }
-                } else return 1;
-            }
-            if (match_char(s, '=')) skip_parse_expr(s);
-            match_char(s, ',');
-        }
-        
-        // Skip return type
-        if (is_keyword_at(s, "->")) {
-            s->pos += 2;
-            if (src_peek(s) == '"') {
-                src_get(s);
-                while (!src_eof(s) && src_get(s) != '"');
-            }
-        }
-        
-        if (!match_char(s, '{')) return 1;
-        s->pos--;
-        is_err = skip_parse_block(s);
-        return is_err;
-    }
-    else if (src_peek(s) == '{') {
-        return skip_parse_block(s);
-    }
-    else {
-        is_err = skip_parse_expr(s);
-        match_char(s, ';');
-        return is_err;
-    }
-    return 0;
-}
-
-int skip_parse_block(Src* s) {
-    if (!match_char(s, '{')) return 1;
-    while (!match_char(s, '}')) {
-        if (src_eof(s)) return 1;
-        int i = skip_parse_statement(s);
-        if (i) return i;
-    }
-    return 0;
-}
-
-int skip_parse_source(Src* s) {
-    // Skip shebang if present
-    if (src_peek(s) == '#') {
-        src_get(s);
-        if (!match_char(s, '!')) return 1;
-        while (!src_eof(s) && src_peek(s) != '\n') src_get(s);
-        if (src_peek(s) == '\n') src_get(s);
     }
     
-    while (s->pos < s->len) {
-        int i = skip_parse_statement(s);
-        if (i) return i;
+    if (is_keyword_at(s, "block")) {
+        s->pos += 5;
+        char *bname = parse_ident(s);
+        if (!bname) return ERR_INVALID_IDENT;
+        mila_free(bname);
+        return skip_parse_block(s);
     }
-    return 0;
+    
+    if (is_keyword_at(s, "namespace")) {
+        s->pos += 9;
+        char *ns = parse_ident(s);
+        if (!ns) return ERR_INVALID_IDENT;
+        mila_free(ns);
+        return skip_parse_block(s);
+    }
+    
+    if (is_keyword_at(s, "catch")) {
+        s->pos += 5;
+        char *cid = parse_ident(s);
+        if (!cid) return ERR_INVALID_IDENT;
+        mila_free(cid);
+        return skip_parse_block(s);
+    }
+    
+    if (src_peek(s) == '{') {
+        return skip_parse_block(s);
+    }
+    
+    const char* err = skip_expr_prec(s, 1);
+    if (err) return err;
+    match_char(s, ';');
+    return ERR_SUCCESS;
 }
 
-// FINALLY
-// Still incomplete and has bugs.
-void syn_check(Src* s) {
-    if (skip_parse_source(s)) {
-        size_t line = 1;
-        for (size_t i=0; i<s->pos; ++i)
-            if (s->src[i] == '\n')
-                line++;
-        printf("Syntax Error on line: %zu\n", line);
+const char* skip_parse_source(Src* s) {
+    // Skip shebang: #!/path/to/mila
+    if (src_peek(s) == '#') {
+        src_get(s);
+        if (src_get(s) != '!') return "Invalid shebang";
+        while (!src_eof(s) && src_get(s) != '\n');
     }
-    else
-        printf("Success!\n");
+    
+    skip_ws(s);
+    
+    // Parse optional main function: !fn(args) -> "type" { body }
+    if (src_peek(s) == '!') {
+        src_get(s);
+        if (is_keyword_at(s, "fn")) {
+            s->pos += 2;
+            FunctionParameters* fnp = parse_param_list(s);
+            if (!fnp) return ERR_INVALID_PARAM_LIST;
+            for (int i = 0; fnp->params[i]; i++) {
+                mila_free(fnp->params[i]);
+                if (fnp->defaults[i]) mila_free(fnp->defaults[i]);
+            }
+            mila_free(fnp->params);
+            mila_free(fnp->defaults);
+            mila_free(fnp);
+            
+            // Optional return type annotation
+            if (is_keyword_at(s, "->")) {
+                s->pos += 2;
+                skip_ws(s);
+                if (src_peek(s) != '"') return ERR_EXPECTED_TYPE_ANNOTATION;
+                val_release(parse_string(s));
+            }
+        }
+    }
+    
+    while (!src_eof(s)) {
+        const char* err = skip_parse_statement(s);
+        if (err) return err;
+    }
+    return ERR_SUCCESS;
+}
+
+
+int syn_check(Src* s) {
+    const char* err = skip_parse_source(s);
+    if (err) {
+        size_t line = 1, col = 0;
+        size_t line_start = 0;
+        
+        for (size_t i = 0; i < s->pos && i < s->len; ++i) {
+            if (s->src[i] == '\n') {
+                line++;
+                line_start = i + 1;
+                col = 0;
+            } else {
+                col++;
+            }
+        }
+        
+        size_t line_end = line_start;
+        while (line_end < s->len && s->src[line_end] != '\n')
+            line_end++;
+        
+        fprintf(stderr, "Syntax Error at line %zu, column %zu:\n", line, col);
+        fprintf(stderr, "  %s\n", err);
+        fprintf(stderr, "  `");
+        for (size_t i = line_start; i < line_end; ++i)
+            fprintf(stderr, "%c", s->src[i]);
+        fprintf(stderr, "`\n  ");
+        for (size_t i = 1; i < col - 1; ++i)
+            fprintf(stderr, " ");
+        fprintf(stderr, "^\n");
+        return 1;
+    } else {
+        fprintf(stderr, "Success!\n");
+        return 0;
+    }
 }
 
 int is_ident_start(char c)
@@ -4119,7 +4101,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             }
             Value *a;
             if (strncmp("@env:", name, 5) == 0) {
-                a = vopaque_extra(env, NULL, "environment");
+                a = vopaque_extra(env, NULL, ML("environment"));
                 char* new_name = mila_strdup(name + 5);
                 free(name);
                 env_set_local_raw(frame, new_name, a);
@@ -4350,10 +4332,10 @@ Value *eval_primary(Src *s, Env *env)
                     return ret;
                 }
 
-                if (obj->method_table && obj->method_table[BMethodGetItem])
+                if (GET_METHOD(obj, BMethodGetItem))
                 {
                     Value *res =
-                        ((binary_method)obj->method_table[BMethodGetItem])(obj, index);
+                        ((binary_method)GET_METHOD(obj, BMethodGetItem))(obj, index);
                     val_release(index);
                     Value *tmp = val_retain(res);
                     val_release(obj);
@@ -4510,7 +4492,7 @@ Value *eval_primary(Src *s, Env *env)
                 if (strlen(names[i]) > 5 && strncmp("@env:", names[i], 5) == 0) {
                     Env* new_env = env_new(NULL);
                     env_copy(new_env, env);
-                    env_set_local_raw(closure, names[i]+5, vopaque_extra(new_env, NULL, "environment"));
+                    env_set_local_raw(closure, names[i]+5, vopaque_extra(new_env, NULL, ML("environment")));
                 }
                 else env_set_local(closure, names[i], env_get(env, names[i]));
                 mila_free(names[i]);
@@ -5218,6 +5200,10 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
     if (b->type_name && strcmp(b->type_name, MILA_LPREFIX "dict") == 0) {
         return binary_op_objects(NULL, 0, b, op, a);
     }
+    if (strcpy((char*)GET_TYPENAME(a), ML("list")) == 0 && strcpy((char*)GET_TYPENAME(b), ML("list")) == 0) {
+        LinkedList *ll_a = GET_OPAQUE(a), *ll_b = GET_OPAQUE(b);
+
+    }
     return vnull();
 }
 
@@ -5228,25 +5214,21 @@ Value *binary_op_objects(Env* env, char right, Value* a, MethodType op, Value* b
         free(repr);
         return err;
     }
-    char* method = NULL;
+    const char* method = NULL;
     switch (op) {
-        case BMethodAdd: method = right ? ":+" : "+:"; break;
-        case BMethodSub: method = right ? ":-" : "-:"; break;
-        case BMethodMul: method = right ? ":*" : "*:"; break;
-        case BMethodDiv: method = right ? ":/" : "/:"; break;
-        case BMethodMod: method = right ? ":%" : "%:"; break;
-        case BMethodEq: method = right ? ":==" : "==:"; break;
-        case BMethodNe: method = right ? ":!=" : "!=:"; break;
-        case BMethodLess: method = right ? ":<" : "<:"; break;
-        case BMethodGreat: method = right ? ":>" : "<:"; break;
-        case BMethodLE: method = right ? ":<=" : "<=:"; break;
-        case BMethodGE: method = right ? ":>=" : ">=:"; break;
-        case BMethodGlob: method = right ? ":=>" : "=>:"; break;
-        case BMethodDefault: method = right ? ":??" : "??:"; break;
-        case BMethodLshift: method = right ? ":<<" : "<<:"; break;
-        case BMethodRshift: method = right ? ":>>" : ">>:"; break;
-        case UMethodCopy: method = ":copy"; break;
-        case UMethodCopyShallow: method = ":copyshallow"; break;
+        case BMethodAdd: method = right ? OVERLOAD_ADD : OVERLOAD_R_ADD; break;
+        case BMethodSub: method = right ? OVERLOAD_SUB : OVERLOAD_R_SUB; break;
+        case BMethodMul: method = right ? OVERLOAD_MUL : OVERLOAD_R_MUL; break;
+        case BMethodDiv: method = right ? OVERLOAD_DIV : OVERLOAD_R_DIV; break;
+        case BMethodMod: method = right ? OVERLOAD_MOD : OVERLOAD_R_MOD; break;
+        case BMethodEq: method = right ? OVERLOAD_EQ : OVERLOAD_R_EQ; break;
+        case BMethodNe: method = right ? OVERLOAD_NE : OVERLOAD_R_NE; break;
+        case BMethodLess: method = right ? OVERLOAD_LE : OVERLOAD_R_LE; break;
+        case BMethodGreat: method = right ? OVERLOAD_GE : OVERLOAD_R_GE; break;
+        case BMethodLE: method = right ? OVERLOAD_LE : OVERLOAD_R_LE; break;
+        case BMethodGE: method = right ? OVERLOAD_GE : OVERLOAD_R_GE; break;
+        case BMethodLshift: method = right ? OVERLOAD_LSHIFT : OVERLOAD_R_LSHIFT; break;
+        case BMethodRshift: method = right ? OVERLOAD_RSHIFT : OVERLOAD_R_RSHIFT; break;
         default:;
     }
     if (!method) return vnull();
@@ -6608,7 +6590,7 @@ Value *eval_statement(Src *s, Env *env)
                 if (strlen(names[i]) > 5 && strncmp("@env:", names[i], 5) == 0) {
                     Env* new_env = env_new(NULL);
                     env_copy(new_env, env);
-                    env_set_local_raw(closure, names[i]+5, vopaque_extra(new_env, NULL, "environment"));
+                    env_set_local_raw(closure, names[i]+5, vopaque_extra(new_env, NULL, ML("environment")));
                 }
                 else env_set_local(closure, names[i], env_get(env, names[i]));
                 mila_free(names[i]);
@@ -6836,19 +6818,23 @@ Value *eval_source(Src *s, Env *env)
             break;
         Value *st = eval_statement(s, env);
 
-        val_release(last);
-        last = st;
-        if (last)
-        {
-            if (IS_ERROR(last)) {
-                return last;
-            }
-            else if (last->type == T_RETURN)
+        if (st->type != T_NULL) {
+            val_release(last);
+            last = st;
+            if (last)
             {
-                Value *res = (Value *)last->v.opaque;
-                val_release(last);
-                return res;
+                if (IS_ERROR(last)) {
+                    return last;
+                }
+                else if (last->type == T_RETURN)
+                {
+                    Value *res = (Value *)last->v.opaque;
+                    val_release(last);
+                    return res;
+                }
             }
+        } else {
+            val_release(st);
         }
     }
     return last;
@@ -6881,7 +6867,7 @@ void print_error(Value* v) {
 
 int run_file(char *name, Env *env)
 {
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     char* loc_dir = path_dirname_alloc(name);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
@@ -6907,7 +6893,7 @@ int run_file(char *name, Env *env)
     val_release(res);
     src_free(S);
     mila_free(src_text);
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     path_list_remove(search_path, loc_dir);
     free(loc_dir);
 #endif
@@ -6916,7 +6902,7 @@ int run_file(char *name, Env *env)
 
 Value *run_file_keep_res(char *name, Env *env)
 {
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     char* loc_dir = path_dirname_alloc(name);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
@@ -6940,7 +6926,7 @@ Value *run_file_keep_res(char *name, Env *env)
     Value *res = eval_source(S, env);
     src_free(S);
     mila_free(src_text);
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     path_list_remove(search_path, loc_dir);
     free(loc_dir);
 #endif
@@ -6949,7 +6935,7 @@ Value *run_file_keep_res(char *name, Env *env)
 
 int invoke_file(char *name, Env *env)
 {
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     char* _loc_dir = path_dirname_alloc(name);
     char* cwd = path_get_cwd();
     char* loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
@@ -7005,7 +6991,7 @@ int invoke_file(char *name, Env *env)
     val_release(res);
     src_free(S);
     mila_free(src_text);
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     path_list_remove(search_path, loc_dir);
     free(loc_dir);
 #endif
@@ -7014,7 +7000,7 @@ int invoke_file(char *name, Env *env)
 
 Value *invoke_main_file(char *name, Env *env, int argc, char* argv[])
 {
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     char* _loc_dir = path_dirname_alloc(name);
     char* cwd = path_get_cwd();
     char* loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
@@ -7118,7 +7104,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char* argv[])
                 if (!match_char(S, '"')) {
                     src_free(S);
                     mila_free(src_text);
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
                     path_list_remove(search_path, loc_dir);
                     free(loc_dir);
 #endif
@@ -7133,7 +7119,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char* argv[])
     Value *res = eval_source(S, env);
     src_free(S);
     mila_free(src_text);
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     path_list_remove(search_path, loc_dir);
     free(loc_dir);
 #endif
@@ -7142,7 +7128,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char* argv[])
 
 Value *invoke_file_keep_res(char *name, Env *env)
 {
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     char* _loc_dir = path_dirname_alloc(name);
     char* cwd = path_get_cwd();
     char* loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
@@ -7192,7 +7178,7 @@ Value *invoke_file_keep_res(char *name, Env *env)
     Value *res = eval_source(S, env);
     src_free(S);
     mila_free(src_text);
-#ifndef VMM_BUILD
+#ifndef SAFE_BUILD
     path_list_remove(search_path, loc_dir);
     free(loc_dir);
 #endif
@@ -7242,7 +7228,7 @@ void mila_deinit(Env *g)
     env_free(g);
 }
 
-#if !(defined(VMM_BUILD) || defined(ML_LIB))
+#if !(defined(SAFE_BUILD) || defined(ML_LIB))
 int main(int argc, char **argv)
 {
     // read file if provided or use built-in demo
@@ -7285,6 +7271,7 @@ int main(int argc, char **argv)
         {
             printf("MiLa v1.0\n"
                    "  --info         = For internal info as well as version info\n"
+                   "  --check        = Syntactically check the file\n"
                    "  --version | -v = Prints version\n"
                    "  --help    | -h = Prints this list\n");
             return 0;
@@ -7292,7 +7279,7 @@ int main(int argc, char **argv)
     } else if (argc == 3) {
         if (strcmp(argv[1], "--check") == 0)
         {
-            printf("Syntax Checker - IN PROGRESS\n");
+            fprintf(stderr, "Syntax Checker - IN PROGRESS\n");
             FILE *f = fopen(argv[2], "rb");
             if (!f)
             {
@@ -7307,10 +7294,10 @@ int main(int argc, char **argv)
             src_text[size] = 0;
             fclose(f);
             Src *S = src_new(src_text);
-            syn_check(S);
+            int err = syn_check(S);
             src_free(S);
             mila_free(src_text);
-            return 0;
+            return err;
         }
     }
     Value *array = NULL;
@@ -7502,4 +7489,4 @@ int main(int argc, char **argv)
     free(cwd);
     return 0;
 }
-#endif // VMM_BUILD
+#endif // SAFE_BUILD

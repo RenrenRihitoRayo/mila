@@ -1,12 +1,5 @@
 
-var text = "Coffee Break";
-if (argc == 1);
-elif (argc == 2) {
-    set text = argv[1];
-} else {
-    fprint(stderr, "Invalid number of arguments!");
-    exit(1);
-}
+!fn (argc, name, text="Coffee Break")
 
 system("clear; figlet \""+text+"\" | lolcat");
 println("Break Started:");

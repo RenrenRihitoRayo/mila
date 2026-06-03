@@ -536,19 +536,19 @@ typedef struct
 } NativeFunctionV;
 
 // Primitives are <50 bytes gauranteed.
-// worst case is 300+ Bytes (especially variables with methods
+// worst case is 300+ Bytes (especially if VIOO)
 struct Value
 {
-    MethodTable *method_table; // 8 bytes ptr
-    char *type_name;           // 8 bytes ptr
     ValueType type;            // 4 bytes
     unsigned short refcount;   // simple refcount (4 bytes)
     unsigned char table_offset;
     char owns_table;           // check if table can be freed or not (1 bytes)
+    MethodTable *method_table; // 8 bytes ptr
+    char *type_name;           // 8 bytes ptr
     union {
-        char * s;
-        char * message;
-        void *opaque;
+        char * s; // string
+        char * message; // for errors
+        void *opaque; // pointers (weak, owned, unowned)
         _Bool b;
         // function
         FunctionV *fn;
@@ -562,7 +562,7 @@ struct Value
             char* message;
             ErrorType type;
         } tagged_error;
-    } v; // around 8 bytes
+    } v; // around 16 bytes
 };
 
 // == Parsing

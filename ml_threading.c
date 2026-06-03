@@ -22,7 +22,7 @@ typedef struct
     pthread_t thread_id; /* POSIX thread ID */
     MThreadID public_thread_id; /* MiLa visible thread ID */
     int status;          /* 0 = pending, 1 = running, 2 = done */
-    int is_deamon;       /* Doesnt keep MiLa awake */
+    int is_daemon;       /* Doesnt keep MiLa awake */
     int is_cancelled;    /* True if thread is cancelled. */
     
     /* Generator/Yield synchronization */
@@ -165,6 +165,7 @@ Value *thread_get_yield(ThreadContext *ctx)
 
 static void *mila_thread_worker(void *arg)
 {
+    if (!arg) return NULL;
     Value *result = NULL;
     if (!((ThreadContext*)arg)->is_cgen) {
         // ctx here is ThreadContext
@@ -238,7 +239,7 @@ int make_cthread(Generator c_gen) {
     ctx->c_gen = c_gen;
     ctx->result = NULL;
     ctx->status = 0;
-    ctx->is_deamon = 1;
+    ctx->is_daemon = 1;
     ctx->on_kill = NULL;
     ctx->is_cancelled = 0;
     ctx->has_value = 0;
@@ -272,7 +273,7 @@ int make_cgen(Generator c_gen, Value* val) {
     ctx->c_gen = c_gen;
     ctx->result = NULL;
     ctx->status = 0;
-    ctx->is_deamon = 1;
+    ctx->is_daemon = 1;
     ctx->on_kill = NULL;
     ctx->is_cancelled = 0;
     ctx->has_value = 0;
@@ -317,7 +318,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv)
     ctx->c_gen = NULL;
     ctx->result = NULL;
     ctx->status = 0;
-    ctx->is_deamon = 0;
+    ctx->is_daemon = 0;
     ctx->on_kill = NULL;
     ctx->is_cancelled = 0;
     ctx->has_value = 0;
@@ -552,7 +553,7 @@ Value *native_thread_check_cancel(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_thread_set_deamon(Env *env, int argc, Value **argv)
+Value *native_thread_set_daemon(Env *env, int argc, Value **argv)
 {
     if (argc < 1)
     {
@@ -567,7 +568,7 @@ Value *native_thread_set_deamon(Env *env, int argc, Value **argv)
         return verror("Invalid thread ID: %d", thread_id);
     }
 
-    ctx->is_deamon = 1;
+    ctx->is_daemon = 1;
     return vnull();
 }
 
@@ -582,7 +583,7 @@ void mila_threads_cleanup(void)
         if (!ctx) continue;
 
         /* Non-daemon threads: join and cleanup normally */
-        if (ctx->status < 2 && !ctx->is_deamon && !ctx->is_cgen)
+        if (ctx->status < 2 && !ctx->is_daemon && !ctx->is_cgen)
         {
             pthread_join(ctx->thread_id, NULL);
             if (ctx->on_kill)
@@ -624,7 +625,7 @@ void register_thread_builtins(Env *env)
     env_register_native(env, "thread.join", native_thread_join);
     env_register_native(env, "thread.cancel", native_thread_cancel);
     env_register_native(env, "thread.check_cancel", native_thread_check_cancel);
-    env_register_native(env, "thread.set_deamon", native_thread_set_deamon);
+    env_register_native(env, "thread.set_daemon", native_thread_set_daemon);
     env_register_native(env, "thread.get_id", native_thread_id);
     env_register_native(env, "thread.status", native_thread_status);
     env_register_native(env, "thread.mutex", native_make_mutex);

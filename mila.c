@@ -388,7 +388,7 @@ void val_set_table(Value *v, MethodTable *t)
 {
     v->owns_table = 0;
     v->method_table = t;
-    // future update
+    // TODO: future update
     // for (unsigned char i=0; i < 255; ++i) {
     //     if (t[i]) {
     //         v->table_offset = i;

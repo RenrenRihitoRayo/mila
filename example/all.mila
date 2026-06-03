@@ -79,7 +79,7 @@ foreach num : range(3) {
 
 var start = get_time();
 foreach thread : threads {
-    thread.join(thread);
+    thread.set_daemon(thread);
 }
 var end = get_time() - start;
 println("Should be around 1s: " + end + "s");

@@ -1,3 +1,0 @@
-load("./gtk.so");
-
-make_win("test", "message");

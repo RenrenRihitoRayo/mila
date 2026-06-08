@@ -1,5 +1,7 @@
 // Test HTML Addon for MiLa
 
+// Build MiLa with -D EXT_HTTP
+
 http.init();
 var header = [@"User-Agent" = "MiLa Script"];
 println("Waiting for response.");

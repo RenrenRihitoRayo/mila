@@ -1,5 +1,0 @@
-export test.add = fn(a, b) {
-	return a + b;
-}
-
-println("test");

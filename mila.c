@@ -7316,7 +7316,7 @@ int main(int argc, char **argv)
     else
         path_list_add(search_path, cwd);
 
-    path_list_add(search_path, "~/.local/lib/mila");
+    path_list_add(search_path, "~/.local/mila");
 
     if (argc >= 2 && strcmp(argv[1], "--") != 0)
     {

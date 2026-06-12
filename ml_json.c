@@ -406,35 +406,35 @@ char* ascii_to_unicode(const char* input) {
         
         if (byte < 0x80) {
             switch (byte) {
-                case '\a': our_asprintf(&buffer, "\\a"); break;
-                case '\t': our_asprintf(&buffer, "\\t"); break;
-                case '\n': our_asprintf(&buffer, "\\n"); break;
-                case '\v': our_asprintf(&buffer, "\\v"); break;
-                case '\f': our_asprintf(&buffer, "\\f"); break;
-                case '\r': our_asprintf(&buffer, "\\r"); break;
-                case '"': our_asprintf(&buffer, "\\\""); break;
-                case '\\': our_asprintf(&buffer, "\\\\"); break;
+                case '\a': malloc_sprintf(&buffer, "\\a"); break;
+                case '\t': malloc_sprintf(&buffer, "\\t"); break;
+                case '\n': malloc_sprintf(&buffer, "\\n"); break;
+                case '\v': malloc_sprintf(&buffer, "\\v"); break;
+                case '\f': malloc_sprintf(&buffer, "\\f"); break;
+                case '\r': malloc_sprintf(&buffer, "\\r"); break;
+                case '"': malloc_sprintf(&buffer, "\\\""); break;
+                case '\\': malloc_sprintf(&buffer, "\\\\"); break;
                 default:
                     if (isprint(byte))
-                        our_asprintf(&buffer, "%c", byte);
+                        malloc_sprintf(&buffer, "%c", byte);
                     else
-                        our_asprintf(&buffer, "\\u%04X", byte);
+                        malloc_sprintf(&buffer, "\\u%04X", byte);
             }
         } else if ((byte & 0xE0) == 0xC0 && i + 1 < strlen(input)) {
             uint32_t codepoint = ((byte & 0x1F) << 6) | (text[1+i] & 0x3F);
-            our_asprintf(&buffer, "\\u%04X", codepoint);
+            malloc_sprintf(&buffer, "\\u%04X", codepoint);
             i++;
         } else if ((byte & 0xF0) == 0xE0 && i + 2 < strlen(input)) {
             uint32_t codepoint = ((byte & 0x0F) << 12) | ((text[1+i] & 0x3F) << 6) | (text[2+i] & 0x3F);
-            our_asprintf(&buffer, "\\u%04X", codepoint);
+            malloc_sprintf(&buffer, "\\u%04X", codepoint);
             i+=2;
         } else if ((byte & 0xF8) == 0xF0 && i + 3 < strlen(input)) {
             uint32_t codepoint = ((byte & 0x07) << 18) | ((text[1+i] & 0x3F) << 12) 
                                | ((text[2+i] & 0x3F) << 6) | (text[3+i] & 0x3F);
-            our_asprintf(&buffer, "\\u%04X", codepoint);
+            malloc_sprintf(&buffer, "\\u%04X", codepoint);
             i+=3;
         } else {
-            our_asprintf(&buffer, "\\u%04X", byte);
+            malloc_sprintf(&buffer, "\\u%04X", byte);
         }
     }
     
@@ -445,25 +445,25 @@ char* _mila_to_json(Value* v, int level) {
     char* result = NULL;
     
     if (!v) {
-        our_asprintf(&result, "null");
+        malloc_sprintf(&result, "null");
         return result;
     }
     
     switch (GET_TYPE(v)) {
         case T_NULL:
-            our_asprintf(&result, "null");
+            malloc_sprintf(&result, "null");
             break;
         case T_BOOL:
-            our_asprintf(&result, GET_BOOL(v) ? "true" : "false");
+            malloc_sprintf(&result, GET_BOOL(v) ? "true" : "false");
             break;
         case T_INT:
         case T_UINT:
-            our_asprintf(&result, "%ld", GET_INTEGER(v));
+            malloc_sprintf(&result, "%ld", GET_INTEGER(v));
             break;
         case T_BINT:
             {
                 char* num = i128toa(GET_BINTEGER(v));
-                our_asprintf(&result, "%s", num);
+                malloc_sprintf(&result, "%s", num);
                 mila_free(num);
             }
             break;
@@ -472,18 +472,18 @@ char* _mila_to_json(Value* v, int level) {
             {
                 double d = GET_FLOAT(v);
                 if (d == (long long)d)
-                    our_asprintf(&result, "%.1f", d);
+                    malloc_sprintf(&result, "%.1f", d);
                 else
-                    our_asprintf(&result, "%.17g", d);
+                    malloc_sprintf(&result, "%.17g", d);
             }
             break;
         case T_STRING:
             {
-                our_asprintf(&result, "\"");
+                malloc_sprintf(&result, "\"");
                 char* escaped = ascii_to_unicode(GET_STRING(v));
-                our_asprintf(&result, "%s", escaped);
+                malloc_sprintf(&result, "%s", escaped);
                 mila_free(escaped);
-                our_asprintf(&result, "\"");
+                malloc_sprintf(&result, "\"");
             }
             break;
         case T_OPAQUE:
@@ -492,41 +492,41 @@ char* _mila_to_json(Value* v, int level) {
             {
                 if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "list") == 0) {
                     LinkedList* list = (LinkedList*)GET_OPAQUE(v);
-                    our_asprintf(&result, "[\n");
+                    malloc_sprintf(&result, "[\n");
                     for (size_t i = 0; i < list->size; ++i) {
                         Value* item = ll_get(list, i);
                         char* item_json = _mila_to_json(item, level+1);
-                        our_asprintf(&result, "%*s%s", level*2, "", item_json);
+                        malloc_sprintf(&result, "%*s%s", level*2, "", item_json);
                         mila_free(item_json);
                         if (i < list->size - 1)
-                            our_asprintf(&result, ",\n");
+                            malloc_sprintf(&result, ",\n");
                     }
-                    our_asprintf(&result, "\n%*s]", (level-1)*2, "");
+                    malloc_sprintf(&result, "\n%*s]", (level-1)*2, "");
                 } else if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
                     Dict* dict = (Dict*)GET_OPAQUE(v);
-                    our_asprintf(&result, "{\n");
+                    malloc_sprintf(&result, "{\n");
                     int first = 1;
                     for (size_t i = 0; i < dict->capacity; ++i) {
                         DictEntry* entry = dict->buckets[i];
                         while (entry) {
                             if (!first)
-                                our_asprintf(&result, ",\n");
+                                malloc_sprintf(&result, ",\n");
                             first = 0;
-                            our_asprintf(&result, "%*s%s: ", level*2, "", entry->key);
+                            malloc_sprintf(&result, "%*s%s: ", level*2, "", entry->key);
                             char* val_json = _mila_to_json(entry->value, level+1);
-                            our_asprintf(&result, "%s", val_json);
+                            malloc_sprintf(&result, "%s", val_json);
                             mila_free(val_json);
                             entry = entry->next;
                         }
                     }
-                    our_asprintf(&result, "\n%*s}", (level-1)*2, "");
+                    malloc_sprintf(&result, "\n%*s}", (level-1)*2, "");
                 } else {
-                    our_asprintf(&result, "null");
+                    malloc_sprintf(&result, "null");
                 }
             }
             break;
         default:
-            our_asprintf(&result, "null");
+            malloc_sprintf(&result, "null");
     }
     
     return result;
@@ -537,25 +537,25 @@ char* _mila_to_mjson(Value* v, int level) {
     char* result = NULL;
     
     if (!v) {
-        our_asprintf(&result, "null");
+        malloc_sprintf(&result, "null");
         return result;
     }
     
     switch (GET_TYPE(v)) {
         case T_NULL:
-            our_asprintf(&result, "null");
+            malloc_sprintf(&result, "null");
             break;
         case T_BOOL:
-            our_asprintf(&result, GET_BOOL(v) ? "true" : "false");
+            malloc_sprintf(&result, GET_BOOL(v) ? "true" : "false");
             break;
         case T_INT:
         case T_UINT:
-            our_asprintf(&result, "%ld", GET_INTEGER(v));
+            malloc_sprintf(&result, "%ld", GET_INTEGER(v));
             break;
         case T_BINT:
             {
                 char* num = i128toa(GET_BINTEGER(v));
-                our_asprintf(&result, "%s", num);
+                malloc_sprintf(&result, "%s", num);
                 mila_free(num);
             }
             break;
@@ -564,18 +564,18 @@ char* _mila_to_mjson(Value* v, int level) {
             {
                 double d = GET_FLOAT(v);
                 if (d == (long long)d)
-                    our_asprintf(&result, "%.1f", d);
+                    malloc_sprintf(&result, "%.1f", d);
                 else
-                    our_asprintf(&result, "%.17g", d);
+                    malloc_sprintf(&result, "%.17g", d);
             }
             break;
         case T_STRING:
             {
-                our_asprintf(&result, "\"");
+                malloc_sprintf(&result, "\"");
                 char* escaped = ascii_to_unicode(GET_STRING(v));
-                our_asprintf(&result, "%s", escaped);
+                malloc_sprintf(&result, "%s", escaped);
                 mila_free(escaped);
-                our_asprintf(&result, "\"");
+                malloc_sprintf(&result, "\"");
             }
             break;
         case T_OPAQUE:
@@ -584,36 +584,36 @@ char* _mila_to_mjson(Value* v, int level) {
             {
                 if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "list") == 0) {
                     LinkedList* list = (LinkedList*)GET_OPAQUE(v);
-                    our_asprintf(&result, "[\n");
+                    malloc_sprintf(&result, "[\n");
                     for (size_t i = 0; i < list->size; ++i) {
                         Value* item = ll_get(list, i);
                         char* item_json = _mila_to_mjson(item, level+1);
-                        our_asprintf(&result, "%*s%s", level*2, "", item_json);
+                        malloc_sprintf(&result, "%*s%s", level*2, "", item_json);
                         mila_free(item_json);
                         if (i < list->size - 1)
-                            our_asprintf(&result, ",\n");
+                            malloc_sprintf(&result, ",\n");
                     }
-                    our_asprintf(&result, "\n%*s]", (level-1)*2, "");
+                    malloc_sprintf(&result, "\n%*s]", (level-1)*2, "");
                 } else if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
                     Dict* dict = (Dict*)GET_OPAQUE(v);
-                    our_asprintf(&result, "{\n");
+                    malloc_sprintf(&result, "{\n");
                     int first = 1;
                     for (size_t i = 0; i < dict->capacity; ++i) {
                         DictEntry* entry = dict->buckets[i];
                         while (entry) {
                             if (!first)
-                                our_asprintf(&result, ",\n");
+                                malloc_sprintf(&result, ",\n");
                             first = 0;
-                            our_asprintf(&result, "%*s%s: ", level*2, "", entry->key);
+                            malloc_sprintf(&result, "%*s%s: ", level*2, "", entry->key);
                             char* val_json = _mila_to_mjson(entry->value, level+1);
-                            our_asprintf(&result, "%s", val_json);
+                            malloc_sprintf(&result, "%s", val_json);
                             mila_free(val_json);
                             entry = entry->next;
                         }
                     }
-                    our_asprintf(&result, "\n%*s}", (level-1)*2, "");
+                    malloc_sprintf(&result, "\n%*s}", (level-1)*2, "");
                 } else {
-                    our_asprintf(&result, "null");
+                    malloc_sprintf(&result, "null");
                 }
             }
             break;
@@ -621,19 +621,19 @@ char* _mila_to_mjson(Value* v, int level) {
             FunctionV* fn = GET_FUNCTION(v);
             char* args = mila_strdup("");
             for (int i=0; fn->params[i]; ++i) {
-                our_asprintf(&args, "%s", fn->params[i]);
+                malloc_sprintf(&args, "%s", fn->params[i]);
                 if (fn->defaults[i]) {
-                    our_asprintf(&args, "=%s", fn->defaults[i]);
+                    malloc_sprintf(&args, "=%s", fn->defaults[i]);
                 }
                 if (fn->params[i+1]) {
-                    our_asprintf(&args, ",");
+                    malloc_sprintf(&args, ",");
                 }
             }
-            our_asprintf(&result, "fn(%s) %s", args, fn->body_src);
+            malloc_sprintf(&result, "fn(%s) %s", args, fn->body_src);
             free(args);
         } break;
         default:
-            our_asprintf(&result, "null");
+            malloc_sprintf(&result, "null");
     }
     
     return result;

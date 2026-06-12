@@ -4,49 +4,13 @@
 // hypothetically 102 bits in precision
 #pragma once
 
-#include "ml_string.c"
+#include "ml_maths.h"
+#include "ml_string.h"
 #include <math.h>
 #include <stdint.h>
 #include <ctype.h>
 #include <stdlib.h>
-
-int our_asprintf(char **strp, const char *fmt, ...);
-
-typedef struct {
-    double hi, lo;
-} mila_float128_internal;
-#define INFINITY128 (mila_float128_internal){INFINITY, INFINITY}
-#define NINFINITY128 (mila_float128_internal){-INFINITY, -INFINITY}
-
-#ifdef MILA_PROTO
-static inline void two_sum(double a, double b, double* s, double* err);
-static inline void quick_two_sum(double a, double b, double* s, double* err);
-static inline void two_prod(double a, double b, double* p, double* err);
-mila_float128_internal b_ff_add(mila_float128_internal a, mila_float128_internal b);
-mila_float128_internal b_ff_sub(mila_float128_internal a, mila_float128_internal b);
-mila_float128_internal b_ff_mul(mila_float128_internal a, mila_float128_internal b);
-mila_float128_internal b_ff_div(mila_float128_internal a, mila_float128_internal b);
-mila_float128_internal b_ff_neg(mila_float128_internal a);
-mila_float128_internal b_ff_from_long(long x);
-mila_float128_internal b_ff_from_ulong(unsigned long x);
-mila_float128_internal b_ff_from_double(double x);
-double b_ff_to_double(mila_float128_internal a);
-int b_ff_cmp(mila_float128_internal a, mila_float128_internal b);
-mila_float128_internal b_ff_from_string(const char* s);
-static __int128 b_ff_to_i128(mila_float128_internal x);
-static long b_ff_to_long(mila_float128_internal x);
-static unsigned long b_ff_to_ulong(mila_float128_internal x);
-static __int128 b_ff_to_i128_round(mila_float128_internal x);
-static mila_float128_internal b_ff_from_i128(__int128 v);
-static mila_float128_internal b_ff_from_i128_quick(__int128 v);
-static int b_ff_is_zero(mila_float128_internal x);
-static int b_ff_sign(mila_float128_internal x);
-static mila_float128_internal b_ff_abs(mila_float128_internal x);
-char* b_ff_to_string(mila_float128_internal x);
-int b_ff_is_nan(mila_float128_internal x);
-int b_ff_is_inf(mila_float128_internal x);
-
-#else
+#include "mila.h"
 
 static inline void two_sum(double a, double b, double* s, double* err) {
     *s = a + b;
@@ -240,7 +204,7 @@ __int128 b_ff_to_i128(mila_float128_internal x) {
     return (__int128)(x.hi);
 }
 
-long b_ff_to_long(mila_float128_internal x) {
+FN_UNUSED long b_ff_to_long(mila_float128_internal x) {
     return (long)(x.hi);
 }
 
@@ -248,7 +212,7 @@ unsigned long b_ff_to_ulong(mila_float128_internal x) {
     return (unsigned long)(x.hi);
 }
 
-__int128 b_ff_to_i128_round(mila_float128_internal x) {
+FN_UNUSED __int128 b_ff_to_i128_round(mila_float128_internal x) {
     if (x.hi >= 0.0)
         return (__int128)(x.hi + 0.5);
     else
@@ -263,7 +227,7 @@ mila_float128_internal b_ff_from_i128(__int128 v) {
     return (mila_float128_internal){ hi, lo };
 }
 
-mila_float128_internal b_ff_from_i128_quick(__int128 v) {
+FN_UNUSED mila_float128_internal b_ff_from_i128_quick(__int128 v) {
     return (mila_float128_internal){ (double)v, 0.0 };
 }
 
@@ -374,4 +338,3 @@ char* b_ff_to_string(mila_float128_internal x) {
 int b_ff_is_nan(mila_float128_internal x) {
     return isnan(x.hi) || isnan(x.lo);
 }
-#endif

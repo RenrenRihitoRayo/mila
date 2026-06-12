@@ -5,11 +5,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 #define MILA_LPREFIX "mila:"
 #define ML(x) MILA_LPREFIX x
 
-#include "ml_maths.c"
+#include "ml_maths.h"
+#include "ml_paths.h"
 
 #define MAX_NUMBER_DIGITS 19
 #define MILA_N_ESCAPE_DIGITS 10
@@ -41,7 +43,6 @@
 #define ERR_EXPECTED_SEMICOLON "Expected ';'"
 #define ERR_EXPECTED_EQUALS "Expected '='"
 #define ERR_EXPECTED_COLON "Expected ':'"
-#define ERR_EXPECTED_PIPE "Expected '|'"
 #define ERR_INVALID_CONDITION "Invalid if condition"
 #define ERR_INVALID_LOOP "Invalid loop"
 #define ERR_INVALID_FOREACH "Invalid foreach"
@@ -53,7 +54,7 @@
 // Public getters for types
 #define IS_ERROR(v) (GET_TYPE(v) == T_ERROR || GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_ERROR_TAGGED(v) (GET_TYPE(v) == T_TAGGED_ERROR)
-#define IS_FATAL(v) ((GET_ERROR(v) == E_FATAL || GET_ERROR(v) == E_SYNTAX_ERROR || GET_ERROR(v) == E_THREAD_HALT))
+#define IS_FATAL(v) ((GET_TAGGED_ERROR_TYPE(v) == E_FATAL || GET_TAGGED_ERROR_TYPE(v) == E_SYNTAX_ERROR || GET_TAGGED_ERROR_TYPE(v) == E_THREAD_HALT))
 #define GET_STRING(val) (val ? val->v.s : NULL)
 #define GET_INTEGER(val) (val ? val->v.i : 0)
 #define GET_BINTEGER(val) (val ? val->v.bi : 0)
@@ -64,8 +65,8 @@
 #define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
 #define GET_FUNCTION(val) (val ? val->v.fn : NULL)
 #define GET_NATIVE(val) (val ? val->v.native : NULL)
-#define GET_ERROR_MESSAGE(val) (val ? val->v.message : NULL)
-#define GET_ERROR_TAGGED(val) (val ? val->v.tagged_error.message : NULL)
+#define GET_TAGGED_ERROR_TYPE_MESSAGE(val) (val ? val->v.message : NULL)
+#define GET_TAGGED_ERROR_MESSAGE(val) (val ? val->v.tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 
@@ -79,21 +80,8 @@
 typedef enum __attribute__((packed))
 {
     MethodNone = -1,
-    // value op value syntax
-    BMethodAdd,
-    BMethodSub,
-    BMethodMul,
-    BMethodDiv,
-    BMethodMod,
-    BMethodLshift,
-    BMethodRshift,
-    BMethodLE,
-    BMethodGE,
-    BMethodLess,
-    BMethodGreat,
-    BMethodEq,
-    BMethodNe,
 
+    TMethodBinop,
     BMethodGetItem, // name[...] syntax
     TMethodSetItem, // set name[...] syntax
 
@@ -119,7 +107,22 @@ typedef enum __attribute__((packed))
 
 typedef enum __attribute__((packed))
 {
-    BMethodAnd = BMethodGetItem,
+
+    // value op value syntax
+    BMethodAdd = BMethodGetItem,
+    BMethodSub,
+    BMethodMul,
+    BMethodDiv,
+    BMethodMod,
+    BMethodLshift,
+    BMethodRshift,
+    BMethodLE,
+    BMethodGE,
+    BMethodLess,
+    BMethodGreat,
+    BMethodEq,
+    BMethodNe,
+    BMethodAnd,
     BMethodOr,
     BMethodGlob,
     BMethodDefault,
@@ -204,15 +207,32 @@ const char* OVERLOAD_TO_BOOL = ":to_bool";
 
 typedef enum
 {
-    E_SYNTAX_ERROR, // Self explanatory
-    E_PRE_RUNTIME,  // Must always be fatal!
-    E_RUNTIME,      // Errors such as undefined variables
-    E_TYPE_ERROR,   // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
-    E_FATAL,        // Errors that should be fatal, like syntax errors
-    E_GENERIC,      // Errors that cannot be classified as ones above
-    E_ASSERT,       // Errors triggered by a faulty assert
-    E_THREAD_HALT,  // Signal threads to halt (propagates like an error)
+    E_NO_ERROR = -1, // Default
+    E_SYNTAX_ERROR,  // Self explanatory
+    E_PRE_RUNTIME,   // Must always be fatal!
+    E_RUNTIME,       // Errors such as undefined variables
+    E_TYPE_ERROR,    // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
+    E_FATAL,         // Errors that should be fatal, like syntax errors
+    E_GENERIC,       // Errors that cannot be classified as ones above
+    E_ASSERT,        // Errors triggered by a faulty assert
+    E_THREAD_HALT,   // Signal threads to halt (propagates like an error)
+    E_EXIT,          // When user calls exit
 } ErrorType;
+
+#ifndef MILA_PROTO
+// Use (GET_TAGGED_ERROR_TYPENAME than this)
+const char *MILA_ERROR_NAMES[] = {
+    "SyntaxError",
+    "PreRuntime",
+    "Runtime",
+    "TypeError",
+    "Fatal",
+    "Generic",
+    "AssertionError",
+    "ThreadHalt",
+    "Exit",
+};
+#endif // MILA_PROTO
 
 typedef struct Value Value;
 typedef struct Env Env;
@@ -335,6 +355,9 @@ Value *verror(char *message, ...);
 // Tagged error
 __attribute__((format(printf, 2, 3)))
 Value *vtagged_error(ErrorType type, char *message, ...);
+// Tagged error with a return code
+__attribute__((format(printf, 3, 4)))
+Value *vtagged_coded_error(ErrorType type, int ret_code, char *message, ...);
 // Create a function
 Value *vfunction(char **params, char** defaults, char** contextuals, Env* closure, char *body_src);
 // Check if a value is any numeric type
@@ -371,12 +394,28 @@ __int128 atoi128(char* num);
 char* i128toa(__int128 num);
 #endif
 
+typedef struct {
+    char* name;
+    void(*fn)(Env*);
+} CleanupRegistryEntry;
+
+typedef struct {
+    CleanupRegistryEntry** registry;
+    size_t size, count;
+} CleanupRegistry;
+
+CleanupRegistry* cleanup_registry;
+
+CleanupRegistry* make_cleanup_registry();
+CleanupRegistryEntry* make_cleanup_entry(char* name, void(*fn)(Env*));
+void free_cleanup_registry(CleanupRegistry* registry);
+
 // ================= NOT SO PUBLIC APIS (or spicy api stuff, depends on your mood)
 
 // THESE ARE INTERNAL
-#define GET_ERRORNAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
+#define GET_TAGGED_ERROR_TYPENAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
 #define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
-#define GET_ERROR(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
+#define GET_TAGGED_ERROR_TYPE(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
 #define GET_TYPE(v) (v ? v->type : T_WHAT )
 
 #define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
@@ -419,7 +458,6 @@ typedef struct
     NativeFn func;
 } NativeEntry;
 
-typedef struct path_list path_list;
 #ifndef MILA_PROTO
 // Simple trick (use GET_TYPENAME rather than use this directly)
 const char *MILA_TYPE_NAMES[] = {
@@ -446,18 +484,6 @@ const char *MILA_TYPE_NAMES[] = {
 };
 
 const int MILA_TYPE_COUNT = T_ARG_END;
-
-// Use (GET_ERRORNAME than this)
-const char *MILA_ERROR_NAMES[] = {
-    "SyntaxError",
-    "PreRuntime",
-    "Runtime",
-    "TypeError",
-    "Fatal",
-    "Generic",
-    "AssertionError",
-    "ThreadHalt"
-};
 
 const int MILA_ERROR_COUNT = E_THREAD_HALT;
 
@@ -561,6 +587,7 @@ struct Value
         struct {
             char* message;
             ErrorType type;
+            int return_code; // -1 by default, if it remains -1 the error type is the error code.
         } tagged_error;
     } v; // around 16 bytes
 };
@@ -617,7 +644,7 @@ extern __int128 to_bint(Value *v);
 
 // == Helpers
 void sleep_ms(uint64_t ms);
-int our_asprintf(char **strp, const char *fmt, ...);
+int malloc_sprintf(char **strp, const char *fmt, ...);
 Value *call_function(Value *fnval, Env *env, int argc, Value **argv);
 Value *call_native_with(Env *env, NativeFn fnval, Value *first, ...);
 int match_types(Value **args, ...);
@@ -637,6 +664,10 @@ const char* skip_parse_expr(Src* s);
 
 // Initialize a minimal environment for a MiLa script
 // This will automatically inject built ins
+// Global version
+Env* mila_global_init(void);
+void mila_global_deinit(Env* env);
+// Instance
 Env* mila_init(void);
 void mila_deinit(Env* env);
 

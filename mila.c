@@ -54,6 +54,8 @@
 
 #include "mila.h"
 
+CleanupRegistry* cleanup_registry = NULL;
+
 void print_memory_usage()
 {
     size_t memory_usage = 0;
@@ -94,6 +96,32 @@ unsigned long get_process_id(void)
 #endif
 
 path_list *search_path = NULL;
+
+// Cleanup
+
+CleanupRegistry* make_cleanup_registry() {
+    CleanupRegistry* registry = (CleanupRegistry*)mila_malloc(sizeof(CleanupRegistry));
+    registry->count = 0;
+    registry->size = 0;
+    registry->registry = NULL;
+    return registry;
+}
+
+CleanupRegistryEntry* make_cleanup_entry(char* name, void(*fn)(Env*)) {
+    CleanupRegistryEntry* entry = (CleanupRegistryEntry*)mila_malloc(sizeof(CleanupRegistryEntry));
+    entry->name = mila_strdup(name);
+    entry->fn = fn;
+    return entry;
+}
+
+void free_cleanup_registry(CleanupRegistry *registry) {
+    for (size_t index=0; index < registry->count; ++index) {
+        mila_free(registry->registry[index]->name);
+        mila_free(registry->registry[index]);
+    }
+    mila_free(registry->registry);
+    mila_free(registry);
+}
 
 // ---------- Value representation ----------
 
@@ -558,6 +586,43 @@ __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
     Value *v = val_new(T_TAGGED_ERROR);
     v->v.tagged_error.message = buf;
     v->v.tagged_error.type = err;
+    v->v.tagged_error.return_code = -1;
+    return v;
+}
+
+__attribute__((format(printf, 3, 4))) Value *vtagged_coded_error(ErrorType err, int ret_code,
+                                                           char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+
+    // First pass: find length
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int len = vsnprintf(NULL, 0, fmt, ap_copy);
+    va_end(ap_copy);
+
+    if (len < 0)
+    {
+        va_end(ap);
+        return NULL;
+    }
+
+    char *buf = mila_malloc(len + 1);
+    if (!buf)
+    {
+        va_end(ap);
+        Value *v = val_new(T_ERROR);
+        v->v.message = mila_strdup("verror could not allocate memory!");
+        return v;
+    }
+
+    vsnprintf(buf, len + 1, fmt, ap);
+    va_end(ap);
+    Value *v = val_new(T_TAGGED_ERROR);
+    v->v.tagged_error.message = buf;
+    v->v.tagged_error.type = err;
+    v->v.tagged_error.return_code = ret_code;
     return v;
 }
 
@@ -836,7 +901,7 @@ inline Value *vfunction(char **params, char** defaults, char **contextuals, Env 
 }
 inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
 
-int our_asprintf(char **strp, const char *fmt, ...)
+int malloc_sprintf(char **strp, const char *fmt, ...)
 {
     if (!strp)
         return -1;
@@ -913,97 +978,97 @@ char *as_c_string(Value *v)
     switch (v->type)
     {
     case T_NULL:
-        our_asprintf(&buffer, "null");
+        malloc_sprintf(&buffer, "null");
         break;
     case T_NONE:
-        our_asprintf(&buffer, "none");
+        malloc_sprintf(&buffer, "none");
         break;
     case T_ERROR:
-        our_asprintf(&buffer, "<error:%s>", v->v.message);
+        malloc_sprintf(&buffer, "<error:%s>", v->v.message);
         break;
     case T_TAGGED_ERROR:
-        our_asprintf(&buffer, "<error[%s]:%s>", GET_ERRORNAME(v),
-                     GET_ERROR_MESSAGE(v));
+        malloc_sprintf(&buffer, "<error[%s]:%s>", GET_TAGGED_ERROR_TYPENAME(v),
+                     GET_TAGGED_ERROR_TYPE_MESSAGE(v));
         break;
     case T_INT:
-        our_asprintf(&buffer, "%ld", v->v.i);
+        malloc_sprintf(&buffer, "%ld", v->v.i);
         break;
     case T_FLOAT:
     {
         char buf[MAX_NUMBER_DIGITS] = {0};
         float_to_string(v->v.f, buf, sizeof(buf));
-        our_asprintf(&buffer, "%s", buf);
+        malloc_sprintf(&buffer, "%s", buf);
         break;
     }
     case T_STRING:
-        our_asprintf(&buffer, "%s", v->v.s ? v->v.s : "");
+        malloc_sprintf(&buffer, "%s", v->v.s ? v->v.s : "");
         break;
     case T_BOOL:
-        our_asprintf(&buffer, "%s", v->v.b ? "true" : "false");
+        malloc_sprintf(&buffer, "%s", v->v.b ? "true" : "false");
         break;
     case T_FUNCTION:
         {
         char *args = mila_strdup("");
         for (int i=0; v->v.fn->params[i]; ++i) {
-            our_asprintf(&args, "%s", v->v.fn->params[i]);
+            malloc_sprintf(&args, "%s", v->v.fn->params[i]);
             if (v->v.fn->defaults[i]) {
-                our_asprintf(&args, "=%s", v->v.fn->defaults[i]);
+                malloc_sprintf(&args, "=%s", v->v.fn->defaults[i]);
             }
             if (v->v.fn->params[i+1]) {
-                our_asprintf(&args, ",");
+                malloc_sprintf(&args, ",");
             }
         }
-        our_asprintf(&buffer, "<function:%s(%s) at %p>",
+        malloc_sprintf(&buffer, "<function:%s(%s) at %p>",
                      v->v.fn->name ? v->v.fn->name : "[lambda]", args, v->v.fn);
         free(args);
         } break;
     case T_NATIVE:
-        our_asprintf(&buffer, "<native:%s at %p>",
+        malloc_sprintf(&buffer, "<native:%s at %p>",
                      v->v.native->name ? v->v.native->name : "???",
                      v->v.native->fn);
         break;
     case T_OPAQUE:
         if (v->type_name)
-            our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
+            malloc_sprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
         else
-            our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
+            malloc_sprintf(&buffer, "<opaque:%p>", v->v.opaque);
         break;
     case T_WEAK_OPAQUE:
         if (v->type_name)
-            our_asprintf(&buffer, "<weak opaque:%p %s>", v->v.opaque, v->type_name);
+            malloc_sprintf(&buffer, "<weak opaque:%p %s>", v->v.opaque, v->type_name);
         else
-            our_asprintf(&buffer, "<weak opaque:%p>", v->v.opaque);
+            malloc_sprintf(&buffer, "<weak opaque:%p>", v->v.opaque);
         break;
     case T_OWNED_OPAQUE:
         if (v->type_name)
-            our_asprintf(&buffer, "<owned opaque:%p %s>", v->v.opaque, v->type_name);
+            malloc_sprintf(&buffer, "<owned opaque:%p %s>", v->v.opaque, v->type_name);
         else
-            our_asprintf(&buffer, "<owned opaque:%p>", v->v.opaque);
+            malloc_sprintf(&buffer, "<owned opaque:%p>", v->v.opaque);
         break;
     case T_UINT:
-        our_asprintf(&buffer, "%luu", v->v.ui);
+        malloc_sprintf(&buffer, "%luu", v->v.ui);
         break;
     case T_BINT: {
         char* s = i128toa(v->v.bi);
-        our_asprintf(&buffer, "%s~", s);
+        malloc_sprintf(&buffer, "%s~", s);
         free(s);
         break;
     }
     case T_BFLOAT: {
         char* s = b_ff_to_string(v->v.bf);
-        our_asprintf(&buffer, "%s~", s);
+        malloc_sprintf(&buffer, "%s~", s);
         free(s);
         break;
     }
     case T_RETURN:
     {
         char *str = as_c_string_repr(v->v.opaque);
-        our_asprintf(&buffer, "<return:%s>", str);
+        malloc_sprintf(&buffer, "<return:%s>", str);
         mila_free(str);
     }
     break;
     default:
-        our_asprintf(&buffer, "???");
+        malloc_sprintf(&buffer, "???");
     }
     return buffer;
 }
@@ -1032,7 +1097,7 @@ char *as_c_string_repr(Value *v)
     switch (v->type)
     {
     case T_STRING:
-        our_asprintf(&buffer, "\"");
+        malloc_sprintf(&buffer, "\"");
         uint8_t* text = (uint8_t*)GET_STRING(v);
         size_t len = strlen(GET_STRING(v));
         for (size_t i = 0; i < len; ++i)
@@ -1040,39 +1105,39 @@ char *as_c_string_repr(Value *v)
             switch (text[i])
             {
             case '\a':
-                our_asprintf(&buffer, "\\a");
+                malloc_sprintf(&buffer, "\\a");
                 break;
             case '\t':
-                our_asprintf(&buffer, "\\t");
+                malloc_sprintf(&buffer, "\\t");
                 break;
             case '\n':
-                our_asprintf(&buffer, "\\n");
+                malloc_sprintf(&buffer, "\\n");
                 break;
             case '\v':
-                our_asprintf(&buffer, "\\v");
+                malloc_sprintf(&buffer, "\\v");
                 break;
             case '\f':
-                our_asprintf(&buffer, "\\f");
+                malloc_sprintf(&buffer, "\\f");
                 break;
             case '\r':
-                our_asprintf(&buffer, "\\r");
+                malloc_sprintf(&buffer, "\\r");
                 break;
             case '"':
-                our_asprintf(&buffer, "\\\"");
+                malloc_sprintf(&buffer, "\\\"");
                 break;
             default:
                 if (isprint(text[i]))
-                    our_asprintf(&buffer, "%c", text[i]);
+                    malloc_sprintf(&buffer, "%c", text[i]);
                 else
-                    our_asprintf(&buffer, "\\x%02x", text[i]);
+                    malloc_sprintf(&buffer, "\\x%02x", text[i]);
             }
         }
-        our_asprintf(&buffer, "\"");
+        malloc_sprintf(&buffer, "\"");
         break;
     default:
     {
         char *tmp = as_c_string(v);
-        our_asprintf(&buffer, "%s", tmp);
+        malloc_sprintf(&buffer, "%s", tmp);
         mila_free(tmp);
     }
     }
@@ -1123,8 +1188,8 @@ int raw_print_value(Value *v)
     case T_ERROR:
         return printf("<error:%s>", v->v.message);
     case T_TAGGED_ERROR:
-        return printf("<error[%s]:%s>", GET_ERRORNAME(v),
-                     GET_ERROR_MESSAGE(v));
+        return printf("<error[%s]:%s>", GET_TAGGED_ERROR_TYPENAME(v),
+                     GET_TAGGED_ERROR_TYPE_MESSAGE(v));
     case T_INT:
         return printf("%ld", v->v.i);
     case T_FLOAT:
@@ -1141,12 +1206,12 @@ int raw_print_value(Value *v)
         {
         char *args = mila_strdup("");
         for (int i=0; v->v.fn->params[i]; ++i) {
-            our_asprintf(&args, "%s", v->v.fn->params[i]);
+            malloc_sprintf(&args, "%s", v->v.fn->params[i]);
             if (v->v.fn->defaults[i]) {
-                our_asprintf(&args, "=%s", v->v.fn->defaults[i]);
+                malloc_sprintf(&args, "=%s", v->v.fn->defaults[i]);
             }
             if (v->v.fn->params[i+1]) {
-                our_asprintf(&args, ",");
+                malloc_sprintf(&args, ",");
             }
         }
         int i = printf("<function:%s(%s) at %p>",
@@ -1284,64 +1349,64 @@ char *as_c_string_raw(Value *v)
     switch (v->type)
     {
     case T_NULL:
-        our_asprintf(&buffer, "null");
+        malloc_sprintf(&buffer, "null");
         break;
     case T_NONE:
-        our_asprintf(&buffer, "none");
+        malloc_sprintf(&buffer, "none");
         break;
     case T_ERROR:
-        our_asprintf(&buffer, "<error:%s>", v->v.message);
+        malloc_sprintf(&buffer, "<error:%s>", v->v.message);
         break;
     case T_INT:
-        our_asprintf(&buffer, "%ld", v->v.i);
+        malloc_sprintf(&buffer, "%ld", v->v.i);
         break;
     case T_FLOAT:
     {
         char buf[MAX_NUMBER_DIGITS] = {0};
         float_to_string(v->v.f, buf, sizeof(buf));
-        our_asprintf(&buffer, "%s", buf);
+        malloc_sprintf(&buffer, "%s", buf);
         break;
     }
     case T_STRING:
-        our_asprintf(&buffer, "%s", v->v.s ? v->v.s : "");
+        malloc_sprintf(&buffer, "%s", v->v.s ? v->v.s : "");
         break;
     case T_BOOL:
-        our_asprintf(&buffer, "%s", v->v.b ? "true" : "false");
+        malloc_sprintf(&buffer, "%s", v->v.b ? "true" : "false");
         break;
     case T_FUNCTION:
-        our_asprintf(&buffer, "<function:%s at %p>",
+        malloc_sprintf(&buffer, "<function:%s at %p>",
                      v->v.fn->name ? v->v.fn->name : "[lambda]", v->v.fn);
         break;
     case T_NATIVE:
-        our_asprintf(&buffer, "<native:%s at %p>",
+        malloc_sprintf(&buffer, "<native:%s at %p>",
                      v->v.native->name ? v->v.native->name : "???",
                      v->v.native->fn);
         break;
     case T_OPAQUE:
         if (v->type_name)
-            our_asprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
+            malloc_sprintf(&buffer, "<opaque:%p %s>", v->v.opaque, v->type_name);
         else
-            our_asprintf(&buffer, "<opaque:%p>", v->v.opaque);
+            malloc_sprintf(&buffer, "<opaque:%p>", v->v.opaque);
         break;
     case T_OWNED_OPAQUE:
         if (v->type_name)
-            our_asprintf(&buffer, "<owned opaque:%p %s>", v->v.opaque, v->type_name);
+            malloc_sprintf(&buffer, "<owned opaque:%p %s>", v->v.opaque, v->type_name);
         else
-            our_asprintf(&buffer, "<owned opaque:%p>", v->v.opaque);
+            malloc_sprintf(&buffer, "<owned opaque:%p>", v->v.opaque);
         break;
     case T_UINT:
-        our_asprintf(&buffer, "%lu", v->v.ui);
-        our_asprintf(&buffer, "u");
+        malloc_sprintf(&buffer, "%lu", v->v.ui);
+        malloc_sprintf(&buffer, "u");
         break;
     case T_RETURN:
     {
         char *str = as_c_string_repr_raw(v->v.opaque);
-        our_asprintf(&buffer, "<return:%s>", str);
+        malloc_sprintf(&buffer, "<return:%s>", str);
         mila_free(str);
     }
     break;
     default:
-        our_asprintf(&buffer, "???");
+        malloc_sprintf(&buffer, "???");
     }
     return buffer;
 }
@@ -1356,7 +1421,7 @@ char *as_c_string_repr_raw(Value *v)
     switch (v->type)
     {
     case T_STRING:
-        our_asprintf(&buffer, "\"");
+        malloc_sprintf(&buffer, "\"");
         uint8_t* text = (uint8_t*)GET_STRING(v);
         size_t len = strlen(GET_STRING(v));
         for (size_t i = 0; i < len; ++i)
@@ -1364,39 +1429,39 @@ char *as_c_string_repr_raw(Value *v)
             switch (text[i])
             {
             case '\a':
-                our_asprintf(&buffer, "\\a");
+                malloc_sprintf(&buffer, "\\a");
                 break;
             case '\t':
-                our_asprintf(&buffer, "\\t");
+                malloc_sprintf(&buffer, "\\t");
                 break;
             case '\n':
-                our_asprintf(&buffer, "\\n");
+                malloc_sprintf(&buffer, "\\n");
                 break;
             case '\v':
-                our_asprintf(&buffer, "\\v");
+                malloc_sprintf(&buffer, "\\v");
                 break;
             case '\f':
-                our_asprintf(&buffer, "\\f");
+                malloc_sprintf(&buffer, "\\f");
                 break;
             case '\r':
-                our_asprintf(&buffer, "\\r");
+                malloc_sprintf(&buffer, "\\r");
                 break;
             case '"':
-                our_asprintf(&buffer, "\\\"");
+                malloc_sprintf(&buffer, "\\\"");
                 break;
             default:
                 if (isprint(text[i]))
-                    our_asprintf(&buffer, "%c", text[i]);
+                    malloc_sprintf(&buffer, "%c", text[i]);
                 else
-                    our_asprintf(&buffer, "\\x%02x", text[i]);
+                    malloc_sprintf(&buffer, "\\x%02x", text[i]);
             }
         }
-        our_asprintf(&buffer, "\"");
+        malloc_sprintf(&buffer, "\"");
         break;
     default:
     {
         char *tmp = as_c_string_raw(v);
-        our_asprintf(&buffer, "%s", tmp);
+        malloc_sprintf(&buffer, "%s", tmp);
         mila_free(tmp);
     }
     }
@@ -2106,6 +2171,17 @@ int load_library(Env *env, const char *libpath)
         fail = 0;
         init_func(env);
     }
+    void (*deinit_func)(Env *) = dlsym(lib, "_mila_lib_deinit");
+    err = dlerror();
+    if (!err)
+    {
+        fail = 0;
+        char* name = NULL;
+        malloc_sprintf(&name, "%s:_mila_lib_deinit", libpath);
+        CleanupRegistryEntry* entry = make_cleanup_entry(name, deinit_func);
+        da_append(cleanup_registry, entry);
+        free(name);
+    }
 
     const char *const *names = (const char *const *)dlsym(lib, "lib_functions");
 
@@ -2235,6 +2311,17 @@ int load_library_noisy(Env *env, const char *libpath)
     {
         fail = 0;
         init_func(env);
+    }
+    void (*deinit_func)(Env *) = dlsym(lib, "_mila_lib_deinit");
+    err = dlerror();
+    if (!err)
+    {
+        fail = 0;
+        char* name = NULL;
+        malloc_sprintf(&name, "%s:_mila_lib_deinit", libpath);
+        CleanupRegistryEntry* entry = make_cleanup_entry(name, deinit_func);
+        da_append(cleanup_registry, entry);
+        free(name);
     }
 
     const char *const *names = (const char *const *)dlsym(lib, "lib_functions");
@@ -2559,7 +2646,6 @@ const char* skip_primary(Src *s) {
     // Lists/dicts with element validation
     if (c == '[') {
         src_get(s);
-        char is_dict = match_char(s, '@');
         skip_ws(s);
         if (src_peek(s) != ']') {
             for (;;) {
@@ -3116,7 +3202,7 @@ inline char *parse_ident(Src *s)
     if (res[0] == '.' && s->cur_namespace != NULL)
     {
         char *r = mila_strdup(s->cur_namespace);
-        our_asprintf(&r, ".%s", res + 1);
+        malloc_sprintf(&r, ".%s", res + 1);
         mila_free(res);
         return r;
     }
@@ -4944,9 +5030,10 @@ inline unsigned long to_uint(Value *v)
 // binary ops
 inline Value *binary_op(Value *a, MethodType op, Value *b)
 {
-    if (a->method_table && a->method_table[op])
+    if (a->method_table && a->method_table[TMethodBinop])
     {
-        return ((binary_method)a->method_table[op])(a, b);
+        Value* res = ((trinary_method)a->method_table[op])(a, vint(op), b);
+        if (res != NULL) return res;
     }
     else if ((a->type == T_NONE || a->type == T_NULL) &&
              (b->type == T_NONE || b->type == T_NULL))
@@ -5123,16 +5210,102 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
             return vnull();
         }
     }
-    // equality for strings
+    if (strcmp(GET_TYPENAME(a), ML("list")) == 0 && strcmp(GET_TYPENAME(b), ML("list")) == 0) {
+        if (!(op == BMethodGreat || op == BMethodLess || op == BMethodEq || op == BMethodNe || op == BMethodGE || op == BMethodLE)) return vnull();
+        LinkedList *ll_a = GET_OPAQUE(a), *ll_b = GET_OPAQUE(b);
+        int res = 0; // -1 if less, 0 if equal, 1 if greater than
+        Value** list_a = ll_to_iter(ll_a);
+        Value** list_b = ll_to_iter(ll_b);
+
+        // Find last index (essentially the length)
+        size_t last_a = 0, last_b = 0;
+        for (;list_a[last_a]; ++last_a);
+        for (;list_b[last_b]; ++last_b);
+
+        // Compare the two lists
+        // Compare by length
+        if (last_a > last_b) {
+            res = 1;
+            goto end;
+        }
+        if (last_a < last_b) {
+            res = -1;
+            goto end;
+        }
+
+        // Compare by items
+        if (op == BMethodEq) {
+            res = 0;
+            for (size_t index=0; index < last_a; ++index) {
+                Value* truth = binary_op(list_a[index], op, list_b[index]);
+                if (!is_truthy(truth)) {
+                    res = 1;
+                    val_release(truth);
+                    break;
+                }
+                val_release(truth);
+            }
+            goto end;
+        }
+        else if (op == BMethodNe) {
+            res = 1;
+            for (size_t index=0; index < last_a; ++index) {
+                Value* truth = binary_op(list_a[index], op, list_b[index]);
+                if (!is_truthy(truth)) {
+                    res = 0;
+                    val_release(truth);
+                    break;
+                }
+                val_release(truth);
+            }
+            goto end;
+        } else {
+            for (size_t index=0; index < last_a; ++index) {
+                if (!is_number(list_a[index]) || !is_number(list_b[index])) {
+                    char* item_repr = as_c_string_repr(!is_number(list_a[index]) ? list_a[index] : list_b[index]);
+                    Value* msg = verror("Item %s is not numeric but was used in list numerical comparison!", item_repr);
+                    free(item_repr);
+                    // Clean up
+                    for (size_t i_a=0;list_a[i_a]; ++i_a)
+                        val_release(list_a[i_a]);
+                    for (size_t i_b=0;list_b[i_b]; ++i_b)
+                        val_release(list_b[i_b]);
+                    free(list_a); free(list_b);
+                    return msg;
+                }
+                double d_a = to_double(list_a[index]);
+                double d_b = to_double(list_b[index]);
+                if (d_a > d_b) {res = 1; break;} 
+                if (d_a < d_b) {res = -1; break;} 
+            }
+        }
+
+end:
+
+        // Clean up
+        for (size_t i_a=0;list_a[i_a]; ++i_a)
+            val_release(list_a[i_a]);
+        for (size_t i_b=0;list_b[i_b]; ++i_b)
+            val_release(list_b[i_b]);
+        free(list_a); free(list_b);
+
+        switch (op) {
+            case BMethodLess: return res == -1 ? vbool(1) : vbool(0);
+            case BMethodGreat: return res == 1 ? vbool(1) : vbool(0);
+            case BMethodLE: return res == -1 || res == 0 ? vbool(1) : vbool(0);
+            case BMethodGE: return res == 1 || res == 0 ? vbool(1) : vbool(0);
+            case BMethodEq: return res == 0 ? vbool(1) : vbool(0);
+            case BMethodNe: return res != 0 ? vbool(1) : vbool(0);
+            default: return vbool(0);
+        }
+    }
     else if (BMethodEq == op)
     {
-        if (!a && !b)
-            return vbool(1);
         if (!a || !b)
             return vbool(0);
         if (a->type == T_STRING && b->type == T_STRING)
             return vbool(strcmp(a->v.s, b->v.s) == 0);
-        // fallback pointer equality
+        // fallback pointer equality (document this!!!)
         return vbool(a == b);
     }
     else if (BMethodNe == op)
@@ -5199,10 +5372,6 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
     }
     if (b->type_name && strcmp(b->type_name, MILA_LPREFIX "dict") == 0) {
         return binary_op_objects(NULL, 0, b, op, a);
-    }
-    if (strcpy((char*)GET_TYPENAME(a), ML("list")) == 0 && strcpy((char*)GET_TYPENAME(b), ML("list")) == 0) {
-        LinkedList *ll_a = GET_OPAQUE(a), *ll_b = GET_OPAQUE(b);
-
     }
     return vnull();
 }
@@ -6543,7 +6712,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 if (IS_ERROR_TAGGED(res)) {
                     Value* msg = vstring_dup(res->v.tagged_error.message);
-                    Value* type = vstring_dup(GET_ERRORNAME(res));
+                    Value* type = vstring_dup(GET_TAGGED_ERROR_TYPENAME(res));
                     Value* dict = call_native_with(env, native_new_dict, vstring_dup("error"), type, vstring_dup("message"), msg, NULL);
                     val_release(res);
                     env_set_local(env, id, dict);
@@ -6851,16 +7020,20 @@ Value *eval_str(char *src, Env *env)
 void print_error(Value* v) {
     if (v->type == T_ERROR)
     {
-        printf("\n= Error: %s\n", v->v.message);
+        fprintf(stderr, "\n= Error: %s\n", v->v.message);
     }
     if (v->type == T_TAGGED_ERROR)
     {
+        if (v->v.tagged_error.type == E_EXIT) {
+            fprintf(stderr, "\n= Recieved Exit Signal: %s\n", GET_TAGGED_ERROR_MESSAGE(v));
+            return;
+        }
         if (v->v.tagged_error.type == E_THREAD_HALT) return;
         if (IS_FATAL(v))
-            printf("\n= FATAL ERROR[%s]: %s\n", GET_ERRORNAME(v),
+            fprintf(stderr, "\n= FATAL ERROR[%s]: %s\n", GET_TAGGED_ERROR_TYPENAME(v),
                    v->v.tagged_error.message);
         else
-            printf("\n= Error[%s]: %s\n", GET_ERRORNAME(v),
+            fprintf(stderr, "\n= Error[%s]: %s\n", GET_TAGGED_ERROR_TYPENAME(v),
                    v->v.tagged_error.message);
     }
 }
@@ -6960,7 +7133,7 @@ int invoke_file(char *name, Env *env)
         Value* setup_res = run_file_keep_res(setup_name, setup_env);
         env_free(setup_env);
         if (IS_ERROR(setup_res)) {
-            Value* err = verror("Setup file %s returned %s", setup_name, GET_ERROR_MESSAGE(setup_res));
+            Value* err = verror("Setup file %s returned %s", setup_name, GET_TAGGED_ERROR_TYPE_MESSAGE(setup_res));
             free(setup_name);
             print_error(err);
             val_release(setup_res);
@@ -7213,6 +7386,20 @@ int needs_more(const char *src)
     return in_string || parens > 0 || braces > 0;
 }
 
+Env *mila_global_init(void)
+{
+    if (!cleanup_registry) {
+        cleanup_registry = make_cleanup_registry();
+    } else {
+        fprintf(stderr, "mila_init called more than once.\n");
+        abort();
+    }
+    Env *g = env_new(NULL);
+    env_register_builtins(g);
+    register_thread_builtins(g);
+    return g;
+}
+
 Env *mila_init(void)
 {
     Env *g = env_new(NULL);
@@ -7223,7 +7410,23 @@ Env *mila_init(void)
 
 void mila_deinit(Env *g)
 {
+    mila_threads_cleanup();
+    env_free(g);
+}
+
+void mila_global_deinit(Env *g)
+{
     // we might handle stuff here
+    if (cleanup_registry) {
+        for (size_t index=0; index < cleanup_registry->count; ++index) {
+            cleanup_registry->registry[index]->fn(g);
+        }
+        free_cleanup_registry(cleanup_registry);
+        cleanup_registry = NULL;
+    } else {
+        fprintf(stderr, "mila_init wasnt called.\n");
+        abort();
+    }
     mila_threads_cleanup();
     env_free(g);
 }
@@ -7302,7 +7505,7 @@ int main(int argc, char **argv)
     }
     Value *array = NULL;
 
-    Env *g = mila_init();
+    Env *g = mila_global_init();
 
     // Check if built ins is the canonical
     Value *builtins_flag = env_get(g, "__mila_canonical_builtins");
@@ -7345,6 +7548,22 @@ int main(int argc, char **argv)
             print_error(res);
         }
 
+        int return_code = 0;
+
+        if (GET_TYPE(res) == T_TAGGED_ERROR) {
+            switch (res->v.tagged_error.type) {
+            case E_EXIT: {
+                if (res->v.tagged_error.return_code == -1) {
+                    return_code = E_EXIT;
+                } else {
+                    return_code = res->v.tagged_error.return_code;
+                }
+            } break;
+            default:
+                return_code = res->v.tagged_error.type; break;
+            }
+        }
+
         path_list_free(search_path);
 
         // cleanup
@@ -7354,10 +7573,11 @@ int main(int argc, char **argv)
 
         mila_deinit(g);
         env_free_builtins();
-        return 0;
+        return return_code;
     }
     else
     {
+        free(cwd);
         if (argc > 1 && strcmp(argv[1], "--") == 0)
         {
             array = call_function_str(g, "array", vint(argc - 2), NULL);
@@ -7430,9 +7650,11 @@ int main(int argc, char **argv)
             }
             else if (strncmp(buffer, ".load", 5) == 0)
             {
-                *strchr(buffer, '\n') = 0;
-                if (load_library_noisy(g, buffer + 6))
+                char* file = path_list_find(search_path, buffer + 6);
+                if (!file || load_library_noisy(g, file))
                     printf("Library loading went wrong!\n");
+                else
+                    mila_free(file);
                 printf(">>> ");
                 buffer[0] = 0;
                 continue;
@@ -7464,6 +7686,21 @@ int main(int argc, char **argv)
                     putchar('\n');
                 } else {
                     print_error(res);
+                    if (IS_ERROR_TAGGED(res) && GET_TAGGED_ERROR_TYPE(res) == E_EXIT) {
+                        int code = 0;
+                        if (res->v.tagged_error.return_code == -1) {
+                            code = E_EXIT;
+                        } else {
+                            code = res->v.tagged_error.return_code;
+                        }
+                        src_free(S);
+                        val_release(res);
+                        blr_history_free(&hist);
+                        mila_threads_cleanup();
+                        mila_deinit(g);
+                        path_list_free(search_path);
+                        return code;
+                    }
                 }
 
                 val_release(res);
@@ -7482,11 +7719,11 @@ int main(int argc, char **argv)
                 fflush(stdout);
             }
         }
+        path_list_free(search_path);
         blr_history_free(&hist);
         mila_threads_cleanup();
         mila_deinit(g);
     }
-    free(cwd);
     return 0;
 }
 #endif // SAFE_BUILD

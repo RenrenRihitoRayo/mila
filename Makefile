@@ -1,16 +1,16 @@
 cc ?= gcc
-files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c ml_string.c ml_threading.c ml_primitives.c
-files_web = $(files) ./addon/ml_web.c
+files = mila.c ml_builtins.c ml_dict.c mila.h ml_ll.c ml_string.c ml_threading.c ml_primitives.c headers/*
+files_web = $(files) ./addon/ml_web.c ./addon/ml_web.h ./addon/ml_socket.c ./addon/http/http.c ./addon/http/http.h
 targets_web = ./build/web/mila.wasm ./build/web/mila.js
 
 libraries ?= -lm
 eflags ?=
-cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 $(eflags)
+cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 $(eflags) -Iheaders
 
 .PHONY: web
 
 all: $(files)
-	$(cc) $(libraries) $(eflags) -O0 -o mila mila.c -fsanitize=address -g
+	$(cc) $(libraries) $(eflags) -O0 -o mila mila.c -fsanitize=address -g -Iheaders
 
 # dont include asan, compile with debug logging
 debug: $(files)
@@ -62,7 +62,7 @@ static: $(files)
 	strip mila
 
 smallest: $(files)
-	$(cc) -o mila -Os mila.c $(libraries) 
+	$(cc) -o mila -Os mila.c $(libraries) -Iheaders
 	strip mila
 
 release: $(files)
@@ -74,7 +74,7 @@ web $(targets_web): $(files_web)
 	emcc -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_main"]' -s EXPORTED_RUNTIME_METHODS='["FS","callMain"]' mila.c addon/ml_web.c -o ./build/web/mila.js -D EXT_WEB
 
 test-embed: embed.c
-	gcc -o embed embed.c
+	gcc -o embed embed.c -Iheaders
 	./embed
 	rm embed
 

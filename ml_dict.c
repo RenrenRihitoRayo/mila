@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "ml_string.c"
+#include "mila.h"
 
 #ifdef ML_LIB
 #define ML_ALREADY
@@ -193,7 +194,7 @@ Value *dict_get_str(Dict *dict, const char *key) {
   if (!dict || !key)
     return NULL;
   char* key_str = NULL;
-  our_asprintf(&key_str, "\"%s\"", key);
+  malloc_sprintf(&key_str, "\"%s\"", key);
   unsigned long index = hash_string(key_str) % dict->capacity;
   DictEntry *entry = dict->buckets[index];
   while (entry) {
@@ -216,7 +217,7 @@ int dict_set_str(Dict *dict, char *str_key, Value *value) {
   }
 
   char* key = NULL;
-  our_asprintf(&key, "\"%s\"", str_key);
+  malloc_sprintf(&key, "\"%s\"", str_key);
 
   unsigned long index = hash_string(key) % dict->capacity;
   DictEntry *entry = dict->buckets[index];
@@ -312,7 +313,7 @@ Value *dict_display(Value *self) {
     return vstring_dup("[@]");
 
   char *buffer = NULL;
-  our_asprintf(&buffer, "[@ ");
+  malloc_sprintf(&buffer, "[@ ");
 
   KVPair *entries = NULL;
   size_t count = 0, capacity = 16;
@@ -343,13 +344,13 @@ Value *dict_display(Value *self) {
   for (size_t i = count; i > 0; i--) {
     char *val_str = as_c_string_repr(entries[i - 1].value);
     if (i > 1)
-      our_asprintf(&buffer, "%s = %s, ", entries[i - 1].key, val_str);
+      malloc_sprintf(&buffer, "%s = %s, ", entries[i - 1].key, val_str);
     else
-      our_asprintf(&buffer, "%s = %s", entries[i - 1].key, val_str);
+      malloc_sprintf(&buffer, "%s = %s", entries[i - 1].key, val_str);
     mila_free(val_str);
   }
 
-  our_asprintf(&buffer, "]");
+  malloc_sprintf(&buffer, "]");
   mila_free(entries);
   return vstring_take(buffer);
 }

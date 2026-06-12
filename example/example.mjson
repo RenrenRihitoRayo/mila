@@ -1,4 +1,4 @@
-// MiLa JS Object Notation (MJSON, JSON2.5 superset)
+// MiLa - JS Object Notation (MJSON, JSON2.5 superset)
 // Supports lambdas
 {
     "name": "example.json",

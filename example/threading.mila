@@ -1,85 +1,17 @@
 
-// thread.make(code: "string", on_kill: "string?") -> "id: int"
-// normal thread, keep interpreter awake
-var th = thread.make(!{
-	printf("Running %x\n", thread.get_id());
+var out_item = 0;
+var th = thread.make(fn(id):[out_item, println, time_sleep, thread.check_cancel, range, copy]{
+	println("Running as thread #"+id);
 	foreach item : range(4) {
-		println("Hello "  + item);
+		thread.check_cancel(id);
+		println("Item " + item);
+		sync out_item = copy(item);
 		time_sleep(1);
 	}
-	return 90;
+	println("Done");
+}, fn(id, reason):[println, out_item] {
+	println("Stopped at " + out_item);
+	println("Reason for halt of execution: "+reason);
 });
-
-// should take 40s~ but gets killed due to interpreter halt
-var th_deamon = thread.make(!{
-	var loop;
-	foreach item : range(40) {
-		// Cooperative for android support
-		// thank you google.
-		thread.check_cancel(th_deamon);
-		if (th_deamon_die) {
-			return;
-		}
-		time_sleep(2);
-		println("Hello "  + item);
-		set loop = item;
-	}
-	return 90;
-}, !{
-    // always runs even if interpreter dies
-    println("Stopped at " + loop);
-    if (_reason == "normal") {
-    	println("Exited normally!");
-    } elif (_reason == "interpreter halt") {
-    	println("Exited abnormally!");
-    } elif (_reason == "cancelled") {
-    	println("Exited abnormally due to cancel!");
-    }
-});
-// on interpreter exit, kill thread
-thread.set_deamon(th_deamon);
-time_sleep(2);
-
-// sets a cancellation flag
-// No guarantee that it would stop if it
-// lacks calls to thread.check_cancel
-thread.cancel(th_deamon);
-
-srandom(cast.f2i(get_time()));
-
-// Demonstrate the use of locks
-var mut = thread.mutex();
-var v = 0;
-
-var write = thread.make(!{
-	while (true) {
-		thread.mutex_lock(mut);
-		var num = random(0, 10);
-		println("?? Random 1: " + num);
-		set v = num;
-		thread.mutex_unlock(mut);
-		time_sleep(random(1, 2));
-	}
-});
-
-var write2 = thread.make(!{
-	while (true) {
-		thread.mutex_lock(mut);
-		var num = random(0, 10);
-		println("!! Random 2: " + num);
-		set v = num;
-		thread.mutex_unlock(mut);
-		time_sleep(random(0, 1));
-	}
-});
-
-var read = thread.make(!{
-	while (true) {
-		thread.mutex_lock(mut);
-		println("   Read: " + v);
-		thread.mutex_unlock(mut);
-		time_sleep_ms(100);
-	}
-});
-
-while(true){}
+//thread.set_daemon(th);
+thread.join(th);

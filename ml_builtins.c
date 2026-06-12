@@ -21,7 +21,6 @@
 #include <uchar.h>
 
 #include "ml_json.c"
-#include "ml_maths.c"
 #include "ml_paths.c"
 
 #ifdef ML_LIB
@@ -231,7 +230,7 @@ Value *native_cast_int(Env *env, int argc, Value **argv)
         if (*end != '\0')
         {
             char *buffer = NULL;
-            our_asprintf(&buffer, "cast.int(str): Got bad part \"%s\"...", end);
+            malloc_sprintf(&buffer, "cast.int(str): Got bad part \"%s\"...", end);
             Value *tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
             mila_free(buffer);
             i = 0;
@@ -258,7 +257,7 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
         if (*end != '\0')
         {
             char *buffer = NULL;
-            our_asprintf(&buffer, "cast.float(str): Got bad part \"%s\"...", end);
+            malloc_sprintf(&buffer, "cast.float(str): Got bad part \"%s\"...", end);
             Value *tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
             mila_free(buffer);
             return tmp;
@@ -373,17 +372,17 @@ Value *file_printer(Value *self)
     char *buffer = NULL;
     if (!self || self->type != T_OPAQUE)
     {
-        our_asprintf(&buffer, "<not-a-file>");
+        malloc_sprintf(&buffer, "<not-a-file>");
         return vstring_take(buffer);
     }
     FILE *f = (FILE *)self->v.opaque;
     if (!f)
     {
-        our_asprintf(&buffer, "<file:closed>");
+        malloc_sprintf(&buffer, "<file:closed>");
     }
     else
     {
-        our_asprintf(&buffer, "<file:%p>", f);
+        malloc_sprintf(&buffer, "<file:%p>", f);
     }
     return vstring_take(buffer);
 }
@@ -646,13 +645,11 @@ Value *native_exit(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
     {
-        mila_threads_cleanup();
-        exit((int)argv[0]->v.i);
+        return vtagged_coded_error(E_EXIT, argv[0]->v.i, "Exited.");
     }
     else if (argc == 0)
     {
-        mila_threads_cleanup();
-        exit(0);
+        return vtagged_coded_error(E_EXIT, 0, "Exited.");
     }
     else
     {
@@ -1683,7 +1680,7 @@ void env_register_builtins(Env *g)
     // means ver++)
     env_set_raw(g, "__mila_version", vint(MILA_VERSION));
     // tell users what implementation it is
-#ifndef SAFE_BUILD
+#ifdef SAFE_BUILD
     env_set_raw(g, "__mila_codename", vstring_dup("mila:safe_canon"));
 #else
     env_set_raw(g, "__mila_codename", vstring_dup("mila:canon"));
@@ -1744,7 +1741,7 @@ void env_register_builtins(Env *g)
     env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin fd'"));
     file_meta = val_make_table();
     val_set_method_table(file_meta, UMethodToString, file_printer);
-#endif
+#endif // SAFE_BUILD
 
     dict_meta = val_make_table();
 
@@ -1894,6 +1891,7 @@ void env_register_builtins(Env *g)
     env_set_local_raw(g, "E_FATAL", vint(E_FATAL));
     env_set_local_raw(g, "E_GENERIC", vint(E_GENERIC));
     env_set_local_raw(g, "E_SYNTAX_ERROR", vint(E_SYNTAX_ERROR));
+    env_set_local_raw(g, "E_EXIT", vint(E_EXIT));
     env_register_native(g, "exit", native_exit);
     // === Time measurement
     env_register_native(g, "get_time", native_get_time);

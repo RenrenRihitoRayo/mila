@@ -1,0 +1,8 @@
+-Iheaders
+-std=c11
+-Wextra
+-Wall
+-Wno-nonnull
+-Wno-unused-parameter
+-Wno-enum-compare
+-Wno-enum-conversion

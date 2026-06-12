@@ -2,9 +2,8 @@
 #pragma once
 
 #include <string.h>
-void *mila_malloc(size_t);
+#include "mila.h"
 
-#ifndef MILA_PROTO
 char *mila_strdup(const char *s) {
   if (!s)
     return NULL;
@@ -61,12 +60,3 @@ char *mila_strcat_alloc(const char *a, const char *b) {
   out[len_a + len_b] = '\0';
   return out;
 }
-
-#else
-
-char *mila_strdup(const char *s);
-char *mila_strndup(const char *s, size_t n);
-char *mila_strcat_alloc(const char *a, const char *b);
-char *mila_strtok(char *str, const char *delim);
-
-#endif

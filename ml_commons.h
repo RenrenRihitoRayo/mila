@@ -64,3 +64,29 @@ void noise(
         out[i] = current;
     }
 }
+
+typedef struct {
+    void** items;
+    size_t size, count;
+} __dynamic_array_mask;
+
+void da_append(void* arr, void* item) {
+    if (!arr) {
+        fprintf(stderr, "Given dynamic array was NULL! <%p>\n", arr);
+        abort();
+    }
+    __dynamic_array_mask* array = (__dynamic_array_mask*)arr;
+
+    if (!array->items) {
+        array->items = (void**)mila_malloc(sizeof(void*));
+        if (!array->items) abort();
+        array->items[array->count++] = item;
+        array->size = 1;
+    } else if (array->size <= array->count + 1) {
+        size_t new_size = (array->size + (size_t)(array->size * 0.75) + 1);
+        array->items = (void**)mila_realloc(array->items, sizeof(void*) * new_size);
+        if (!array->items) abort();
+        array->items[array->count++] = item;
+        array->size = new_size;
+    }
+}

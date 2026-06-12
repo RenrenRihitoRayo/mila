@@ -1,7 +1,8 @@
 // This project is licensed under the GNU Affero General Public License
 #pragma once
 #include <stdlib.h>
-#include "ml_string.c"
+#include "mila.h"
+#include "ml_string.h"
 #include <ctype.h>
 #include <stdarg.h>
 #include <string.h>
@@ -21,15 +22,6 @@
 #include <unistd.h>
 #define PATH_GETCWD getcwd
 #endif
-
-typedef struct path_list path_list;
-struct path_list {
-  char **items;
-  int count;
-  int capacity;
-};
-
-#ifndef MILA_PROTO
 
 int file_exists(const char *p) {
   struct stat st;
@@ -95,7 +87,7 @@ const char *get_env(const char *name, size_t len) {
 void expand_env(char **bufptr) {
   char *in = *bufptr;
   size_t outcap = strlen(in) * 2 + 64; // generous
-  char *out = malloc(outcap);
+  char *out = mila_malloc(outcap);
   size_t o = 0;
 
   for (size_t i = 0; in[i];) {
@@ -191,9 +183,9 @@ char* path_join_alloc(char* path, ...) {
     const char *part = va_arg(args, const char *);
     if (!part) break;
 #ifdef _WIN32
-    our_asprintf(&out, "\\%s", part);
+    malloc_sprintf(&out, "\\%s", part);
 #else
-    our_asprintf(&out, "/%s", part);
+    malloc_sprintf(&out, "/%s", part);
 #endif
   }
   va_end(args);
@@ -221,7 +213,7 @@ void expand_home(char **bufptr) {
   size_t hl = strlen(home);
   size_t rl = strlen(in);
 
-  char *out = malloc(hl + rl + 1);
+  char *out = mila_malloc(hl + rl + 1);
   strcpy(out, home);
   strcat(out, in + 1);
 
@@ -244,12 +236,12 @@ char *transform_path(const char *input) {
 }
 
 path_list *path_list_new(void) {
-  path_list *p = malloc(sizeof(path_list));
+  path_list *p = mila_malloc(sizeof(path_list));
   if (!p)
     return NULL;
   p->count = 0;
   p->capacity = 4;
-  p->items = malloc(sizeof(char *) * p->capacity);
+  p->items = mila_malloc(sizeof(char *) * p->capacity);
   if (!p->items) {
     free(p);
     return NULL;
@@ -335,7 +327,7 @@ void path_basename(const char *path, char *out, size_t outsize) {
   out[outsize - 1] = '\0';
 }
 
-// Get the directory part of a path. Returns malloc'd string, caller must free.
+// Get the directory part of a path. Returns mila_malloc'd string, caller must free.
 char *path_dirname_alloc(const char *path) {
   if (!path || !*path) {
     return mila_strdup(".");
@@ -513,7 +505,7 @@ char *path_list_find(path_list *pl, const char *file) {
     size_t rl = strlen(root);
     size_t fl = strlen(tfile);
     size_t need = rl + 1 + fl + 1;
-    char *full = malloc(need);
+    char *full = mila_malloc(need);
     if (!full) continue;
     strcpy(full, root);
     char sep =
@@ -542,27 +534,3 @@ char *path_get_cwd(void) {
   normalize_slashes(cwd);
   return cwd;
 }
-
-#else
-
-int file_exists(const char *p);
-void normalize_slashes(char *buf);
-const char *get_env(const char *name, size_t len);
-void expand_env(char **bufptr);
-void path_join(char *out, size_t outsize, int count, ...);
-void expand_home(char **bufptr);
-char *transform_path(const char *input);
-path_list *path_list_new(void);
-void path_dirname(const char *path, char *out, size_t outsize);
-void path_basename(const char *path, char *out, size_t outsize);
-char* path_dirname_alloc(const char *path);
-char* path_basename_alloc(const char *path);
-char* path_basename_id_alloc(const char *path);
-void path_list_free(path_list *pl);
-int path_list_add(path_list *pl, const char *path);
-int path_list_remove(path_list *pl, const char *path);
-char *path_list_find(path_list *pl, const char *file);
-char *path_get_cwd(void);
-char* path_join_alloc(char* path, ...);
-int path_list_add_top(path_list *pl, const char *path);
-#endif

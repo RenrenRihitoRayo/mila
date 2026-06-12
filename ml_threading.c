@@ -172,18 +172,18 @@ static void *mila_thread_worker(void *arg)
         ThreadContext *ctx = (ThreadContext *)arg;
         ctx->status = 1;
         result = call_function_with(NULL, ctx->func, vint(ctx->public_thread_id), NULL);
-        if (IS_ERROR_TAGGED(result) && GET_ERROR(result) == E_THREAD_HALT)
-        {
-            val_release(result);
-            ctx->result = vnull();
-        }
-        else
-        {
-            if (ctx->is_generator) {
-                val_release(result);
-            }
-            else ctx->result = result;
-        }
+        // if (IS_ERROR_TAGGED(result) && GET_TAGGED_ERROR_TYPE(result) == E_THREAD_HALT)
+        // {
+        //     val_release(result);
+        //     ctx->result = vnull();
+        // }
+        // else
+        // {
+        //     if (ctx->is_generator) {
+        //         val_release(result);
+        //     }
+        //     else ctx->result = result;
+        // }
         ctx->finished = 1;
         ctx->status = 2;
         pthread_cond_signal(&ctx->yield_cond);
@@ -384,8 +384,7 @@ Value *native_thread_join(Env *env, int argc, Value **argv)
     if (ctx->on_kill)
     {
         Env* frame = env_new(NULL);
-        env_set_local_raw(frame, "_reason", vstring_dup("normal"));
-        val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+        val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), vstring_dup("normal"), NULL));
         val_release(ctx->on_kill);
         env_free(frame);
         ctx->on_kill = NULL;
@@ -474,7 +473,7 @@ Value *native_thread_dump(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_thread_id(Env *env, int argc, Value **argv)
+Value *native_thread_pthread_id(Env *env, int argc, Value **argv)
 {
     pthread_t tid = pthread_self();
     return vint((long)tid);
@@ -521,8 +520,7 @@ Value *native_thread_cancel(Env *env, int argc, Value **argv)
     if (ctx->on_kill)
     {
         Env* frame = env_new(NULL);
-        env_set_local_raw(frame, "_reason", vstring_dup("cancelled"));
-        val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+        val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), vstring_dup("cancelled"), NULL));
         val_release(ctx->on_kill);
         env_free(frame);
         ctx->on_kill = NULL;
@@ -583,26 +581,23 @@ void mila_threads_cleanup(void)
         if (!ctx) continue;
 
         /* Non-daemon threads: join and cleanup normally */
-        if (ctx->status < 2 && !ctx->is_daemon && !ctx->is_cgen)
+        if (!ctx->is_daemon)
         {
-            pthread_join(ctx->thread_id, NULL);
             if (ctx->on_kill)
             {
                 Env* frame = env_new(NULL);
-                env_set_local_raw(frame, "_reason", vstring_dup("normal"));
-                val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+                val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), vstring_dup("normal"), NULL));
                 val_release(ctx->on_kill);
                 env_free(frame);
                 ctx->on_kill = NULL;
             }
         }
         /* Daemon threads: execute cleanup handler on halt */
-        if (ctx->on_kill)
+        else if (ctx->on_kill)
         {
             ctx->is_cancelled = 1;
             Env* frame = env_new(NULL);
-            env_set_local_raw(frame, "_reason", vstring_dup("interpreter halt"));
-            val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), NULL));
+            val_release(call_function_with(frame, ctx->on_kill, vint(ctx->public_thread_id), vstring_dup(ctx->status == 2 ? "normal" : "interpreter halt"), NULL));
             val_release(ctx->on_kill);
             env_free(frame);
             ctx->on_kill = NULL;
@@ -626,7 +621,7 @@ void register_thread_builtins(Env *env)
     env_register_native(env, "thread.cancel", native_thread_cancel);
     env_register_native(env, "thread.check_cancel", native_thread_check_cancel);
     env_register_native(env, "thread.set_daemon", native_thread_set_daemon);
-    env_register_native(env, "thread.get_id", native_thread_id);
+    env_register_native(env, "thread.get_pthread_id", native_thread_pthread_id);
     env_register_native(env, "thread.status", native_thread_status);
     env_register_native(env, "thread.mutex", native_make_mutex);
     env_register_native(env, "thread.mutex_unlock", native_mutex_unlock);

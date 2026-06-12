@@ -2,7 +2,7 @@
     Minimal MiLa library
 */
 
-// ML_LIB tells mila to define functions but not cli mechanisms
+// ML_LIB tells mila to provide only the implementation necessary for the runtime
 // Allows to compile with its own implementation
 // Without needing to link with mila
 #define ML_LIB
@@ -28,6 +28,12 @@ Value *greet(Env *e, int argc, Value **argv) {
 // This fuction is optional
 void _mila_lib_init(Env *e) {
   printf("Lib init!\n");
+  return;
+}
+
+// This fuction is optional
+void _mila_lib_deinit(Env *e) {
+  printf("Lib deinit!\n");
   return;
 }
 

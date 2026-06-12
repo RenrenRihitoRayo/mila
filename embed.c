@@ -1,4 +1,4 @@
-// MiLa isnt standalone
+// tell MiLa to not be standalone
 #define ML_LIB
 // so we dont need -lm
 #define ML_NO_MATH
@@ -14,7 +14,11 @@ int main() {
     // other init
     Env* globals = mila_init();
     // Run the following code (yup this easy)
-    Value* v = eval_str("http.init(); println(json.dumps(http.post(\"example.com\", \"{\\\"test\\\":90\"))); http.cleanup();", globals);
+    Value* v = eval_str(
+        "http.init();"
+        "println(json.dumps(http.post(\"example.com\", \"{\\\"test\\\":90\")));"
+        "http.cleanup();",
+    globals);
     // Free what ever eval returns (for this example this should be null)
     val_release(v);
     // Clean up

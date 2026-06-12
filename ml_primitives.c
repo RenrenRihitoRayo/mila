@@ -39,13 +39,13 @@ Value *list_repr(Value *self)
     {
         char *repr = as_c_string_repr(iter[i]);
         if (i < lst->size - 1)
-            our_asprintf(&buffer, "%s, ", repr);
+            malloc_sprintf(&buffer, "%s, ", repr);
         else
-            our_asprintf(&buffer, "%s", repr);
+            malloc_sprintf(&buffer, "%s", repr);
         val_release(iter[i]);
         mila_free(repr);
     }
-    our_asprintf(&buffer, "]");
+    malloc_sprintf(&buffer, "]");
     mila_free(iter);
     return vstring_take(buffer);
 }
@@ -60,13 +60,13 @@ Value *list_str(Value *self)
     {
         char *repr = as_c_string_repr(iter[i]);
         if (i < lst->size - 1)
-            our_asprintf(&buffer, "%s, ", repr);
+            malloc_sprintf(&buffer, "%s, ", repr);
         else
-            our_asprintf(&buffer, "%s", repr);
+            malloc_sprintf(&buffer, "%s", repr);
         val_release(iter[i]);
         mila_free(repr);
     }
-    our_asprintf(&buffer, "]");
+    malloc_sprintf(&buffer, "]");
     mila_free(iter);
     return vstring_take(buffer);
 }
@@ -272,38 +272,38 @@ Value *array_to_str(Value *self)
     char *buffer = NULL;
     if (!self || self->type != T_OPAQUE)
     {
-        our_asprintf(&buffer, "<not-an-array>");
+        malloc_sprintf(&buffer, "<not-an-array>");
         return vstring_take(buffer);
     }
 
     Array *arr = (Array *)self->v.opaque;
     if (!arr)
     {
-        our_asprintf(&buffer, "<null-array-data>");
+        malloc_sprintf(&buffer, "<null-array-data>");
         return vstring_take(buffer);
     }
 
     if (arr->size > MAX_ITEMS_DISPLAYED)
         return vstring_fmt("array(%i items)", arr->size);
 
-    our_asprintf(&buffer, "array.from(");
+    malloc_sprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
     {
         Value *slot = arr->array[i];
         if (!slot)
         {
-            our_asprintf(&buffer, "?null?");
+            malloc_sprintf(&buffer, "?null?");
         }
         else
         {
             char *s = as_c_string_repr(slot);
-            our_asprintf(&buffer, "%s", s);
+            malloc_sprintf(&buffer, "%s", s);
             mila_free(s);
         }
         if (i < arr->size - 1)
-            our_asprintf(&buffer, ", ");
+            malloc_sprintf(&buffer, ", ");
     }
-    our_asprintf(&buffer, ")");
+    malloc_sprintf(&buffer, ")");
     return vstring_take(buffer);
 }
 
@@ -312,35 +312,35 @@ Value *array_to_repr(Value *self)
     char *buffer = NULL;
     if (!self || self->type != T_OPAQUE)
     {
-        our_asprintf(&buffer, "<not-an-array>");
+        malloc_sprintf(&buffer, "<not-an-array>");
         return vstring_take(buffer);
     }
 
     Array *arr = (Array *)self->v.opaque;
     if (!arr)
     {
-        our_asprintf(&buffer, "<null-array-data>");
+        malloc_sprintf(&buffer, "<null-array-data>");
         return vstring_take(buffer);
     }
 
-    our_asprintf(&buffer, "array.from(");
+    malloc_sprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
     {
         Value *slot = arr->array[i];
         if (!slot)
         {
-            our_asprintf(&buffer, "?null?");
+            malloc_sprintf(&buffer, "?null?");
         }
         else
         {
             char *s = as_c_string_repr(slot);
-            our_asprintf(&buffer, "%s", s);
+            malloc_sprintf(&buffer, "%s", s);
             mila_free(s);
         }
         if (i < arr->size - 1)
-            our_asprintf(&buffer, ", ");
+            malloc_sprintf(&buffer, ", ");
     }
-    our_asprintf(&buffer, ")");
+    malloc_sprintf(&buffer, ")");
     return vstring_take(buffer);
 }
 
@@ -873,9 +873,9 @@ Value* native_str_join(Env* env, int argc, Value** argv) {
     for (LLNode *v = l->head; v; v = v->next)
     {
         char* vstr = as_c_string(v->value);
-        our_asprintf(&string, "%s", vstr);
+        malloc_sprintf(&string, "%s", vstr);
         if (v->next)
-            our_asprintf(&string, "%s", delim);
+            malloc_sprintf(&string, "%s", delim);
         free(vstr);
     }
     return vstring_take(string);

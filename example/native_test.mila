@@ -1,0 +1,8 @@
+
+load("hello.so");
+
+greet("Hello, world!"); // just prints string argument
+
+input("what: ");
+
+report_tagged(E_EXIT, "test"); // test cleanup on error

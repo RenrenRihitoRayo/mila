@@ -1,3 +1,4 @@
+
 /*
    Contextuals grabs variables from the call site
      * Contextuals are explicitly defined in the scope.
@@ -27,7 +28,7 @@ println(counter());
 println(counter());
 println(counter());
 
-fn context()[count] {
+fn context(count)[count] {
 	// make sure we dont store a ref
 	// and set up the value as well
 	set count = count - 1;
@@ -59,12 +60,18 @@ fn allocator(size)
 	println("Allocated " + size + " bytes.");
 }
 
+fn my_other_allocator(size)
+{
+	println("Allocated " + size * 2 + " bytes.");
+}
+
 fn function_that_may_allocate()[_allocator] {
 	var obj = _allocator(10);
 }
 
 {
 	contextual allocator as _allocator;
+	contextual my_other_allocator as _allocator;
 	function_that_may_allocate();
 	forget [_allocator];
 	catch err {

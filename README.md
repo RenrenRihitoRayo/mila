@@ -64,20 +64,74 @@ Less than most programming languages' number of keywords!
 
 ## Escape Sequences
 
-| Character | C Equivalent |
-|----------:|:-------------|
-|    \\n    |     \\n      |
-|    \\f    |     \\f      |
-|    \\v    |     \\v      |
-|    \\t    |     \\t      |
-|    \\b    |     \\b      |
-|    \\r    |     \\r      |
-|    \\a    |     \\a      |
-|    \\xhh    |     \\xhh      |
-|    \\0oo    |     \\0oo      |
-|    \\Ndd    |     \\Ndd      |
+|    Character    | C Equivalent |
+|----------------:|:-------------|
+|    \\n          |     \\n      |
+|    \\f          |     \\f      |
+|    \\v          |     \\v      |
+|    \\t          |     \\t      |
+|    \\b          |     \\b      |
+|    \\r          |     \\r      |
+|    \\a          |     \\a      |
+|    \\xhh        |     \\xhh    |
+|    \\0oo        |     \\0oo    |
+|    \\Ndd        |     None     |
+|    \\N{integer} |     None     |
+|    \\uxxxx      |     None     |
+|    \\Uxxxxxxxx  |     None     |
 
-`\N` accepts decimal digits.
+`\N` and `\N{integer}` accepts decimal digits.
+
+## Primitives
+
+MiLa defines primitives as values that are supported by the language directly.
+This includes having operations that are hardcoded into the language (being supported
+on the syntax level is not enough to be considered a primitive in MiLa.), or being
+part of the implementation that is critical.
+
+True Primitives in MiLa are (lowest possible level of abstraction):
+* Strings
+* Integer variants
+* Float variants
+* none
+* null
+* booleans
+* Functions
+* Opaque variants
+True Primitives that are hidden from the user:
+* Error values
+* Control values
+
+False Primitives (part of the runtime but not really supported in a critical level):
+* Dictionaries
+* Lists (this is a half exception as it does have behavior the runtime itself dictates)
+* Arrays
+
+False primitives are implemented using the `opaque` type and use operator overloading via
+Value Instance Operator Overloading (VIOO) which is faster than Object Instance Operator Overloading (OOIO).
+
+None Primitves:
+* User defined objects
+
+## VIOO vs OIOO
+
+VIOO gives the implementor as much control as possible.
+OIOO gives the implementor as much convenience as possible.
+
+VIOO is a static array of function methods which cut the dispatch to O(1).
+OIOO is a dynamic object which has O(n) amortized dispatch.
+
+VIOO tries to minimies the amount of context switches (runtime to C then back).
+OIOO minimizes low level mental overhead (you still write in MiLa).
+
+VIOO gives you access to deallocation logic.
+OIOO gives you basic arithmetic overloading and boolean coercion.
+
+VIOO is perfect for wrapping C types.
+OIOO is perfect for convenient abstraction.
+
+VIOO for speed and control.
+OIOO for convenience and abstraction.
 
 ## Example
 
@@ -114,8 +168,7 @@ println(fib(10)); // 55
 
 int main(void) {
     // set up env
-    Env* e = env_new(NULL);
-    env_register_builtins(e);
+    Env* e = mila_global_init();
     
     // set variables
     env_set_raw(e, "var", vint(42));
@@ -127,16 +180,11 @@ int main(void) {
     Value* v = eval_str("println(\"Hello, world!\", var);", e);
     
     // delete a variable
-    Value* tmp = env_get(e, "var");
-    val_kill(tmp);
-    env_set(e, "var", NULL);
-
-    // Updated way
-    // env_remove(e, "var");
+    env_remove(e, "var");
     
     // Clean up
     val_release(v); 
-    env_free(e);
+    mila_global_deinit(e);
     return 0;
 }
 ```
@@ -150,8 +198,7 @@ int main(void) {
 
 int main(void) {
     // set up env
-    Env* e = env_new(NULL);
-    env_register_builtins(e);
+    Env* e = mila_global_init();
     
     run_file("some_file.mila", e);
 
@@ -161,7 +208,7 @@ int main(void) {
     val_release(res);
     
     val_release(v); 
-    env_free(e);
+    mila_global_deinit(e);
     return 0;
 }
 
@@ -174,28 +221,31 @@ int main(void) {
 #include "mila.c"
 
 Value* hello(Env* e, int argc, Value** argv) {
-    (void)e; // no unused warning
     // keep in mind MiLa doesnt check argument counts
     // you the author does.
-    printf("Hello from C!"):
+    printf("Hello from C!\n");
     return vnull();
 }
 
 // Optional init function
 void _mila_lib_init(Env* e) {
-    (void)e;
-    printf("Lib init!");
+    printf("Lib init!\n");
+}
+
+// Optional init function
+void _mila_lib_deinit(Env* e) {
+    printf("Lib cleanup!\n");
 }
 
 // You can choose between the two bellow to export functions
 
-// Simple way (recomeded for C codebases, prioritized)
+// Simple way (recomeded for C codebases)
 const char* lib_functions[] = {
     "hello",
     NULL
 };
 
-// More stable way (for C++ code bases where name mangling may take place)
+// More stable way (for C++ code bases where name mangling may take place, prioritized over lib_functions)
 const NativeEntry lib_function_entries[] = {
     {.name = "hello", .func = hello},
     {NULL, NULL}

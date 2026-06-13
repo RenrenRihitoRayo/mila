@@ -1,4 +1,12 @@
 // This project is licensed under the GNU Affero General Public License
+
+/*
+ * MiLa
+ * A modern programming language
+ * the smallest it can get.
+ * Welcome to the MiLa Language Implementation.
+ */
+
 #define _GNU_SOURCE
 
 #include "blr.c"
@@ -11,13 +19,7 @@
 #endif
 
 #include <stdatomic.h>
-
-/*
- * MiLa
- * A modern programming language
- * the smallest it can get.
- * Welcome to the MiLa Language Implementation.
- */
+#include <signal.h>
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -27,7 +29,7 @@
 #include <string.h>
 #include <getopt.h>
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(_WIN64)
 #include <direct.h>
 #include <psapi.h>
 #include <windows.h>
@@ -60,7 +62,7 @@ void print_memory_usage()
 {
     size_t memory_usage = 0;
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(_WIN64)
     PROCESS_MEMORY_COUNTERS pmc;
     GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
     memory_usage = pmc.WorkingSetSize;
@@ -83,7 +85,7 @@ void print_memory_usage()
     printf("Memory usage: %.2f %s\n", memory_usage_d, units[unit_index]);
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(_WIN64)
 unsigned long get_process_id(void)
 {
     return GetCurrentProcessId();
@@ -187,7 +189,7 @@ FunctionV *functionv_copy(const FunctionV *src)
         if (!dst->params) { free(dst); return NULL; }
 
         for (size_t i = 0; i < n; i++) {
-            dst->params[i] = strdup(src->params[i]);
+            dst->params[i] = mila_strdup(src->params[i]);
             if (!dst->params[i]) {
                 for (size_t j = 0; j < i; j++) free(dst->params[j]);
                 free(dst->params);
@@ -213,7 +215,7 @@ FunctionV *functionv_copy(const FunctionV *src)
         }
 
         for (size_t i = 0; i < n; i++) {
-            dst->contextuals[i] = strdup(src->contextuals[i]);
+            dst->contextuals[i] = mila_strdup(src->contextuals[i]);
             if (!dst->contextuals[i]) {
                 for (size_t j = 0; j < i; j++) free(dst->contextuals[j]);
                 free(dst->contextuals);
@@ -229,7 +231,7 @@ FunctionV *functionv_copy(const FunctionV *src)
     }
 
     if (src->body_src) {
-        dst->body_src = strdup(src->body_src);
+        dst->body_src = mila_strdup(src->body_src);
         if (!dst->body_src) {
             if (dst->contextuals) {
                 for (size_t i = 0; dst->contextuals[i]; i++) free(dst->contextuals[i]);
@@ -245,7 +247,7 @@ FunctionV *functionv_copy(const FunctionV *src)
     }
 
     if (src->name) {
-        dst->name = strdup(src->name);
+        dst->name = mila_strdup(src->name);
         if (!dst->name) {
             if (dst->body_src) free(dst->body_src);
             if (dst->contextuals) {
@@ -276,7 +278,7 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
     dst->name = NULL;
 
     if (src->name) {
-        dst->name = strdup(src->name);
+        dst->name = mila_strdup(src->name);
         if (!dst->name) {
             free(dst);
             return NULL;
@@ -291,6 +293,99 @@ Value* val_copy(Value *src)
     if (!src) return vnull();
     if (src->method_table && src->method_table[UMethodCopy])
         return ((unary_method)src->method_table[UMethodCopy])(src);
+    if (src->method_table && src->method_table[UMethodCopyShallow])
+        return ((unary_method)src->method_table[UMethodCopyShallow])(src);
+
+    if (!src) return NULL;
+
+    Value *copy = mila_malloc(sizeof(Value));
+    if (!copy) return NULL;
+
+    /* Copy structure layout */
+    copy->type = src->type;
+    copy->refcount = 1;
+    copy->type_name = mila_strdup(src->type_name);
+    copy->method_table = src->method_table;
+
+    /* Deep copy based on type */
+    switch (src->type)
+    {
+        case T_STRING:
+            /* Strings: duplicate the string buffer */
+            copy->v.s = mila_strdup(src->v.s);
+            break;
+
+        case T_BOOL:
+            /* Primitives: direct copy */
+            copy->v.b = src->v.b;
+            break;
+
+        case T_INT:
+            copy->v.i = src->v.i;
+            break;
+
+        case T_UINT:
+            copy->v.ui = src->v.ui;
+            break;
+
+        case T_FLOAT:
+            copy->v.f = src->v.f;
+            break;
+        case T_BFLOAT:
+            copy->v.bf = src->v.bf;
+            break;
+        case T_BINT:
+            copy->v.bi = src->v.bi;
+            break;
+        case T_ERROR:
+            /* Error messages: duplicate the message */
+            if (src->v.message)
+            {
+                copy->v.message = mila_strdup(src->v.message);
+            }
+            break;
+
+        case T_TAGGED_ERROR:
+            /* Tagged errors: duplicate message and copy type */
+            copy->v.tagged_error.type = src->v.tagged_error.type;
+            if (src->v.tagged_error.message)
+            {
+                copy->v.tagged_error.message = mila_strdup(src->v.tagged_error.message);
+            }
+            break;
+
+        case T_FUNCTION:
+            /* Functions: retain reference (shared ownership) */
+            copy->v.fn = functionv_copy(src->v.fn);
+            break;
+        case T_NATIVE:
+            /* Native functions: retain reference */
+            copy->v.native = nativefn_copy(src->v.native);
+            break;
+
+        case T_OPAQUE: {
+            /* Opaques: share the pointer but increment if refcounted */
+            Value* fn = GET_OVERLOAD(src, OVERLOAD_COPY);
+            if (fn)
+                return call_function_with(NULL, fn, val_retain(src), NULL);
+            else
+            copy->v.opaque = src->v.opaque;
+        } break;
+        case T_NONE:
+        case T_NULL:
+            copy->type = src->type;
+            break;
+
+        default:
+            val_release(copy);
+            return verror("Type %s doesnt support copying and may cause memory leaks if done so.", GET_TYPENAME(src));
+    }
+
+    return copy;
+}
+Value* val_copy_shallow(Value *src)
+{
+    if (!src) return vnull();
     if (src->method_table && src->method_table[UMethodCopyShallow])
         return ((unary_method)src->method_table[UMethodCopyShallow])(src);
 
@@ -2095,67 +2190,6 @@ void env_remove_contextual(Env *env, const char *name)
 int load_library(Env *env, const char *libpath)
 {
     int fail = 1;
-#ifdef _WIN32
-    HMODULE lib = LoadLibraryA(libpath);
-    if (!lib)
-    {
-        fprintf(stderr, "LoadLibraryA('%s') failed (err=%lu)\n", libpath,
-                GetLastError());
-        return -1;
-    }
-
-    void (*init_func)(Env *) = void(*)(Env *)(lib, "_mila_lib_init");
-
-    if (init_func)
-    {
-        fail = 0;
-        init_func(env);
-    }
-
-    const char *const *names =
-        (const char *const *)GetProcAddress(lib, "lib_functions");
-
-    if (names)
-    {
-        for (size_t i = 0; names[i] != NULL; i++)
-        {
-            FARPROC f = GetProcAddress(lib, names[i]);
-            if (!f)
-            {
-                fprintf(stderr, "Warning: function '%s' not found in '%s'\n", names[i],
-                        libpath);
-                continue;
-            }
-            env_register_native(env, names[i], (void *)f);
-        }
-    }
-
-    const NativeEntry *entries =
-        (const NativeEntry *)GetProcAddress(lib, "lib_function_entries");
-
-    if (entries)
-    {
-        char *name;
-        NativeFn func;
-        for (size_t i = 0; entries[i].name && entries[i].func; i++)
-        {
-            env_register_native(env, entries[i].name, entries[i].func);
-        }
-        return 0;
-    }
-
-    if (!fail)
-        return 0;
-
-    fprintf(stderr,
-            "Must have a simple 'const char* lib_functions' and list the "
-            "function names (last item must be NULL)\nor also 'const NativeEntry "
-            "lib_function_entries[]' which takes in (NativeEntry){.name, .func} "
-            "with the last item being (NativeEntry){NULL, NULL}\n");
-    FreeLibrary(lib);
-    return -2;
-
-#else // POSIX
     void *lib = dlopen(libpath, RTLD_LAZY);
     if (!lib)
     {
@@ -2183,6 +2217,19 @@ int load_library(Env *env, const char *libpath)
         free(name);
     }
 
+    const NativeEntry *entries =
+        (const NativeEntry *)dlsym(lib, "lib_function_entries");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
+    }
+
     const char *const *names = (const char *const *)dlsym(lib, "lib_functions");
 
     err = dlerror();
@@ -2200,19 +2247,6 @@ int load_library(Env *env, const char *libpath)
             }
             env_register_native(env, names[i], f);
         }
-    }
-
-    dlerror();
-    const NativeEntry *entries =
-        (const NativeEntry *)dlsym(lib, "lib_function_entries");
-
-    err = dlerror();
-    if (!err)
-    {
-        for (size_t i = 0; entries[i].name && entries[i].func; i++)
-        {
-            env_register_native(env, entries[i].name, entries[i].func);
-        }
         return 0;
     }
 
@@ -2228,75 +2262,10 @@ int load_library(Env *env, const char *libpath)
             err);
     dlclose(lib);
     return -2;
-#endif
 }
 int load_library_noisy(Env *env, const char *libpath)
 {
     int fail = 1;
-#ifdef _WIN32
-    HMODULE lib = LoadLibraryA(libpath);
-    if (!lib)
-    {
-        fprintf(stderr, "LoadLibraryA('%s') failed (err=%lu)\n", libpath,
-                GetLastError());
-        return -1;
-    }
-
-    void (*init_func)(Env *) = void(*)(Env *)(lib, "_mila_lib_init");
-
-    if (init_func)
-    {
-        fail = 0;
-        init_func(env);
-    }
-
-    const char *const *names =
-        (const char *const *)GetProcAddress(lib, "lib_functions");
-
-    if (names)
-    {
-        for (size_t i = 0; names[i] != NULL; i++)
-        {
-            FARPROC f = GetProcAddress(lib, names[i]);
-            if (!f)
-            {
-                fprintf(stderr, "Warning: function '%s' not found in '%s'\n", names[i],
-                        libpath);
-                continue;
-            }
-            fprintf(stderr, "from lib_functions, Loaded symbol '%s'\n", names[i]);
-            env_register_native(env, names[i], (void *)f);
-        }
-    }
-
-    const NativeEntry *entries =
-        (const NativeEntry *)GetProcAddress(lib, "lib_function_entries");
-
-    if (entries)
-    {
-        char *name;
-        NativeFn func;
-        for (size_t i = 0; entries[i].name && entries[i].func; i++)
-        {
-            fprintf(stderr, "from lib_function_entries, Loaded symbol '%s'\n",
-                    entries[i].name);
-            env_register_native(env, entries[i].name, entries[i].func);
-        }
-        return 0;
-    }
-
-    if (!fail)
-        return 0;
-
-    fprintf(stderr,
-            "Must have a simple 'const char* lib_functions' and list the "
-            "function names (last item must be NULL)\nor also 'const NativeEntry "
-            "lib_function_entries[]' which takes in (NativeEntry){.name, .func} "
-            "with the last item being (NativeEntry){NULL, NULL}\n");
-    FreeLibrary(lib);
-    return -2;
-
-#else // POSIX
     void *lib = dlopen(libpath, RTLD_LAZY);
     if (!lib)
     {
@@ -2310,6 +2279,10 @@ int load_library_noisy(Env *env, const char *libpath)
     if (!err)
     {
         fail = 0;
+        char* name = NULL;
+        malloc_sprintf(&name, "%s:_mila_lib_init", libpath);
+        printf("Loaded init: %s\n", name);
+        free(name);
         init_func(env);
     }
     void (*deinit_func)(Env *) = dlsym(lib, "_mila_lib_deinit");
@@ -2319,9 +2292,25 @@ int load_library_noisy(Env *env, const char *libpath)
         fail = 0;
         char* name = NULL;
         malloc_sprintf(&name, "%s:_mila_lib_deinit", libpath);
+        printf("Loaded cleanup: %s\n", name);
         CleanupRegistryEntry* entry = make_cleanup_entry(name, deinit_func);
         da_append(cleanup_registry, entry);
         free(name);
+    }
+
+    const NativeEntry *entries =
+        (const NativeEntry *)dlsym(lib, "lib_function_entries");
+
+    err = dlerror();
+    if (!err)
+    {
+        for (size_t i = 0; entries[i].name && entries[i].func; i++)
+        {
+            fprintf(stderr, "from lib_function_entries, Loaded symbol '%s'\n",
+                    entries[i].name);
+            env_register_native(env, entries[i].name, entries[i].func);
+        }
+        return 0;
     }
 
     const char *const *names = (const char *const *)dlsym(lib, "lib_functions");
@@ -2342,21 +2331,6 @@ int load_library_noisy(Env *env, const char *libpath)
             fprintf(stderr, "from lib_functions, Loaded symbol '%s'\n", names[i]);
             env_register_native(env, names[i], f);
         }
-    }
-
-    dlerror();
-    const NativeEntry *entries =
-        (const NativeEntry *)dlsym(lib, "lib_function_entries");
-
-    err = dlerror();
-    if (!err)
-    {
-        for (size_t i = 0; entries[i].name && entries[i].func; i++)
-        {
-            fprintf(stderr, "from lib_function_entries, Loaded symbol '%s'\n",
-                    entries[i].name);
-            env_register_native(env, entries[i].name, entries[i].func);
-        }
         return 0;
     }
 
@@ -2372,7 +2346,6 @@ int load_library_noisy(Env *env, const char *libpath)
             err);
     dlclose(lib);
     return -2;
-#endif
 }
 
 #endif
@@ -7410,7 +7383,6 @@ Env *mila_init(void)
 
 void mila_deinit(Env *g)
 {
-    mila_threads_cleanup();
     env_free(g);
 }
 
@@ -7427,8 +7399,23 @@ void mila_global_deinit(Env *g)
         fprintf(stderr, "mila_init wasnt called.\n");
         abort();
     }
-    mila_threads_cleanup();
     env_free(g);
+    mila_threads_cleanup();
+    env_free_builtins();
+    path_list_free(search_path);
+}
+
+void print_primitive(char* text) {
+#if defined(_WIN32) || defined(_WIN64)
+    _exit(1);
+#else
+    write(STDOUT_FILENO, text, strlen(text));
+#endif
+}
+
+void handle_signal(int signal) {
+    mila_global_deinit(NULL);
+    _exit(signal);
 }
 
 #if !(defined(SAFE_BUILD) || defined(ML_LIB))
@@ -7441,15 +7428,15 @@ int main(int argc, char **argv)
         if (strcmp(argv[1], "--info") == 0)
         {
             printf("MiLa - Info\n"
-                   "Version: 1.0\n\n"
+                   "Version: %ld.%ld.%ld\n\n"
                    "Variable size:\n"
-                   "  %lu Bytes\n "
+                   "  %lu Bytes for real primitive types\n "
                    "   For types:\n"
                    "     strings, int, bint,\n"
                    "     uint, float, bfloat,\n"
                    "     functions, and native functions\n"
-                   "  %lu Bytes for types with user defined overloads\n"
-                   "    For types:\n"
+                   "  %lu Bytes for types with Value Instance Operator Overloading\n"
+                   "    For types like:\n"
                    "      arrays, lists, and dictionaries\n"
                    "Estimated memory:\n"
                    "  t * %lu + n * 40 Bytes\n"
@@ -7457,6 +7444,7 @@ int main(int argc, char **argv)
                    "  t = # of types\n"
                    "Max num digits:\n"
                    "  %i\n",
+                   MILA_EDITION, MILA_VERSION, MILA_PATCH,
                    sizeof(Value),
                    sizeof(Value) + sizeof(MethodTable) * MethodTotalCount,
                    sizeof(MethodTable) * MethodTotalCount, MAX_NUMBER_DIGITS);
@@ -7507,10 +7495,13 @@ int main(int argc, char **argv)
 
     Env *g = mila_global_init();
 
-    // Check if built ins is the canonical
-    Value *builtins_flag = env_get(g, "__mila_canonical_builtins");
-    int is_builtins = builtins_flag != NULL && builtins_flag->type == T_INT &&
-                      builtins_flag->v.i == 202603L;
+    signal(SIGABRT, handle_signal);
+    signal(SIGFPE,  handle_signal);
+    signal(SIGILL,  handle_signal);
+    signal(SIGINT,  handle_signal);
+    signal(SIGSEGV, handle_signal);
+    signal(SIGTERM, handle_signal);
+    signal(SIGINT,  handle_signal);
 
     search_path = path_list_new();
     char *cwd = path_get_cwd();
@@ -7564,15 +7555,12 @@ int main(int argc, char **argv)
             }
         }
 
-        path_list_free(search_path);
-
         // cleanup
         val_release(res);
 
         mila_free(src_text);
 
-        mila_deinit(g);
-        env_free_builtins();
+        mila_global_deinit(g);
         return return_code;
     }
     else
@@ -7595,13 +7583,12 @@ int main(int argc, char **argv)
                                           ? env_get(g, "__mila_codename")->v.s
                                           : "???");
 
-        // Notify users when MiLa is built using the canonical builtins
-        if (is_builtins)
-        {
-            printf("Cannonical Builtins (%ld) version %ld\n",
-                   env_get(g, "__mila_canonical_builtins")->v.i,
-                   env_get(g, "__mila_canonical_builtins_version")->v.i);
-        }
+        printf("Builtins edition %ld version %ld (full %ld.%ld.%ld)\n",
+               MILA_EDITION,
+               MILA_VERSION,
+               MILA_EDITION,
+               MILA_VERSION,
+               MILA_PATCH);
 
         BlrHistory hist;
         if (blr_history_init(&hist, 100))
@@ -7719,10 +7706,8 @@ int main(int argc, char **argv)
                 fflush(stdout);
             }
         }
-        path_list_free(search_path);
         blr_history_free(&hist);
-        mila_threads_cleanup();
-        mila_deinit(g);
+        mila_global_deinit(g);
     }
     return 0;
 }

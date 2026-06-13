@@ -46,6 +46,7 @@ fn init_cin()['@env:env'] {
     object cin {
         fn ':>>'(self, other):[input, env.set, env] {
             env.set(env, other, input());
+            return self;
         }
     }
     return cin;
@@ -54,13 +55,7 @@ fn init_cin()['@env:env'] {
 var new = 90 + Object.new(90);
 cout << new << "\n";
 
-fn test() {
-    if (false)
-        println("if");
-    elif (true)
-        println("elif");
-    else
-        println("else");
-}
-
-test();
+var cin = init_cin();
+cout << "Name: ";
+cin >> "test"; // TODO: fix cin?
+count << "Your name is " << test << "\n";

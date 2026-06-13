@@ -166,12 +166,13 @@ Value *thread_get_yield(ThreadContext *ctx)
 static void *mila_thread_worker(void *arg)
 {
     if (!arg) return NULL;
-    Value *result = NULL;
+    VAR_UNUSED Value *result = NULL; // not all code paths uses this (compiler gets grumpy)
     if (!((ThreadContext*)arg)->is_cgen) {
         // ctx here is ThreadContext
         ThreadContext *ctx = (ThreadContext *)arg;
         ctx->status = 1;
         result = call_function_with(NULL, ctx->func, vint(ctx->public_thread_id), NULL);
+        // NOTE: Race conditions when cleaning up, use gdb?
         // if (IS_ERROR_TAGGED(result) && GET_TAGGED_ERROR_TYPE(result) == E_THREAD_HALT)
         // {
         //     val_release(result);

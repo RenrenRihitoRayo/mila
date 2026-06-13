@@ -1,10 +1,10 @@
+
 var multiline = "\
     this is a test!\
 ";
 
 var multiline_dedented = "\
-    this is a test!
-    
+    this is a test!\
 "!; // take note of the exclamation mark
 
 var string_block = !{

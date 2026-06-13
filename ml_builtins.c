@@ -50,26 +50,6 @@
 
 #include <time.h>
 
-// Month edition started
-#define MILA_EDITION 202603
-// Incremented per edition update (optimally maxes out to 9)
-#define MILA_VERSION 1
-// Patch number
-#define MILA_PATCH 0
-
-/*
-    To avoid compat issues
-    and enforce compatibility among patches
-
-    Ed.Ver is the minimal versioning for MiLa
-    (for implementation level discernment)
-
-    while it will use
-
-    Ed.Ver.Patch for referring to specific versions of MiLa
-    (for source level discernment)
-*/
-
 #include "ml_primitives.c"
 #include "ml_platform_specific.c"
 #include "ml_commons.h"

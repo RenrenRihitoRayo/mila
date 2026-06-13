@@ -21,7 +21,7 @@ Value *greet(Env *e, int argc, Value **argv) {
                          "Expected first argument to be a string but got %s!",
                          GET_TYPENAME(argv[0]));
   }
-  print_value(argv[0]);
+  printf("%s", GET_STRING(argv[0])); puts("");
   return vnull();
 }
 

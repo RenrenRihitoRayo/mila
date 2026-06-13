@@ -13,5 +13,6 @@ var th = thread.make(fn(id):[out_item, println, time_sleep, thread.check_cancel,
 	println("Stopped at " + out_item);
 	println("Reason for halt of execution: "+reason);
 });
+println("This is a test!");
 //thread.set_daemon(th);
 thread.join(th);

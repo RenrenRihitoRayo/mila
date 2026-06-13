@@ -13,6 +13,26 @@
 #include "ml_maths.h"
 #include "ml_paths.h"
 
+// Year-Month edition started
+#define MILA_EDITION 202603L
+// Incremented per edition update (optimally maxes out to 9)
+#define MILA_VERSION 1L
+// Patch number
+#define MILA_PATCH 0L
+
+/*
+    To avoid compat issues
+    and enforce compatibility among patches
+
+    Ed.Ver is the minimal versioning for MiLa
+    (for implementation level discernment)
+
+    while it will use
+
+    Ed.Ver.Patch for referring to specific versions of MiLa
+    (for source level discernment)
+*/
+
 #define MAX_NUMBER_DIGITS 19
 #define MILA_N_ESCAPE_DIGITS 10
 #define MAX_PATH_LENGTH 1028
@@ -103,13 +123,13 @@ typedef enum __attribute__((packed))
     UMethodCopyShallow,
 
     MethodTotalCount
-} MethodType;
+} MethodType; // Also used by VIOO (actually exposed)
 
 typedef enum __attribute__((packed))
 {
 
     // value op value syntax
-    BMethodAdd = BMethodGetItem,
+    BMethodAdd,
     BMethodSub,
     BMethodMul,
     BMethodDiv,
@@ -126,7 +146,7 @@ typedef enum __attribute__((packed))
     BMethodOr,
     BMethodGlob,
     BMethodDefault,
-} MethodType_Internal; // not used by VIOO instances
+} MethodType_Internal; // used by VIOO instances and true primitives (internal representation)
 
 // == Environment
 
@@ -207,16 +227,16 @@ const char* OVERLOAD_TO_BOOL = ":to_bool";
 
 typedef enum
 {
-    E_NO_ERROR = -1, // Default
-    E_SYNTAX_ERROR,  // Self explanatory
-    E_PRE_RUNTIME,   // Must always be fatal!
-    E_RUNTIME,       // Errors such as undefined variables
-    E_TYPE_ERROR,    // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
-    E_FATAL,         // Errors that should be fatal, like syntax errors
-    E_GENERIC,       // Errors that cannot be classified as ones above
-    E_ASSERT,        // Errors triggered by a faulty assert
-    E_THREAD_HALT,   // Signal threads to halt (propagates like an error)
-    E_EXIT,          // When user calls exit
+    E_NO_ERROR = -1,     // Default
+    E_SYNTAX_ERROR = 1,  // Self explanatory
+    E_PRE_RUNTIME,       // Must always be fatal!
+    E_RUNTIME,           // Errors such as undefined variables
+    E_TYPE_ERROR,        // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
+    E_FATAL,             // Errors that should be fatal, like syntax errors
+    E_GENERIC,           // Errors that cannot be classified as ones above
+    E_ASSERT,            // Errors triggered by a faulty assert
+    E_THREAD_HALT,       // Signal threads to halt (propagates like an error)
+    E_EXIT,              // When user calls exit
 } ErrorType;
 
 #ifndef MILA_PROTO
@@ -288,6 +308,8 @@ int is_truthy(Value *value);
 Value *val_new(ValueType t);
 // Copy a value
 Value* val_copy(Value *src);
+// Copy a value shallowly
+Value* val_copy_shallow(Value *src);
 // Allocate a method table for a value
 void val_allocate_table(Value *v);
 // Make a standalone method table
@@ -447,6 +469,7 @@ void free_cleanup_registry(CleanupRegistry* registry);
 #define GET_OVERLOAD(obj, method) ((obj)->type_name && strcmp((obj)->type_name, MILA_LPREFIX "dict") == 0) ? dict_get_str((Dict*)(obj)->v.opaque, method) : NULL
 
 #define FN_UNUSED __attribute__((unused))
+#define VAR_UNUSED __attribute__((unused))
 
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
 

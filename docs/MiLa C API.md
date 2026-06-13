@@ -64,10 +64,10 @@ int main() {
 ## <a id="env"></a>Manipulating Environments
 
 Environments are just scopes.
-You can set values in them and it can be inherited by another environment
-for scopes. That's it.
+You can set values in them and can be inherited by another environment
+for scope like behavior.
 
-### Creating and Destroying an Env*
+### Creating and Destroying an `Env*`
 
 * `Env* env_new(Env* parent);`
 
@@ -94,9 +94,8 @@ If you wish to create an instance separate from the primary instance, use
 
 ### Setting Variables
 
-All functions here return non zero for error, zero for success.
-So far any error is always 1 (never check explicitly for 1 as this may change).
-Some functions may document their context of this return code.
+Return codes of the following functions must be treated more as an indicator
+rather than an error code.
 
 * `int env_set(Env* env, const char* name, Value* value);`
 
@@ -148,33 +147,43 @@ Some functions may document their context of this return code.
 	* 0 if it found the binding
 	* 1 if it did not find the binding
 
-* `int env_set_contextual(Env* env, const char* name);`
+* `void env_register_native(Env* env, const char* name, NativeFn fn);`
 
-	Looks at the closest binding of `name` in `env` and sets it.
+	Binds the native function `fn` into the environment `env` with the
+	name of `name`.
+	<br><br>
+	`NativeFn` is just `Value*(*NativeFn)(Env* env, int argc, Value** argv)`
+
+The following values operate on the contextual side of the environment rather than
+the regular scope variables.
+
+* `int env_set_contextual(Env* env, const char* name, Value* value);`
+
+	Looks at the closest binding of `name` in `env` and sets it to `value`.
 	<br><br>
 	Return code:
 	* 0 if it found an existing binding
 	* 1 if it needed to create a new binding
 
-* `int env_set_raw_contextual(Env* env, const char* name);`
+* `int env_set_raw_contextual(Env* env, const char* name, Value* value);`
 
-	Looks at the closest binding of `name` in `env` and sets it.
+	Looks at the closest binding of `name` in `env` and sets it to `value`.
 	<br><br>
 	Return code:
 	* 0 if it found an existing binding
 	* 1 if it needed to create a new binding
 
-* `int env_set_local_contextual(Env* env, const char* name);`
+* `int env_set_local_contextual(Env* env, const char* name, Value* value);`
 
-	Looks at the closest binding of `name` in `env` and sets it always in the local scope.
+	Looks at the closest binding of `name` in `env` and sets it to `value`, always in the local scope.
 	<br><br>
 	Return code:
 	* 0 if it found an existing binding
 	* 1 if it needed to create a new binding
 
-* `int env_set_local_raw_contextual(Env* env, const char* name);`
+* `int env_set_local_raw_contextual(Env* env, const char* name, Value* value);`
 
-	Looks at the closest binding of `name` in `env` and sets it always in the local scope.
+	Looks at the closest binding of `name` in `env` and sets it to `value`, always in the local scope.
 	<br><br>
 	Return code:
 	* 0 if it found an existing binding
@@ -191,7 +200,7 @@ Some functions may document their context of this return code.
 ### Woah, Wait! What are Contextuals?
 
 Contextuals are just like variables but in a different container within a scope.
-Technically a scope in MiLa has two parts. Your regular
+Technically an environment in MiLa has two parts. Your regular
 scope, and the contextual scope.
 <br><br>
 Think of keeping two lists beside each other.
@@ -199,7 +208,7 @@ Think of keeping two lists beside each other.
 In MiLa, functions can have implicit arguments called "contextual parameters".
 Unlike closures, contextuals are captured at the caller's site rather than the definition.
 However a normal variable must be first declared as such `contextual var_name;`; to actually be
-considered contextual. This emulates the same behavior of implicit arguments in Scala. Furthermore
+considered contextual. This emulates the behavior of implicit arguments in Scala. Furthermore
 contextuals do not get remembered by the callee, every new call recaptures the contextual.
 
 ## <a id="values"></a>Creating Values and Handling them
@@ -291,7 +300,7 @@ By default MiLa value instances are refcounted.
 * `Value* vweak_opaque(void* ptr);`
 
 	Create a weak opaque.
-	Refcount operations does nothing.
+	Refcount operations do nothing.
 	<br>
 	NOTE: `val_kill` will STILL kill an instance of this type.
 
@@ -319,22 +328,26 @@ By default MiLa value instances are refcounted.
 
 	`display` can be `NULL`.
 	`display` is a function that accepts the opaque (as a Value* so you have to unwrap it)
-	in order to print the representation for printing purposes.
+	in order to print the representation for the opaque value.
+	Note: DO NOT FREE THE VALUE REF PASSED INTO THE PRINTER: the `Value*` referenced passed to the printer function is the wrapper that is returned
+	from this function which may be managed by MiLa's refcounting.
 
 * `Value *vowned_opaque_extra(void *p, VPrinter display, const char *type_name);`
 
 	`display` can be `NULL`.
 	`display` is a function that accepts the opaque (as a Value* so you have to unwrap it)
-	in order to print the representation for printing purposes.
+	in order to print the representation for the opaque value.
+	Note: DO NOT FREE THE VALUE REF PASSED INTO THE PRINTER: the `Value*` referenced passed to the printer function is the wrapper that is returned
+	from this function which may be managed by MiLa's refcounting.
 
 #### <a id="values-ctrl"></a>Control Values
 
 Values that are propagated and can control flow.
 <br><br>
 Used internally:
-But can be used to emulate control flow via functions.
 * `Value* vcontinue();`
 * `Value* vbreak();`
+These two can be used to emulate control flow via functions if needed.
 
 Below is the usual API for control flow from native functions:
 * `Value* verror(const char* fmt, ...);`
@@ -379,8 +392,6 @@ Used internally:
 
 * `GET_NATIVE(nfn)`
 
-* `GET_ERROR_TYPE(e)`
-
 * `GET_TAGGED_ERROR_TYPE(te)`
 
 * `GET_TAGGED_ERROR_MESSAGE(te)`
@@ -395,19 +406,19 @@ MiLa has different enums for different kinds of types.
 
 ##### Value Types (what you should know)
 
-|  C Enum Type      |  MiLa Type      |  C Type                    |
-|-------------------|-----------------|----------------------------|
-| `T_INT`           | `int`           | `c long`                   |
-| `T_UINT`          | `uint`          | `c unsigned long`          |
-| `T_BINT`          | `bint`          | `c __int128`               |
-| `T_FLOAT`         | `float`         | `c double`                 |
-| `T_BFLOAT`        | `bfloat`        | `c mila_float128_internal` |
-| `T_STRING`        | `string`        | `c char*`                  |
-| `T_OPAQUE`        | `opaque`        | `c const void*`            |
-| `T_WEAK_OPAQUE`   | `weak_opaque`   | `c const void*`            |
-| `T_OWNED_OPAQUE`  | `owned_opaque`  | `c void*`                  |
-| `T_BOOL`          | `bool`          | `c bool / c _Bool`         |
-| `T_FUNCTION`      | `function`      | `c struct FunctionV*`      |
-| `T_NATIVE`        | `native`        | `c struct NativeV*`        |
-| `T_NONE`          | `none`          | `c struct Value*`          |
-| `T_NULL`          | `null`          | `c struct Value*`          |
+|  C Enum Type      |  MiLa Type      |  C Type                  |
+|-------------------|-----------------|--------------------------|
+| `T_INT`           | `int`           | `long`                   |
+| `T_UINT`          | `uint`          | `unsigned long`          |
+| `T_BINT`          | `bint`          | `__int128`               |
+| `T_FLOAT`         | `float`         | `double`                 |
+| `T_BFLOAT`        | `bfloat`        | `mila_float128_internal` |
+| `T_STRING`        | `string`        | `char*`                  |
+| `T_OPAQUE`        | `opaque`        | `const void*`            |
+| `T_WEAK_OPAQUE`   | `weak_opaque`   | `const void*`            |
+| `T_OWNED_OPAQUE`  | `owned_opaque`  | `void*`                  |
+| `T_BOOL`          | `bool`          | `bool / _Bool`           |
+| `T_FUNCTION`      | `function`      | `struct FunctionV*`      |
+| `T_NATIVE`        | `native`        | `struct NativeV*`        |
+| `T_NONE`          | `none`          | `struct Value*`          |
+| `T_NULL`          | `null`          | `struct Value*`          |

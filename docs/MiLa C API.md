@@ -83,7 +83,7 @@ Uses `val_release`.
 Deallocates env and kills all values in it.
 Uses `val_kill`.
 
-### "But the example uses mila_global_init" and "mila_global_deinit"
+### "But the examples use 'mila_global_init' and 'mila_global_deinit'"
 
 `mila_global_init` must always be called before executing any code or MiLa function.
 `mila_global_deinit` must always be called after any calls to any mila function or MiLa execution.
@@ -155,7 +155,8 @@ rather than an error code.
 	`NativeFn` is just `Value*(*NativeFn)(Env* env, int argc, Value** argv)`
 
 The following values operate on the contextual side of the environment rather than
-the regular scope variables.
+the regular scope variables, this is isn't necessary for common scripts unless you
+want to mess around with functions.
 
 * `int env_set_contextual(Env* env, const char* name, Value* value);`
 
@@ -406,19 +407,19 @@ MiLa has different enums for different kinds of types.
 
 ##### Value Types (what you should know)
 
-|  C Enum Type      |  MiLa Type      |  C Type                  |
-|-------------------|-----------------|--------------------------|
-| `T_INT`           | `int`           | `long`                   |
-| `T_UINT`          | `uint`          | `unsigned long`          |
-| `T_BINT`          | `bint`          | `__int128`               |
-| `T_FLOAT`         | `float`         | `double`                 |
-| `T_BFLOAT`        | `bfloat`        | `mila_float128_internal` |
-| `T_STRING`        | `string`        | `char*`                  |
-| `T_OPAQUE`        | `opaque`        | `const void*`            |
-| `T_WEAK_OPAQUE`   | `weak_opaque`   | `const void*`            |
-| `T_OWNED_OPAQUE`  | `owned_opaque`  | `void*`                  |
-| `T_BOOL`          | `bool`          | `bool / _Bool`           |
-| `T_FUNCTION`      | `function`      | `struct FunctionV*`      |
-| `T_NATIVE`        | `native`        | `struct NativeV*`        |
-| `T_NONE`          | `none`          | `struct Value*`          |
-| `T_NULL`          | `null`          | `struct Value*`          |
+| C Enum Type      | MiLa Type      | C Type                   |
+|------------------|----------------|--------------------------|
+| `T_INT`          | `int`          | `long`                   |
+| `T_UINT`         | `uint`         | `unsigned long`          |
+| `T_BINT`         | `bint`         | `__int128`               |
+| `T_FLOAT`        | `float`        | `double`                 |
+| `T_BFLOAT`       | `bfloat`       | `mila_float128_internal` |
+| `T_STRING`       | `string`       | `char*`                  |
+| `T_OPAQUE`       | `opaque`       | `const void*`            |
+| `T_WEAK_OPAQUE`  | `weak_opaque`  | `const void*`            |
+| `T_OWNED_OPAQUE` | `owned_opaque` | `void*`                  |
+| `T_BOOL`         | `bool`         | `bool / _Bool`           |
+| `T_FUNCTION`     | `function`     | `struct FunctionV*`      |
+| `T_NATIVE`       | `native`       | `struct NativeV*`        |
+| `T_NONE`         | `none`         | `struct Value*`          |
+| `T_NULL`         | `null`         | `struct Value*`          |

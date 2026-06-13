@@ -74,7 +74,7 @@
 // Public getters for types
 #define IS_ERROR(v) (GET_TYPE(v) == T_ERROR || GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_ERROR_TAGGED(v) (GET_TYPE(v) == T_TAGGED_ERROR)
-#define IS_FATAL(v) ((GET_TAGGED_ERROR_TYPE(v) == E_FATAL || GET_TAGGED_ERROR_TYPE(v) == E_SYNTAX_ERROR || GET_TAGGED_ERROR_TYPE(v) == E_THREAD_HALT))
+#define IS_FATAL(v) ((GET_ERROR_TYPE(v) == E_FATAL || GET_ERROR_TYPE(v) == E_SYNTAX_ERROR || GET_ERROR_TYPE(v) == E_THREAD_HALT))
 #define GET_STRING(val) (val ? val->v.s : NULL)
 #define GET_INTEGER(val) (val ? val->v.i : 0)
 #define GET_BINTEGER(val) (val ? val->v.bi : 0)
@@ -135,8 +135,8 @@ typedef enum __attribute__((packed))
     BMethodMul,
     BMethodDiv,
     BMethodMod,
-    BMethodLshift,
-    BMethodRshift,
+    BMethodLShift,
+    BMethodRShift,
     BMethodLE,
     BMethodGE,
     BMethodLess,
@@ -210,7 +210,6 @@ const char* OVERLOAD_R_DIV = "/:";
 const char* OVERLOAD_R_MOD = "%:";
 const char* OVERLOAD_R_RSHIFT = ">>:";
 const char* OVERLOAD_R_LSHIFT = "<<:";
-const char* OVERLOAD_R_DEFAULT = "??:";
 const char* OVERLOAD_R_EQ = "==:";
 const char* OVERLOAD_R_NE = "!=:";
 const char* OVERLOAD_R_GT = ">:";

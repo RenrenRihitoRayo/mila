@@ -2785,8 +2785,8 @@ const char* skip_expr_prec(Src *s, int min_prec) {
         else if (a == '!' && b == '=') { s->pos += 2; op = BMethodNe; prec = 4; }
         else if (a == '<' && b == '=') { s->pos += 2; op = BMethodLE; prec = 6; }
         else if (a == '>' && b == '=') { s->pos += 2; op = BMethodGE; prec = 6; }
-        else if (a == '>' && b == '>') { s->pos += 2; op = BMethodRshift; prec = 5; }
-        else if (a == '<' && b == '<') { s->pos += 2; op = BMethodLshift; prec = 5; }
+        else if (a == '>' && b == '>') { s->pos += 2; op = BMethodRShift; prec = 5; }
+        else if (a == '<' && b == '<') { s->pos += 2; op = BMethodLShift; prec = 5; }
         else if (a == '?' && b == '?') { s->pos += 2; op = BMethodDefault; prec = 3; }
         else if (a == '=' && b == '>') { s->pos += 2; op = BMethodGlob; prec = 9; }
         else if (a == '+') { s->pos++; op = BMethodAdd; prec = 7; }
@@ -4163,7 +4163,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
                 is_optional = 1;
                 name[strlen(name) - 1] = 0;
             }
-            Value *a;
+            Value *a = NULL;
             if (strncmp("@env:", name, 5) == 0) {
                 a = vopaque_extra(env, NULL, ML("environment"));
                 char* new_name = mila_strdup(name + 5);
@@ -4173,7 +4173,8 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
                 continue;
             }
             else a = env_get_contextual(env, name);
-            if (is_optional == 0 && a == NULL)
+
+            if (!is_optional && a == NULL)
             {
                 env_free(frame);
                 Value *res =
@@ -4182,14 +4183,8 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
                 mila_free(name);
                 return res;
             }
-            else if (a && !is_optional)
-            {
+            else if (a)
                 env_set_local(frame, name, a);
-            }
-            else if ((!a) && is_optional)
-            {
-                env_set_local_raw(frame, name, vnull());
-            }
             mila_free(name);
         }
         // Evaluate body: note body_src contains the body text e.g., "{ ... }"
@@ -5086,9 +5081,9 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
                 return vbool(ra > rb);
             if (op == BMethodLE)
                 return vbool(ra <= rb);
-            if (op == BMethodLshift)
+            if (op == BMethodLShift)
                 a->v.bi = ra << rb;
-            if (op == BMethodRshift)
+            if (op == BMethodRShift)
                 a->v.bi = ra >> rb;
             if (op == BMethodGE)
                 return vbool(ra >= rb);
@@ -5122,9 +5117,9 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
                 return vbool(ia == ib);
             if (op == BMethodNe)
                 return vbool(ia != ib);
-            if (op == BMethodLshift)
+            if (op == BMethodLShift)
                 return vuint(ia << ib);
-            if (op == BMethodRshift)
+            if (op == BMethodRShift)
                 return vuint(ia >> ib);
             if (op == BMethodMod)
                 return vuint(ia % ib);
@@ -5179,9 +5174,9 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
                 return vbool(ia == ib);
             if (op == BMethodNe)
                 return vbool(ia != ib);
-            if (op == BMethodLshift)
+            if (op == BMethodLShift)
                 return vint(ia << ib);
-            if (op == BMethodRshift)
+            if (op == BMethodRShift)
                 return vint(ia >> ib);
             if (op == BMethodMod)
                 return vint(ia % ib);
@@ -5374,8 +5369,8 @@ Value *binary_op_objects(Env* env, char right, Value* a, MethodType op, Value* b
         case BMethodGreat: method = right ? OVERLOAD_GE : OVERLOAD_R_GE; break;
         case BMethodLE: method = right ? OVERLOAD_LE : OVERLOAD_R_LE; break;
         case BMethodGE: method = right ? OVERLOAD_GE : OVERLOAD_R_GE; break;
-        case BMethodLshift: method = right ? OVERLOAD_LSHIFT : OVERLOAD_R_LSHIFT; break;
-        case BMethodRshift: method = right ? OVERLOAD_RSHIFT : OVERLOAD_R_RSHIFT; break;
+        case BMethodLShift: method = right ? OVERLOAD_LSHIFT : OVERLOAD_R_LSHIFT; break;
+        case BMethodRShift: method = right ? OVERLOAD_RSHIFT : OVERLOAD_R_RSHIFT; break;
         default:;
     }
     if (!method) return vnull();
@@ -5413,9 +5408,9 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
                 a->v.bi = ra * rb;
             if (op == BMethodDiv)
                 a->v.bi = ra / rb;
-            if (op == BMethodLshift)
+            if (op == BMethodLShift)
                 a->v.bi = ra << rb;
-            if (op == BMethodRshift)
+            if (op == BMethodRShift)
                 a->v.bi = ra >> rb;
             return a;
         }
@@ -5431,9 +5426,9 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
                 a->v.ui = ia * ib;
             if (op == BMethodDiv)
                 a->v.ui = ia / ib;
-            if (op == BMethodLshift)
+            if (op == BMethodLShift)
                 a->v.ui = ia << ib;
-            if (op == BMethodRshift)
+            if (op == BMethodRShift)
                 a->v.ui = ia >> ib;
             if (op == BMethodMod)
                 a->v.ui = ia % ib;
@@ -5469,9 +5464,9 @@ Value *binary_op_in_place(Value *a, MethodType op, Value *b)
                 a->type = T_FLOAT;
                 a->v.f = (double)ia / (double)ib;
             }
-            else if (op == BMethodLshift)
+            else if (op == BMethodLShift)
                 a->v.i = ia << ib;
-            else if (op == BMethodRshift)
+            else if (op == BMethodRShift)
                 a->v.i = ia >> ib;
             else if (op == BMethodMod)
                 a->v.i = ia % ib;
@@ -5492,7 +5487,7 @@ inline int precedence_of(MethodType op)
         return 3;
     if (BMethodEq == op || BMethodNe == op)
         return 4;
-    if (BMethodLshift == op || BMethodRshift == op)
+    if (BMethodLShift == op || BMethodRShift == op)
         return 5;
     if (BMethodLE == op || BMethodGE == op || BMethodLess == op ||
         BMethodGreat == op)
@@ -5547,12 +5542,12 @@ inline MethodType parse_op(Src *s)
     if (a == '>' && b == '>')
     {
         s->pos += 2;
-        return BMethodRshift;
+        return BMethodRShift;
     }
     if (a == '<' && b == '<')
     {
         s->pos += 2;
-        return BMethodLshift;
+        return BMethodLShift;
     }
     if (a == '?' && b == '?')
     {
@@ -5983,6 +5978,7 @@ Value *eval_statement(Src *s, Env *env)
         }
         else
         {
+            free(id);
             return verror("Expected a proper var statement!");
         }
 
@@ -7678,7 +7674,7 @@ int main(int argc, char **argv)
                     putchar('\n');
                 } else {
                     print_error(res);
-                    if (IS_ERROR_TAGGED(res) && GET_TAGGED_ERROR_TYPE(res) == E_EXIT) {
+                    if (IS_ERROR_TAGGED(res) && GET_ERROR_TYPE(res) == E_EXIT) {
                         int code = 0;
                         if (res->v.tagged_error.return_code == -1) {
                             code = E_EXIT;

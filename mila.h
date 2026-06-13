@@ -474,6 +474,7 @@ void free_cleanup_registry(CleanupRegistry* registry);
 #define IS_CONTROL(v) (v && (v->type == T_BREAK || v->type == T_CONTINUE || v->type == T_RETURN))
 
 typedef char *(*Printer)(Value *self);
+typedef Value *(*VPrinter)(Value *self);
 
 typedef struct
 {

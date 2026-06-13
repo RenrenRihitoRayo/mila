@@ -871,7 +871,7 @@ inline Value *vstring_index(const char *restrict src, size_t index)
     if (index >= n)
         return vnull();
 
-    char *buf = mila_malloc(2);
+    char *buf = mila_malloc(sizeof(char) * 2);
     if (!buf)
         return vnull();
 
@@ -881,14 +881,14 @@ inline Value *vstring_index(const char *restrict src, size_t index)
     return vstring_take(buf);
 }
 
-inline Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict repl)
+inline Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict replacement)
 {
     if (!*needle)
         return vstring_dup(src); // can't match empty substring
 
     size_t src_len = strlen(src);
     size_t n_len = strlen(needle);
-    size_t r_len = strlen(repl);
+    size_t r_len = strlen(replacement);
 
     // Count occurrences
     size_t count = 0;
@@ -922,7 +922,7 @@ inline Value *vstring_replace(const char *restrict src, const char *restrict nee
         memcpy(out, p, seg);
         out += seg;
 
-        memcpy(out, repl, r_len);
+        memcpy(out, replacement, r_len);
         out += r_len;
 
         p = match + n_len;
@@ -948,7 +948,7 @@ inline Value *vweak_opaque(void *p)
     v->v.opaque = p;
     return v;
 }
-inline Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type_name)
+inline Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vopaque(p);
     if (dis && v)
@@ -959,8 +959,7 @@ inline Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type_na
     v->type_name = mila_strdup(type_name);
     return v;
 }
-inline Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *),
-                           const char *type_name)
+inline Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vowned_opaque(p);
     if (dis && v)
@@ -1083,7 +1082,7 @@ char *as_c_string(Value *v)
         break;
     case T_TAGGED_ERROR:
         malloc_sprintf(&buffer, "<error[%s]:%s>", GET_TAGGED_ERROR_TYPENAME(v),
-                     GET_TAGGED_ERROR_TYPE_MESSAGE(v));
+                     GET_TAGGED_ERROR_MESSAGE(v));
         break;
     case T_INT:
         malloc_sprintf(&buffer, "%ld", v->v.i);
@@ -1284,7 +1283,7 @@ int raw_print_value(Value *v)
         return printf("<error:%s>", v->v.message);
     case T_TAGGED_ERROR:
         return printf("<error[%s]:%s>", GET_TAGGED_ERROR_TYPENAME(v),
-                     GET_TAGGED_ERROR_TYPE_MESSAGE(v));
+                     GET_TAGGED_ERROR_MESSAGE(v));
     case T_INT:
         return printf("%ld", v->v.i);
     case T_FLOAT:
@@ -1981,7 +1980,7 @@ Value *env_get_contextual(Env *e, const char *name)
     return NULL;
 }
 
-void env_set_local_contextual(Env *e, const char *name, Value *val)
+int env_set_local_contextual(Env *e, const char *name, Value *val)
 {
     // set or create in current frame
     for (Var *v = e->contextual_vars; v; v = v->next)
@@ -1989,13 +1988,14 @@ void env_set_local_contextual(Env *e, const char *name, Value *val)
         if (strcmp(v->name, name) == 0)
         {
             v->value = val;
-            return;
+            return 0;
         }
     }
     Var *nv = mila_malloc(sizeof(Var));
     nv->name = mila_strdup(name);
     nv->next = e->contextual_vars;
     e->contextual_vars = nv;
+    return 1;
 }
 
 int env_set_contextual(Env *e, const char *name, Value *val)
@@ -2008,7 +2008,7 @@ int env_set_contextual(Env *e, const char *name, Value *val)
             if (strcmp(v->name, name) == 0)
             {
                 v->value = val;
-                return 1;
+                return 0;
             }
         }
     }
@@ -2017,7 +2017,7 @@ int env_set_contextual(Env *e, const char *name, Value *val)
     return 1;
 }
 
-void env_set_local_raw_contextual(Env *e, const char *name, Value *val)
+int env_set_local_raw_contextual(Env *e, const char *name, Value *val)
 {
     // set or create in current frame
     for (Var *v = e->contextual_vars; v; v = v->next)
@@ -2025,7 +2025,7 @@ void env_set_local_raw_contextual(Env *e, const char *name, Value *val)
         if (strcmp(v->name, name) == 0)
         {
             v->value = val;
-            return;
+            return 0; // found
         }
     }
     Var *nv = mila_malloc(sizeof(Var));
@@ -2033,6 +2033,7 @@ void env_set_local_raw_contextual(Env *e, const char *name, Value *val)
     nv->value = val;
     nv->next = e->contextual_vars;
     e->contextual_vars = nv;
+    return 1; // not found
 }
 
 int env_set_raw_contextual(Env *e, const char *name, Value *val)
@@ -2045,7 +2046,7 @@ int env_set_raw_contextual(Env *e, const char *name, Value *val)
             if (strcmp(v->name, name) == 0)
             {
                 v->value = val;
-                return 1;
+                return 0;
             }
         }
     }
@@ -2054,7 +2055,7 @@ int env_set_raw_contextual(Env *e, const char *name, Value *val)
     return 1;
 }
 
-void env_set_local(Env *e, const char *name, Value *val)
+int env_set_local(Env *e, const char *name, Value *val)
 {
     // set or create in current frame
     for (Var *v = e->vars; v; v = v->next)
@@ -2063,7 +2064,7 @@ void env_set_local(Env *e, const char *name, Value *val)
         {
             val_release(v->value);
             v->value = val_retain(val);
-            return;
+            return 0;
         }
     }
 
@@ -2072,6 +2073,7 @@ void env_set_local(Env *e, const char *name, Value *val)
     nv->value = val_retain(val);
     nv->next = e->vars;
     e->vars = nv;
+    return 1;
 }
 
 int env_set(Env *e, const char *name, Value *val)
@@ -2091,10 +2093,10 @@ int env_set(Env *e, const char *name, Value *val)
     }
     // not found, set locally
     env_set_local(e, name, val);
-    return 1;
+    return 0;
 }
 
-void env_set_local_raw(Env *e, const char *name, Value *val)
+int env_set_local_raw(Env *e, const char *name, Value *val)
 {
     // set or create in current frame
     for (Var *v = e->vars; v; v = v->next)
@@ -2103,7 +2105,7 @@ void env_set_local_raw(Env *e, const char *name, Value *val)
         {
             val_release(v->value);
             v->value = val;
-            return;
+            return 0;
         }
     }
     Var *nv = mila_malloc(sizeof(Var));
@@ -2111,6 +2113,7 @@ void env_set_local_raw(Env *e, const char *name, Value *val)
     nv->value = val;
     nv->next = e->vars;
     e->vars = nv;
+    return 1;
 }
 
 int env_set_raw(Env *e, const char *name, Value *val)
@@ -2124,7 +2127,7 @@ int env_set_raw(Env *e, const char *name, Value *val)
             {
                 val_release(v->value);
                 v->value = val;
-                return 1;
+                return 0;
             }
         }
     }
@@ -2133,10 +2136,10 @@ int env_set_raw(Env *e, const char *name, Value *val)
     return 1;
 }
 
-void env_remove(Env *env, const char *name)
+int env_remove(Env *env, const char *name)
 {
     if (!env || !env->vars)
-        return;
+        return 1;
 
     Var *prev = NULL;
     Var *cur = env->vars;
@@ -2151,18 +2154,19 @@ void env_remove(Env *env, const char *name)
                 env->vars = cur->next;
             mila_free(cur->name);
             mila_free(cur);
-            return;
+            return 0;
         }
 
         prev = cur;
         cur = cur->next;
     }
+    return 1;
 }
 
-void env_remove_contextual(Env *env, const char *name)
+int env_remove_contextual(Env *env, const char *name)
 {
     if (!env || !env->contextual_vars)
-        return;
+        return 1;
 
     Var *prev = NULL;
     Var *cur = env->contextual_vars;
@@ -2177,12 +2181,13 @@ void env_remove_contextual(Env *env, const char *name)
                 env->contextual_vars = cur->next;
             mila_free(cur->name);
             mila_free(cur);
-            return;
+            return 0;
         }
 
         prev = cur;
         cur = cur->next;
     }
+    return 1;
 }
 
 #ifndef SAFE_BUILD
@@ -7106,7 +7111,7 @@ int invoke_file(char *name, Env *env)
         Value* setup_res = run_file_keep_res(setup_name, setup_env);
         env_free(setup_env);
         if (IS_ERROR(setup_res)) {
-            Value* err = verror("Setup file %s returned %s", setup_name, GET_TAGGED_ERROR_TYPE_MESSAGE(setup_res));
+            Value* err = verror("Setup file %s returned %s", setup_name, GET_TAGGED_ERROR_MESSAGE(setup_res));
             free(setup_name);
             print_error(err);
             val_release(setup_res);

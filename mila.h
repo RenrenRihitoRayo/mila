@@ -85,11 +85,12 @@
 #define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
 #define GET_FUNCTION(val) (val ? val->v.fn : NULL)
 #define GET_NATIVE(val) (val ? val->v.native : NULL)
-#define GET_TAGGED_ERROR_TYPE_MESSAGE(val) (val ? val->v.message : NULL)
+#define GET_ERROR_MESSAGE(val) (val ? val->v.message : NULL)
 #define GET_TAGGED_ERROR_MESSAGE(val) (val ? val->v.tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 
+#define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
 #define GET_METHOD(v, m) ((v->method_table && v->method_table[m - v->table_offset]) ? v->method_table[m - v->table_offset] : NULL)
 
 // each of these methods may be reffered to as
@@ -286,11 +287,23 @@ void env_kill(Env *e);
 // Get a variable
 Value *env_get(Env *e, const char *name);
 // Set a variable in the local scope (and own it)
-void env_set_local(Env *e, const char *name, Value *val);
+int env_set_local(Env *e, const char *name, Value *val);
 // Set a variable, if no outer bindings are found, set it in the local scope (and own it)
 int env_set(Env *e, const char *name, Value *val);
+// Set a contextual in the local scope (and own it)
+int env_set_contextual(Env *e, const char *name, Value *val);
+// Set a contextual in the local scope (and own it)
+int env_set_raw_contextual(Env *e, const char *name, Value *val);
+// Set a contextual in the local scope
+int env_set_raw_contextual(Env *e, const char *name, Value *val);
+// Set a contextual, if no outer bindings are found, set it in the local scope
+int env_set_local_raw_contextual(Env *e, const char *name, Value *val);
+// Remove a variable, dont do anything if it fails
+int env_remove(Env *env, const char *name);
+// Remove a variable, dont do anything if it fails
+int env_remove_contextual(Env *env, const char *name);
 // Like env_set_local but doesnt let env own the variable
-void env_set_local_raw(Env *e, const char *name, Value *val);
+int env_set_local_raw(Env *e, const char *name, Value *val);
 // Like env_set but doesnt let env own the variable
 int env_set_raw(Env *e, const char *name, Value *val);
 // Register a native
@@ -432,12 +445,17 @@ CleanupRegistry* make_cleanup_registry();
 CleanupRegistryEntry* make_cleanup_entry(char* name, void(*fn)(Env*));
 void free_cleanup_registry(CleanupRegistry* registry);
 
+typedef struct
+{
+    char *name;
+    NativeFn func;
+} NativeEntry;
+
 // ================= NOT SO PUBLIC APIS (or spicy api stuff, depends on your mood)
 
 // THESE ARE INTERNAL
 #define GET_TAGGED_ERROR_TYPENAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
-#define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
-#define GET_TAGGED_ERROR_TYPE(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
+#define GET_ERROR_TYPE(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
 #define GET_TYPE(v) (v ? v->type : T_WHAT )
 
 #define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
@@ -475,12 +493,6 @@ void free_cleanup_registry(CleanupRegistry* registry);
 
 typedef char *(*Printer)(Value *self);
 typedef Value *(*VPrinter)(Value *self);
-
-typedef struct
-{
-    char *name;
-    NativeFn func;
-} NativeEntry;
 
 #ifndef MILA_PROTO
 // Simple trick (use GET_TYPENAME rather than use this directly)

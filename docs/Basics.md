@@ -16,6 +16,8 @@ Some constructs may feel natural while some not so much.
 		* [Function Closures](#func-closure)
 		* [Function Contextuals](#func-context)
 * [Loops](#loops)
+* [Namespaces](#namespaces)
+* [Blocks](#blocks)
 * [Parameterized Scripts](#param)
 
 Comments in MiLa are just C-style comments.
@@ -26,6 +28,23 @@ Comments in MiLa are just C-style comments.
 
 Primitives are:
 * Strings `"Hello, Reiley"`
+
+    By default every string in MiLa can be
+    a multi line string. Beware MiLa does not
+    support unicode in source! You must use their
+    hex code via `\u` for 16 bit or `\U` for 32 bit.
+    All standard C escapes are supported.
+
+* String blocks `!{Hello, Reiley}`
+
+    These strings are special, they also
+    dedent the string inside.
+    They do not process escapes and
+    curly braces must be balanced.
+    <br><br>
+    These are used for storing MiLa code
+    as strings.
+
 * Integers `90`
 * Unsigned Integers `90u`
 * Big Integers `90~`
@@ -37,7 +56,7 @@ Primitives are:
 * Functions (lambdas)
 * Natives
 
-## <a id="id"></a>Identifiers?
+## <a id="id"></a>Identifiers
 
 In MiLa there are two types of identifiers.
 Your normal identifiers with some twists `id.one.two`
@@ -49,6 +68,13 @@ I dont want to bloat my language with handling unicode characters.
 Regular identifiers can be composed of any alphanumeric characters and
 the characters `.` and `_`, in MiLa the dots in identifiers are part of the identifier
 and is not an operator unlike in other languages. Dots in identifiers act as "namespaces".
+
+```MiLa
+// String IDs can contain anything except NULL
+// and the closing single quote.
+var '你好' = "hello";
+var 'this is a valid identifier' = 90;
+```
 
 ## <a id="expr"></a>Expressions
 
@@ -132,13 +158,12 @@ references.
 
 * `sync` keyword.
 
-`sync` is similar to set, but instead of changing the binding of a value, it changes the pointer the
-value actually points to, in turn changing every reference to the newly assigned value,
-hence the statement being `sync`.
+`sync` is similar to set, but it sets underlying value instance' value to the provided value.
+In C `set` would be `var = value;`, `sync` would be `*var = value;`
 
 ```MiLa
 fn fn_ref(int) {
-	sync int = 90; // every reference to int's value instance now points to 90
+	sync int = 90; // every binding to int's value instance now holds 90
 }
 
 fn fn_set(int) {
@@ -243,6 +268,13 @@ fn some_function()[_allocator?]
 
 Notable differences is that in MiLa you cannot pass these contextuals explicitly.
 
+### Contextuals and Closure Lists
+
+Both are optional. Be careful on closures.
+Closures require a colon before it's list,
+this to differentiate whether that list is
+a closures list or a contextuals list.
+
 ## <a id="loops"></a>Loops
 
 ```MiLa
@@ -258,6 +290,32 @@ while (cond) {
 	// body
 }
 ```
+
+## <a id="namespaces"></a>Namespaces
+
+Namespaces are simple in MiLa.
+All they do is mangle every name that starts
+with a dot.
+
+```MiLa
+namespace my_lib {
+    var .my_var = 90; // my_lib.my_var
+}
+```
+
+## <a id="blocks"></a>Blocks
+
+MiLa does not have line tracking.
+This is due to MiLa being a one pass interpreter.
+
+```MiLa
+block block_name {
+    // any error here gets the name of `block_name`
+}
+```
+
+If an error ever propagates, the error will be mangled to
+have tbe blocks name.
 
 ## <a id="param"></a>Parameterized Scripts
 

@@ -33,36 +33,36 @@ def normalize_arrays(t):
     return t
 
 mila_to_c = {
-    "char[]": "{value}->v.s",
-    "char *": "{value}->v.s",
-    "const char *": "{value}->v.s",
-    "int": "((int){value}->v.i)",
-    "long": "{value}->v.i",
-    "float": "{value}->v.f",
-    "double": "{value}->v.f",
-    "void *": "{value}->v.opaque",
-    "const void*": "{value}->v.opaque",
-    "unsigned int": "{value}->v.i",
-    "_Bool": "{value}->v.b",
-    "bool": "{value}->v.b",
-    "unsigned char": "(unsigned char)({value}->v.i)",
+    "char[]": "(char*){value}->v",
+    "char *": "(char*){value}->v",
+    "const char *": "(char*){value}->v",
+    "int": "((int)GET_INTEGER({value}))",
+    "long": "GET_INTEGER({value})",
+    "float": "{value}->v->f",
+    "double": "{value}->v->f",
+    "void *": "(void*){value}->v",
+    "const void*": "(void*){value}->v",
+    "unsigned int": "{value}->v->ui",
+    "_Bool": "(long){value}->v",
+    "bool": "(long){value}->v",
+    "unsigned char": "(unsigned char)(GET_INTEGER({value}))",
     "Value *": "{value}"
 }
 
 mila_to_c_ptr = {
-    "char[]": "&{value}->v.s",
-    "char *": "&{value}->v.s",
-    "const char *": "&{value}->v.s",
-    "int": "((int*)&{value}->v.i)",
-    "long": "&{value}->v.i",
-    "float": "&{value}->v.f",
-    "double": "&{value}->v.f",
-    "void *": "&{value}->v.opaque",
-    "const void*": "&{value}->v.opaque",
-    "unsigned int": "&{value}->v.i",
-    "_Bool": "&{value}->v.b",
-    "bool": "&{value}->v.b",
-    "unsigned char": "&(unsigned char)({value}->v.i)",
+    "char[]": "&{value}->v",
+    "char *": "&{value}->v",
+    "const char *": "&{value}->v",
+    "int": "(int*)GET_INTEGER_REF(&{value})",
+    "long": "(long*)&GET_INTEGER_REF({value})",
+    "float": "&{value}->v->f",
+    "double": "&{value}->v->f",
+    "void *": "&{value}->v",
+    "const void*": "&{value}->v",
+    "unsigned int": "&{value}->v->ui",
+    "_Bool": "&{value}->v",
+    "bool": "&{value}->v",
+    "unsigned char": "(unsigned char*)(GET_INTEGER_REF({value}))",
     "Value *": "&{value}"
 }
 
@@ -165,7 +165,7 @@ def make_struct_constructor(cursor):
                 "get_array_element_type": ftype.get_array_element_type,
                 "spelling": remove_array_sizes(ftype.spelling)
             })
-        fname_access = f"(({struct_name}*)(argv[0]->v.opaque))->"
+        fname_access = f"(({struct_name}*)(argv[0]->v))->"
         names.append((f"{struct_name}.get_{fname}", f"_type_mila_{struct_name}_get_{fname}"))
         names.append((f"{struct_name}.set_{fname}", f"_type_mila_{struct_name}_set_{fname}"))
         pre_lines.extend([
@@ -192,7 +192,7 @@ def make_struct_constructor(cursor):
         if ftype.kind == cindex.TypeKind.CONSTANTARRAY:
             size = ftype.get_array_size()
             str_ftype = normalize_arrays(ftype).spelling
-            str_ftype = mila_to_c.get(str_ftype, f"{{value}}->v.opaque").format(value=f"argv[{i}]")
+            str_ftype = mila_to_c.get(str_ftype, f"{{value}}->v").format(value=f"argv[{i}]")
             # Use memcpy from argv[i] opaque value
             if ftype.spelling.startswith("char"):
                 lines.append(f"    strncpy(tmp->{fname}, {str_ftype}, sizeof(tmp->{fname}));")
@@ -203,11 +203,11 @@ def make_struct_constructor(cursor):
         # Handle nested structs
         elif ftype.kind == cindex.TypeKind.RECORD and ftype.get_declaration().kind == cindex.CursorKind.STRUCT_DECL:
             nested_name = ftype.spelling or ftype.get_declaration().spelling
-            lines.append(f"    tmp->{fname} = *({nested_name}*)argv[{i}]->v.opaque;")
+            lines.append(f"    tmp->{fname} = *({nested_name}*)argv[{i}]->v;")
 
         # Handle numeric / pointer types
         else:
-            conv = mila_to_c.get(ftype.spelling, f"*(({ftype.spelling}*)argv[{i}]->v.opaque)")
+            conv = mila_to_c.get(ftype.spelling, f"*(({ftype.spelling}*)argv[{i}]->v)")
             if ftype.spelling == "char *":
                 lines.append(f"    tmp->{fname} = mila_strdup({conv.format(value=f'argv[{i}]')});")
             else:
@@ -232,12 +232,12 @@ def gen_variadic_wrapper(func):
         types.append(f"{t} {p['name']}")
 
         if t in typedefs or t in structs:
-            lines.append(f"(({t}*)argv[{i}]->v.opaque)")
+            lines.append(f"(({t}*)argv[{i}]->v)")
         elif t in enums:
-            lines.append(f"({t}*)&argv[{i}]->v.i")
+            lines.append(f"({t}*)&argv[{i}]->v->i")
         else:
             lines.append(
-                mila_to_c_ptr.get(t, "{value}->v.opaque").format(value=f"argv[{i}]")
+                mila_to_c_ptr.get(t, "{value}->v").format(value=f"argv[{i}]")
             )
         lines[-1] = f"types[{i}] = &{c_to_ffi.get(t, 'ffi_type_pointer')};\n    values[{i}] = "\
         + lines[-1] + ";"
@@ -265,33 +265,33 @@ Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
         switch(v->type) {{
             case T_INT:
                 types[i] = &ffi_type_slong;
-                values[i] = &v->v.i;
+                values[i] = &v->v->i;
                 break;
 
             case T_UINT:
                 types[i] = &ffi_type_ulong;
-                values[i] = &v->v.ui;
+                values[i] = &v->v->ui;
                 break;
 
             case T_FLOAT:
                 types[i] = &ffi_type_double;
-                values[i] = &v->v.f;
+                values[i] = &v->v->f;
                 break;
 
             case T_BOOL:
                 types[i] = &ffi_type_sint;
-                values[i] = &v->v.b;
+                values[i] = &v->v->b;
                 break;
 
             case T_OWNED_OPAQUE:
             case T_OPAQUE:
                 types[i] = &ffi_type_pointer;
-                values[i] = &v->v.opaque;
+                values[i] = &v->v;
                 break;
 
             case T_STRING:
                 types[i] = &ffi_type_pointer;
-                values[i] = &v->v.s;
+                values[i] = &v->v->s;
                 break;
 
             default:
@@ -334,12 +334,12 @@ def gen_normal_wrapper(func):
         types.append(f"{t} {p['name']}")
 
         if t in typedefs or t in structs:
-            arg_list.append(f"*(({t}*)argv[{i}]->v.opaque)")
+            arg_list.append(f"*(({t}*)argv[{i}]->v)")
         elif t in enums:
-            arg_list.append(f"({t})argv[{i}]->v.i")
+            arg_list.append(f"({t})argv[{i}]->v->i")
         else:
             arg_list.append(
-                mila_to_c.get(t, "{value}->v.opaque").format(value=f"argv[{i}]")
+                mila_to_c.get(t, "{value}->v").format(value=f"argv[{i}]")
             )
 
     if ret == "void":

@@ -1,3 +1,4 @@
+
 var start = get_time();
 foreach n:range(10000000){}
 var end = get_time() - start;

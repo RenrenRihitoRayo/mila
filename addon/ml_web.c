@@ -35,7 +35,7 @@ EM_JS(const char*, js_get_text, (const char* selector), {
     var text = elem ? elem.textContent : "";
     
     var resultLen = lengthBytesUTF8(text) + 1;
-    var buffer = _malloc(resultLen);
+    var buffer = mila_malloc(resultLen);
     stringToUTF8(text, buffer, resultLen);
     return buffer;
 });

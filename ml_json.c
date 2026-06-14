@@ -3,9 +3,13 @@
 
 #include "mila.h"
 #include "ml_string.c"
+
 Value* native_list_append(Env*, int, Value**);
-#include "ml_dict.c"
+
+#include "ml_primitives.h"
+#include "ml_dict.h"
 #include "ml_ll.c"
+#include <ctype.h>
 
 char* mila_to_json(Value* s);
 
@@ -341,7 +345,7 @@ Value *parse_mjson_expr(Src *s)
             // create function value with closure get_line_pos(s) current env
             Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
             free(params);
-            fn->v.fn->name = mila_strdup("[lambda]");
+            GET_FUNCTION(fn)->name = mila_strdup("[lambda]");
             return fn;
         }
         mila_free(id);
@@ -644,6 +648,5 @@ char* mila_to_json(Value* v) {
 }
 
 char* mila_to_mjson(Value* v) {
-    // return _mila_to_mjson(v, 1);
     return _mila_to_mjson(v, 1);
 }

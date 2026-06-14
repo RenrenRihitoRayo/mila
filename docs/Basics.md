@@ -16,6 +16,7 @@ Some constructs may feel natural while some not so much.
 		* [Function Closures](#func-closure)
 		* [Function Contextuals](#func-context)
 * [Loops](#loops)
+* [Objects](#obj)
 * [Namespaces](#namespaces)
 * [Blocks](#blocks)
 * [Parameterized Scripts](#param)
@@ -289,6 +290,27 @@ foreach yield item : generator {
 while (cond) {
 	// body
 }
+```
+
+## <a id="obj"></a>Objects
+
+```MiLa
+object Person {
+	var name = none;
+
+	fn new(self, name) {
+		var obj = copy(self);
+		set obj["name"] = name;
+		return obj;
+	}
+
+	fn ':display'(self):[print] {
+		print("Person("+repr(self["name"])+")");
+	}
+}
+
+var carl = Person:new("Carl");
+println(carl);
 ```
 
 ## <a id="namespaces"></a>Namespaces

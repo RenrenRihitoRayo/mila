@@ -5,7 +5,7 @@ targets_web = ./build/web/mila.wasm ./build/web/mila.js
 
 libraries ?= -lm
 eflags ?=
-cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 $(eflags) -Iheaders
+cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 $(eflags) -Iheaders -Wno-overflow
 
 .PHONY: web
 
@@ -71,7 +71,8 @@ release: $(files)
 
 web $(targets_web): $(files_web)
 	mkdir -p build/web;:
-	emcc -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_main"]' -s EXPORTED_RUNTIME_METHODS='["FS","callMain"]' mila.c addon/ml_web.c -o ./build/web/mila.js -D EXT_WEB
+	emcc -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_main"]' -s EXPORTED_RUNTIME_METHODS='["FS","callMain"]' mila.c addon/ml_web.c -o ./build/web/mila.js \
+	-D EXT_WEB -Iheaders -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11
 
 test-embed: embed.c
 	gcc -o embed embed.c -Iheaders

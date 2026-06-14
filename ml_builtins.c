@@ -120,7 +120,7 @@ Value *native_bitwise_and(Env *env, int argc, Value **argv)
     (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
-    return vint(argv[0]->v.i & argv[1]->v.i);
+    return vint(argv[0]->v->i & argv[1]->v->i);
 }
 
 Value *native_bitwise_or(Env *env, int argc, Value **argv)
@@ -129,7 +129,7 @@ Value *native_bitwise_or(Env *env, int argc, Value **argv)
     (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
-    return vint(argv[0]->v.i | argv[1]->v.i);
+    return vint(argv[0]->v->i | argv[1]->v->i);
 }
 
 Value *native_bitwise_xor(Env *env, int argc, Value **argv)
@@ -138,7 +138,7 @@ Value *native_bitwise_xor(Env *env, int argc, Value **argv)
     (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
-    return vint(argv[0]->v.i ^ argv[1]->v.i);
+    return vint(argv[0]->v->i ^ argv[1]->v->i);
 }
 
 Value *native_not(Env *env, int argc, Value **argv)
@@ -205,7 +205,7 @@ Value *native_cast_int(Env *env, int argc, Value **argv)
     if (argc == 1 && argv[0]->type == T_STRING)
     {
         char *end;
-        i = strtol(argv[0]->v.s, &end, 10);
+        i = strtol(GET_STRING(argv[0]), &end, 10);
 
         if (*end != '\0')
         {
@@ -232,7 +232,7 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
     if (argc == 1 && argv[0]->type == T_STRING)
     {
         char *end;
-        f = strtod(argv[0]->v.s, &end);
+        f = strtod(GET_STRING(argv[0]), &end);
 
         if (*end != '\0')
         {
@@ -255,7 +255,7 @@ Value *native_cast_int_to_uint(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
     {
-        return vuint(argv[0]->v.ui);
+        return vuint(argv[0]->v->ui);
     }
     else
     {
@@ -269,7 +269,7 @@ Value *native_cast_uint_to_int(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1 && argv[0]->type == T_UINT)
     {
-        return vint(argv[0]->v.i);
+        return vint(argv[0]->v->i);
     }
     else
     {
@@ -297,7 +297,7 @@ Value *native_cast_float_to_int(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1 && argv[0]->type == T_FLOAT)
     {
-        return vint((long)argv[0]->v.f);
+        return vint((long)argv[0]->v->f);
     }
     else
     {
@@ -333,6 +333,18 @@ Value *native_type_of(Env *env, int argc, Value **argv)
     return vstring_dup(GET_TYPENAME(argv[0]));
 }
 
+Value *native_type_of_extra(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1)
+    {
+        return verror("_typeof(any): Expected 1 argument (any) any.\n");
+    }
+    if (argv[0]->type_name)
+        return vstring_dup(argv[0]->type_name);
+    return vstring_dup(GET_TYPENAME(argv[0]));
+}
+
 Value *native_is_numeric(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -355,7 +367,7 @@ Value *file_printer(Value *self)
         malloc_sprintf(&buffer, "<not-a-file>");
         return vstring_take(buffer);
     }
-    FILE *f = (FILE *)self->v.opaque;
+    FILE *f = (FILE *)self->v;
     if (!f)
     {
         malloc_sprintf(&buffer, "<file:closed>");
@@ -374,10 +386,10 @@ Value *native_open(Env *env, int argc, Value **argv)
     {
         return verror("= open(filename, mode) expects 2 string args.\n");
     }
-    char *path = argv[0]->v.s;
+    char *path = GET_STRING(argv[0]);
     if (!search_path)
     {
-        char *path = path_list_find(search_path, argv[0]->v.s);
+        char *path = path_list_find(search_path, GET_STRING(argv[0]));
         if (!path)
         {
             return verror("= open(filename, mode) did not find the file.\n");
@@ -387,7 +399,7 @@ Value *native_open(Env *env, int argc, Value **argv)
     if (!res)
         return verror("File %s not found!", path);
 
-    FILE *f = fopen(res, argv[1]->v.s);
+    FILE *f = fopen(res, GET_STRING(argv[1]));
     if (!f)
     {
         if (res)
@@ -410,11 +422,11 @@ Value *native_fclose(Env *env, int argc, Value **argv)
     {
         return verror("= fclose(file) expects 1 file handle arg.\n");
     }
-    FILE *f = (FILE *)argv[0]->v.opaque;
+    FILE *f = (FILE *)argv[0]->v;
     if (f)
     {
         fclose(f);
-        argv[0]->v.opaque = NULL; // Prevent double close
+        argv[0]->v = NULL; // Prevent double close
     }
     return vnull();
 }
@@ -426,11 +438,11 @@ Value *native_fflush(Env *env, int argc, Value **argv)
     {
         return verror("= fflush(file) expects 1 file handle arg.\n");
     }
-    FILE *f = (FILE *)argv[0]->v.opaque;
+    FILE *f = (FILE *)argv[0]->v;
     if (f)
     {
         fflush(f);
-        argv[0]->v.opaque = NULL; // Prevent double close
+        argv[0]->v = NULL; // Prevent double close
     }
     return vnull();
 }
@@ -478,12 +490,12 @@ Value *native_fprint(Env *env, int argc, Value **argv)
     {
         return verror("= fprint(file, string) expects (handle, string).\n");
     }
-    FILE *f = (FILE *)argv[0]->v.opaque;
+    FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
         return verror("= fprint: file handle is closed or invalid.\n");
     }
-    const char *s = argv[1]->v.s;
+    const char *s = GET_STRING(argv[1]);
     size_t written = fwrite(s, 1, strlen(s), f);
     return vint(written);
 }
@@ -495,12 +507,12 @@ Value *native_fread(Env *env, int argc, Value **argv)
     {
         return verror("= fread(file, num_bytes) expects (handle, int).\n");
     }
-    FILE *f = (FILE *)argv[0]->v.opaque;
+    FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
         return verror("= fread: file handle is closed or invalid.\n");
     }
-    long n = argv[1]->v.i;
+    long n = argv[1]->v->i;
     if (n <= 0)
         return vstring_dup("");
 
@@ -521,7 +533,7 @@ Value *native_fread_all(Env *env, int argc, Value **argv)
     {
         return verror("= fread_all(file) expects handle.\n");
     }
-    FILE *f = (FILE *)argv[0]->v.opaque;
+    FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
         return verror("= fread_all: file handle is closed or invalid.\n");
@@ -549,13 +561,13 @@ Value *native_fseek(Env *env, int argc, Value **argv)
         return verror(
             "= fseek(file, offset, whence) expects (handle, int, int).\n");
     }
-    FILE *f = (FILE *)argv[0]->v.opaque;
+    FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
         return verror("= fseek: file handle is closed or invalid.\n");
     }
-    long offset = argv[1]->v.i;
-    int whence = (int)argv[2]->v.i;
+    long offset = argv[1]->v->i;
+    int whence = (int)argv[2]->v->i;
     int c_whence;
 
     switch (whence)
@@ -582,7 +594,7 @@ Value *native_ftell(Env *env, int argc, Value **argv)
     {
         return verror("= ftell(file) expects 1 file handle arg.\n");
     }
-    FILE *f = (FILE *)argv[0]->v.opaque;
+    FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
         return verror("ftell: file handle is closed or invalid.\n");
@@ -597,7 +609,7 @@ Value *native_report(Env *env, int argc, Value **argv)
 {
     (void)env;
     if (argc == 1 && argv[0]->type == T_STRING)
-        return verror("%s", argv[0]->v.s);
+        return verror("%s", GET_STRING(argv[0]));
     else if (argc == 0)
         return verror("No details given.");
     else
@@ -625,7 +637,7 @@ Value *native_exit(Env *env, int argc, Value **argv)
     (void)env;
     if (argc == 1 && argv[0]->type == T_INT)
     {
-        return vtagged_coded_error(E_EXIT, argv[0]->v.i, "Exited.");
+        return vtagged_coded_error(E_EXIT, argv[0]->v->i, "Exited.");
     }
     else if (argc == 0)
     {
@@ -700,7 +712,7 @@ Value *native_run(Env *env, int argc, Value **argv)
 
     if (search_path)
     {
-        char *path = path_list_find(search_path, argv[0]->v.s);
+        char *path = path_list_find(search_path, GET_STRING(argv[0]));
         if (!path)
         {
             return verror("run(filename) did not find the file.");
@@ -736,7 +748,7 @@ Value *native_invoke(Env *env, int argc, Value **argv)
 
     if (search_path)
     {
-        char *path = path_list_find(search_path, argv[0]->v.s);
+        char *path = path_list_find(search_path, GET_STRING(argv[0]));
         if (!path)
         {
             return verror("run(filename) did not find the file.");
@@ -771,13 +783,13 @@ Value *native_load(Env *env, int argc, Value **argv)
         return verror("invalid number of arguments given or incorrect types.");
     }
 
-    char *new_path = path_list_find(search_path, argv[0]->v.s);
+    char *new_path = path_list_find(search_path, GET_STRING(argv[0]));
     if (!new_path)
-        return verror("problem loading file %s\n", argv[0]->v.s);
+        return verror("problem loading file %s\n", GET_STRING(argv[0]));
     if (load_library(env, new_path))
     {
         mila_free(new_path);
-        return verror("problem loading file %s\n", argv[0]->v.s);
+        return verror("problem loading file %s\n", GET_STRING(argv[0]));
     }
     mila_free(new_path);
     return vnull();
@@ -791,7 +803,7 @@ Value *native_eval(Env *env, int argc, Value **argv)
         return verror("invalid number of arguments given or incorrect types.");
     }
 
-    return eval_str(argv[0]->v.s, env);
+    return eval_str(GET_STRING(argv[0]), env);
 }
 #endif
 
@@ -802,7 +814,7 @@ Value *native_system(Env *env, int argc, Value **argv)
     {
         return verror("invalid number of arguments given or incorrect types.");
     }
-    return vint(system(argv[0]->v.opaque));
+    return vint(system(GET_STRING(argv[0])));
 }
 
 #ifndef ML_NO_MATH
@@ -811,7 +823,7 @@ Value *native_floor(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("floor(i): Requires one arguments");
-    double x = argv[0]->v.f;
+    double x = argv[0]->v->f;
     return vfloat(floor(x));
 }
 
@@ -820,7 +832,7 @@ Value *native_ceil(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("ceil(i): Requires one arguments");
-    double x = argv[0]->v.f;
+    double x = argv[0]->v->f;
     return vfloat(ceil(x));
 }
 
@@ -829,7 +841,7 @@ Value *native_sqrtf(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("sqrt(i): Requires one arguments");
-    double x = argv[0]->v.f;
+    double x = argv[0]->v->f;
     return vfloat(sqrtf(x));
 }
 
@@ -838,7 +850,7 @@ Value *native_sqrt(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("sqrt(i): Requires one arguments");
-    double x = argv[0]->v.i;
+    double x = argv[0]->v->i;
     return vfloat(sqrt(x));
 }
 
@@ -847,7 +859,7 @@ Value *native_sin(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("sin(i): Requires one arguments");
-    double x = argv[0]->v.f;
+    double x = argv[0]->v->f;
     return vfloat(sin(x));
 }
 
@@ -856,7 +868,7 @@ Value *native_cos(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("cos(i): Requires one arguments");
-    double x = argv[0]->v.f;
+    double x = argv[0]->v->f;
     return vfloat(cos(x));
 }
 
@@ -865,7 +877,7 @@ Value *native_tan(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("tan(i): Requires one arguments");
-    double x = argv[0]->v.f;
+    double x = argv[0]->v->f;
     return vfloat(tan(x));
 }
 
@@ -874,8 +886,8 @@ Value *native_atan2(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2)
         return verror("atan2(i, i): Requires two arguments");
-    double y = argv[0]->v.f;
-    double x = argv[1]->v.f;
+    double y = argv[0]->v->f;
+    double x = argv[1]->v->f;
     return vfloat(atan2(y, x));
 }
 
@@ -884,7 +896,7 @@ Value *native_pow(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2)
         return verror("pow(base, exp): Requires two arguments");
-    return vint(pow(argv[0]->v.i, argv[1]->v.i));
+    return vint(pow(argv[0]->v->i, argv[1]->v->i));
 }
 
 Value *native_fabs(Env *e, int argc, Value **argv)
@@ -955,7 +967,7 @@ Value *native_vars_set(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2)
         return verror("vars.set(name, val): Requires two arguments");
-    env_set(env, argv[0]->v.s, argv[1]);
+    env_set(env, GET_STRING(argv[0]), argv[1]);
     return vnull();
 }
 
@@ -964,7 +976,7 @@ Value *native_vars_set_local(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2)
         return verror("vars.set_local(name, val): Requires two arguments");
-    env_set_local(env, argv[0]->v.s, argv[1]);
+    env_set_local(env, GET_STRING(argv[0]), argv[1]);
     return vnull();
 }
 
@@ -973,7 +985,7 @@ Value *native_vars_get(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("vars.get(name): Requires one argument");
-    return env_get(env, argv[0]->v.s);
+    return env_get(env, GET_STRING(argv[0]));
 }
 
 Value *native_vars_get_global(Env *env, int argc, Value **argv)
@@ -1051,7 +1063,7 @@ Value *native_meep(Env *e, int argc, Value **argv)
 
 Value *native_list_append(Env *env, int argc, Value **argv)
 {
-    ll_append(argv[0]->v.opaque, val_retain(argv[1]));
+    ll_append(GET_OPAQUE(argv[0]), val_retain(argv[1]));
     return vnull();
 }
 
@@ -1152,7 +1164,7 @@ Value *native_istring(Env *e, int argc, Value **argv)
 
 Value *istring_to_iter(Value *self)
 {
-    char *str = (char *)self->v.opaque;
+    char *str = (char *)self->v;
     size_t slen = strlen(str);
     Value **iter = (Value **)mila_malloc(sizeof(Value *) * (slen + 1));
     for (size_t i = 0; i < slen; ++i)
@@ -1186,11 +1198,11 @@ Value *istring_to_gen(Value *self)
 
 Value *istring_get(Value *self, Value *index)
 {
-    char *str = (char *)self->v.opaque;
+    char *str = (char *)self->v;
     return vstring_dup((char[]){str[GET_INTEGER(index)], 0});
 }
 
-Value *istring_to_str(Value *self) { return vstring_dup(self->v.opaque); }
+Value *istring_to_str(Value *self) { return vstring_dup(GET_STRING(self)); }
 
 Value *native_rand(Env *e, int argc, Value **argv) { return vfloat(rand()); }
 
@@ -1729,18 +1741,19 @@ void env_register_builtins(Env *g)
     val_set_method_table(dict_meta, UMethodFree, free_dict);
     val_set_method_table(dict_meta, BMethodGetItem, get_dict);
     val_set_method_table(dict_meta, TMethodSetItem, set_dict);
+    val_set_method_table(dict_meta, UMethodCopy, dict_copy);
 
     list_meta = val_make_table();
 
     val_set_method_table(list_meta, UMethodToRepr, list_repr);
     val_set_method_table(list_meta, UMethodToString, list_str);
     val_set_method_table(list_meta, UMethodFree, list_free);
-    // val_set_method_table(list_meta, UMethodToIter, list_to_iter);
     val_set_method_table(list_meta, BMethodGetItem, get_list);
     val_set_method_table(list_meta, TMethodSetItem, set_list);
     val_set_method_table(list_meta, UMethodStepIterInit, ll_iter_init);
     val_set_method_table(list_meta, UMethodStepIter, ll_iter_next);
     val_set_method_table(list_meta, UMethodStepIterClean, ll_iter_cleanup);
+    val_set_method_table(list_meta, UMethodCopy, ll_copy);
 
     array_meta = val_make_table();
 
@@ -1799,6 +1812,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "cast.u2i", native_cast_uint_to_int);
     env_register_native(g, "cast.f2i", native_cast_float_to_int);
     env_register_native(g, "typeof", native_type_of);
+    env_register_native(g, "_typeof", native_type_of_extra);
     env_register_native(g, "is_numeric", native_is_numeric);
     // === JSON
     env_register_native(g, "mjson.loads", native_mjson_loads);

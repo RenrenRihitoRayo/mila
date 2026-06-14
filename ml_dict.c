@@ -5,40 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ml_string.c"
+#include "ml_primitives.h"
 #include "mila.h"
-
-#ifdef ML_LIB
-#define ML_ALREADY
-#endif
-
-#define ML_LIB
-#include "mila.h"
-
-#ifndef ML_ALREADY
-#undef ML_LIB
-#endif
-
-typedef struct DictEntry {
-  ValueType key_type;
-  char *key;
-  Value *value;
-  struct DictEntry *next;
-} DictEntry;
-
-typedef struct {
-  DictEntry **buckets;
-  size_t capacity;
-  size_t size;
-} Dict;
-
-typedef struct {
-  char *key;
-  Value *value;
-} KVPair;
-
-#define INITIAL_CAPACITY 16
-#define LOAD_FACTOR 0.75
+#include "ml_string.h"
+#include "ml_dict.h"
 
 unsigned long HASH_SEED = 5381;
 
@@ -304,7 +274,7 @@ void dict_free(Dict *dict) {
 }
 
 Value *dict_display(Value *self) {
-  Dict *dict = (Dict *)self->v.opaque;
+  Dict *dict = (Dict *)self->v;
 
   if (dict->size > MAX_ITEMS_DISPLAYED)
     return vstring_fmt("[@ %zu pairs]", dict->size);
@@ -353,6 +323,36 @@ Value *dict_display(Value *self) {
   malloc_sprintf(&buffer, "]");
   mila_free(entries);
   return vstring_take(buffer);
+}
+
+Value *dict_copy(Value *self) {
+  if (!self || !self->v)
+    return NULL;
+  
+  Dict *original = (Dict *)self->v;
+  Dict *copy = dict_create();
+  if (!copy)
+    return NULL;
+  
+  // Deep copy all entries
+  for (size_t i = 0; i < original->capacity; i++) {
+    DictEntry *entry = original->buckets[i];
+    while (entry) {
+      Value *copied_value = val_copy(entry->value);
+      if (!copied_value) {
+        dict_free(copy);
+        return NULL;
+      }
+      dict_set_raw(copy, entry->key, copied_value);
+      val_release(copied_value);
+      entry = entry->next;
+    }
+  }
+  
+  Value *result = val_new(T_OPAQUE);
+  result->v = (void *)copy;
+  val_set_table(result, dict_meta);
+  return result;
 }
 
 Value** dict_keys(Dict* dict) {

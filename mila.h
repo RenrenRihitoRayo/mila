@@ -1,11 +1,14 @@
 // This project is licensed under the GNU Affero General Public License
 #pragma once
 
+#define _GNU_SOURCE
+
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <limits.h>
 
 #define MILA_LPREFIX "mila:"
 #define ML(x) MILA_LPREFIX x
@@ -75,23 +78,24 @@
 #define IS_ERROR(v) (GET_TYPE(v) == T_ERROR || GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_ERROR_TAGGED(v) (GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_FATAL(v) ((GET_ERROR_TYPE(v) == E_FATAL || GET_ERROR_TYPE(v) == E_SYNTAX_ERROR || GET_ERROR_TYPE(v) == E_THREAD_HALT))
-#define GET_STRING(val) (val ? val->v.s : NULL)
-#define GET_INTEGER(val) (val ? val->v.i : 0)
-#define GET_BINTEGER(val) (val ? val->v.bi : 0)
-#define GET_UINTEGER(val) (val ? val->v.ui : 0)
-#define GET_FLOAT(val) (val ? val->v.f : 0.0)
-#define GET_BFLOAT(val) (val ? val->v.bf : (mila_float128_internal){0.0, 0.0})
-#define GET_BOOL(val) (val ? val->v.b : 0)
-#define GET_OPAQUE(val) (val ? val->v.opaque : NULL)
-#define GET_FUNCTION(val) (val ? val->v.fn : NULL)
-#define GET_NATIVE(val) (val ? val->v.native : NULL)
-#define GET_ERROR_MESSAGE(val) (val ? val->v.message : NULL)
-#define GET_TAGGED_ERROR_MESSAGE(val) (val ? val->v.tagged_error.message : NULL)
+#define GET_STRING(val) (val ? (char*)val->v : NULL)
+#define GET_INTEGER(val) (val ? val->v->i : 0)
+#define GET_INTEGER_REF(val) (val ? (val->type == T_INT ? &val->v->i : &val->v) : NULL)
+#define GET_BINTEGER(val) (val ? val->v->bi : 0)
+#define GET_UINTEGER(val) (val ? val->v->ui : 0)
+#define GET_FLOAT(val) (val ? val->v->f : 0.0)
+#define GET_BFLOAT(val) (val ? val->v->bf : (mila_float128_internal){0.0, 0.0})
+#define GET_BOOL(val) (val ? (long)val->v : 0)
+#define GET_OPAQUE(val) (val ? (void*)val->v : NULL)
+#define GET_FUNCTION(val) (val ? (FunctionV*)val->v : NULL)
+#define GET_NATIVE(val) (val ? (NativeFunctionV*)val->v : NULL)
+#define GET_ERROR_MESSAGE(val) (val ? (char*)val->v : NULL)
+#define GET_TAGGED_ERROR_MESSAGE(val) (val ? val->v->tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 
 #define GET_TYPENAME(v) (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type] ) : "???")
-#define GET_METHOD(v, m) ((v->method_table && v->method_table[m - v->table_offset]) ? v->method_table[m - v->table_offset] : NULL)
+#define GET_METHOD(v, m) ((v->method_table && v->method_table[m]) ? v->method_table[m] : NULL)
 
 // each of these methods may be reffered to as
 // type{method name}
@@ -318,6 +322,8 @@ char *i128toa(__int128 value);
 int is_truthy(Value *value);
 // Make a new value with a type
 Value *val_new(ValueType t);
+// Make a new value with a type
+Value *val_new_raw(ValueType t);
 // Copy a value
 Value* val_copy(Value *src);
 // Copy a value shallowly
@@ -344,6 +350,8 @@ extern void val_release(Value *v);
 void val_kill(Value *v);
 // Integer contructor
 extern Value *vint(long i);
+// Pointer Inlined Integer Cosntructor
+extern Value *vptr_int(long x);
 // Uint constructor
 extern Value *vuint(unsigned long i);
 // Float constructor
@@ -438,7 +446,7 @@ typedef struct {
     size_t size, count;
 } CleanupRegistry;
 
-CleanupRegistry* cleanup_registry;
+extern CleanupRegistry* cleanup_registry;
 
 CleanupRegistry* make_cleanup_registry();
 CleanupRegistryEntry* make_cleanup_entry(char* name, void(*fn)(Env*));
@@ -453,11 +461,11 @@ typedef struct
 // ================= NOT SO PUBLIC APIS (or spicy api stuff, depends on your mood)
 
 // THESE ARE INTERNAL
-#define GET_TAGGED_ERROR_TYPENAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v.tagged_error.type] : "???" ) : "???")
-#define GET_ERROR_TYPE(val) (IS_ERROR_TAGGED(val) ? val->v.tagged_error.type : E_GENERIC)
+#define GET_TAGGED_ERROR_TYPENAME(val) (val ? (val->type == T_TAGGED_ERROR ? MILA_ERROR_NAMES[val->v->tagged_error.type] : "???" ) : "???")
+#define GET_ERROR_TYPE(val) (IS_ERROR_TAGGED(val) ? val->v->tagged_error.type : E_GENERIC)
 #define GET_TYPE(v) (v ? v->type : T_WHAT )
 
-#define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = val->v.opaque; val_release(val); return tmp; } }
+#define HANDLE_RETURN(val)  { if (val && val->type == T_RETURN) {Value* tmp = (void*)val->v; val_release(val); return tmp; } }
 
 #define HANDLE_CONTROL(val) \
     {\
@@ -477,13 +485,13 @@ typedef struct
             return val;\
         if (val->type == T_RETURN)\
         {\
-            Value *res = (Value*)val->v.opaque;\
+            Value *res = (Value*)val->v;\
             val_kill(val);\
             return res;\
         }\
     }
 
-#define GET_OVERLOAD(obj, method) ((obj)->type_name && strcmp((obj)->type_name, MILA_LPREFIX "dict") == 0) ? dict_get_str((Dict*)(obj)->v.opaque, method) : NULL
+#define GET_OVERLOAD(obj, method) ((obj)->type_name && strcmp((obj)->type_name, MILA_LPREFIX "dict") == 0) ? dict_get_str((Dict*)(obj)->v, method) : NULL
 
 #define FN_UNUSED __attribute__((unused))
 #define VAR_UNUSED __attribute__((unused))
@@ -596,35 +604,29 @@ typedef struct
     char *name;
 } NativeFunctionV;
 
-// Primitives are <50 bytes gauranteed.
-// worst case is 300+ Bytes (especially if VIOO)
+typedef union {
+    long i;
+    unsigned long ui;
+    double f;
+    mila_float128_internal bf;
+    __int128 bi;
+    struct {
+        char* message;
+        ErrorType type;
+        int return_code; // -1 by default, if it remains -1 the error type is the error code.
+    } tagged_error;
+} ValueValue;
+
+// Primitives are boxed, minimum size 32 bytes.
+// worst case is 100+ Bytes (especially if VIOO)
 struct Value
 {
-    ValueType type;            // 4 bytes
-    unsigned short refcount;   // simple refcount (4 bytes)
-    unsigned char table_offset;
-    char owns_table;           // check if table can be freed or not (1 bytes)
-    MethodTable *method_table; // 8 bytes ptr
-    char *type_name;           // 8 bytes ptr
-    union {
-        char * s; // string
-        char * message; // for errors
-        void *opaque; // pointers (weak, owned, unowned)
-        _Bool b;
-        // function
-        FunctionV *fn;
-        NativeFunctionV *native;
-        double f;
-        mila_float128_internal bf;
-        __int128 bi;
-        long i;
-        unsigned long ui;
-        struct {
-            char* message;
-            ErrorType type;
-            int return_code; // -1 by default, if it remains -1 the error type is the error code.
-        } tagged_error;
-    } v; // around 16 bytes
+    unsigned short refcount;    // simple refcount (2 bytes)
+    char owns_table;            // check if table can be freed or not (1 bytes)
+    ValueType type;             // 4 bytes
+    char *type_name;            // 8 bytes ptr
+    MethodTable *method_table;  // 8 bytes ptr
+    ValueValue *v;              // around 8 bytes
 };
 
 // == Parsing

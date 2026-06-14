@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include "ml_primitives.h"
 
 typedef struct LLNode {
   Value *value;
@@ -171,4 +172,31 @@ Value* ll_iter_next(LLIterState* state) {
 
 void ll_iter_cleanup(LLIterState* state) {
   free(state);
+}
+
+Value *ll_copy(Value *self) {
+  if (!self || !GET_OPAQUE(self))
+    return NULL;
+  
+  LinkedList *original = (LinkedList *)GET_OPAQUE(self);
+  LinkedList *copy = ll_create();
+  if (!copy)
+    return NULL;
+  
+  // Deep copy all nodes
+  LLNode *cur = original->head;
+  while (cur) {
+    Value *copied_value = val_copy(cur->value);
+    if (!copied_value) {
+      ll_free(copy);
+      return NULL;
+    }
+    ll_append(copy, copied_value);
+    cur = cur->next;
+  }
+  
+  Value *result = val_new(T_OPAQUE);
+  result->v = (void *)copy;
+  val_set_table(result, list_meta);
+  return result;
 }

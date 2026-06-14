@@ -6643,17 +6643,17 @@ Value *eval_statement(Src *s, Env *env)
         env_set_local_raw(frame, "@block_name", vstring_take(name));
         Value *res = eval_block_raw(s, frame);
         if (IS_ERROR_TAGGED(res)) {
-            env_free(frame);
             Value *new_res =
                 vtagged_coded_error(res->v.tagged_error.type, res->v.tagged_error.return_code, "Block %s reported an error: %s", name, res->v.tagged_error.message);
             val_release(res);
+            env_free(frame);
             return new_res;
         } else if (IS_ERROR(res))
         {
-            env_free(frame);
             Value *new_res =
                 verror("Block %s reported an error: %s", name, res->v.message);
             val_release(res);
+            env_free(frame);
             return new_res;
         }
         env_free(frame);

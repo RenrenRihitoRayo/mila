@@ -44,6 +44,8 @@
 // when collections' item amounts exceed this number
 #define MAX_ITEMS_DISPLAYED 1000
 
+_Static_assert(sizeof(void*) >= 8, "MiLa: pointer sizes cannot be smaller than 8 butes due to optimization features!");
+
 // ====== PUBLIC API
 
 // Error constants (for syntax checking)

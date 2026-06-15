@@ -62,20 +62,22 @@ Value *self_free(Value *self)
 
 // ---------- Native functions ----------
 
-double get_unix_timestamp()
+double get_unix_timestamp(void)
 {
 #ifdef _WIN32
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
 
-    // Convert FILETIME (100-ns intervals since 1601) to Unix epoch
     uint64_t t = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-    t -= 116444736000000000ULL; // difference between 1601 and 1970
-    return t / 1e7;             // convert 100-ns units to seconds
+
+    t -= 116444736000000000ULL; // FILETIME -> Unix epoch
+
+    return (double)t / 10000000.0;
 #else
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (double)tv.tv_sec + tv.tv_usec / 1e6;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 #endif
 }
 
@@ -823,7 +825,7 @@ Value *native_floor(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("floor(i): Requires one arguments");
-    double x = argv[0]->v->f;
+    double x = GET_FLOAT(argv[0]);
     return vfloat(floor(x));
 }
 
@@ -832,7 +834,7 @@ Value *native_ceil(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("ceil(i): Requires one arguments");
-    double x = argv[0]->v->f;
+    double x = GET_FLOAT(argv[0]);
     return vfloat(ceil(x));
 }
 
@@ -840,8 +842,8 @@ Value *native_sqrtf(Env *env, int argc, Value **argv)
 {
     (void)env;
     if (argc != 1)
-        return verror("sqrt(i): Requires one arguments");
-    double x = argv[0]->v->f;
+        return verror("sqrtf(i): Requires one arguments");
+    double x = GET_FLOAT(argv[0]);
     return vfloat(sqrtf(x));
 }
 
@@ -850,7 +852,7 @@ Value *native_sqrt(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("sqrt(i): Requires one arguments");
-    double x = argv[0]->v->i;
+    double x = GET_FLOAT(argv[0]);
     return vfloat(sqrt(x));
 }
 
@@ -859,7 +861,7 @@ Value *native_sin(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("sin(i): Requires one arguments");
-    double x = argv[0]->v->f;
+    double x = GET_FLOAT(argv[0]);
     return vfloat(sin(x));
 }
 
@@ -868,7 +870,7 @@ Value *native_cos(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("cos(i): Requires one arguments");
-    double x = argv[0]->v->f;
+    double x = GET_FLOAT(argv[0]);
     return vfloat(cos(x));
 }
 
@@ -877,7 +879,7 @@ Value *native_tan(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
         return verror("tan(i): Requires one arguments");
-    double x = argv[0]->v->f;
+    double x = GET_FLOAT(argv[0]);
     return vfloat(tan(x));
 }
 
@@ -886,8 +888,8 @@ Value *native_atan2(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2)
         return verror("atan2(i, i): Requires two arguments");
-    double y = argv[0]->v->f;
-    double x = argv[1]->v->f;
+    double y = GET_FLOAT(argv[0]);
+    double x = GET_FLOAT(argv[1]);
     return vfloat(atan2(y, x));
 }
 
@@ -896,7 +898,7 @@ Value *native_pow(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2)
         return verror("pow(base, exp): Requires two arguments");
-    return vint(pow(argv[0]->v->i, argv[1]->v->i));
+    return vint(pow(GET_INTEGER(argv[0]), GET_INTEGER(argv[1])));
 }
 
 Value *native_fabs(Env *e, int argc, Value **argv)
@@ -1412,11 +1414,15 @@ Value *native_from_opaque(Env *e, int argc, Value **argv)
     {
         return vint(*(long *)GET_OPAQUE(argv[1]));
     }
-    if (strcmp(GET_STRING(argv[0]), "long") == 0)
+    if (strcmp(GET_STRING(argv[0]), "ulong") == 0)
     {
         return vuint(*(unsigned long *)GET_OPAQUE(argv[1]));
     }
     if (strcmp(GET_STRING(argv[0]), "int") == 0)
+    {
+        return vint(*(int *)GET_OPAQUE(argv[1]));
+    }
+    if (strcmp(GET_STRING(argv[0]), "uint") == 0)
     {
         return vint(*(int *)GET_OPAQUE(argv[1]));
     }
@@ -1692,7 +1698,6 @@ void env_register_builtins(Env *g)
     env_register_native(g, "copy", native_copy);
     env_register_native(g, "repr", native_repr);
     env_register_native(g, "repr_raw", native_repr_raw);
-    env_register_native(g, "str", native_str);
     env_register_native(g, "random", native_random);
     env_register_native(g, "srandom", native_srandom);
     env_register_native(g, "noise", native_noise);
@@ -1886,6 +1891,8 @@ void env_register_builtins(Env *g)
     env_set_local_raw(g, "E_GENERIC", vint(E_GENERIC));
     env_set_local_raw(g, "E_SYNTAX_ERROR", vint(E_SYNTAX_ERROR));
     env_set_local_raw(g, "E_EXIT", vint(E_EXIT));
+    env_set_local_raw(g, "E_ASSERT", vint(E_ASSERT));
+    env_set_local_raw(g, "E_THREAD_HALT", vint(E_THREAD_HALT));
     env_register_native(g, "exit", native_exit);
     // === Time measurement
     env_register_native(g, "get_time", native_get_time);

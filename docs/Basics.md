@@ -18,6 +18,7 @@ Some constructs may feel natural while some not so much.
 * [Loops](#loops)
 * [Objects](#obj)
 * [Namespaces](#namespaces)
+* [Catching Errors](#error)
 * [Blocks](#blocks)
 * [Parameterized Scripts](#param)
 
@@ -322,6 +323,23 @@ with a dot.
 ```MiLa
 namespace my_lib {
     var .my_var = 90; // my_lib.my_var
+}
+```
+
+## <a id="error"></a>Error Handling
+
+Catch blocks are straightforward in MiLa.
+All they do is capture an error.
+
+```MiLa
+// just catch
+catch {
+    // erroneous code
+}
+
+// catch and turn the error into data
+catch error {
+    // erroneous code
 }
 ```
 

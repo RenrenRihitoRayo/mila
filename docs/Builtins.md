@@ -287,7 +287,7 @@ Self explanatory names.
 * `xor(a: "int", b: "int") -> "int"`
 * `not(a: "int") -> "int"`
 
-## <a id="casting"></a>Types
+## <a id="cast"></a>Types
 
 Self explanatory names.
 

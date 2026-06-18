@@ -1,0 +1,3 @@
+var module = run("mod.mila");
+
+println(module::add(1, 2));

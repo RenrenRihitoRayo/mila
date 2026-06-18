@@ -26,8 +26,14 @@ MiLa.
 * return
 * catch (2 variants)
 * block
+* namespace
 * set (3 variants)
 * var
+* contextual
+* sync
+* export
+* yield (from `foreach yield`)
+* object (2 variants)
 * foreach (2 variants)
 * while
 * break
@@ -36,11 +42,6 @@ MiLa.
 * false
 * null
 * none
-* export
-* contextual
-* sync
-* yield (from `foreach yield`)
-* object(2 variants)
 
 Total of 30 different constructs.
 Less than most programming languages' number of keywords!

@@ -78,6 +78,19 @@ var '你好' = "hello";
 var 'this is a valid identifier' = 90;
 ```
 
+### Field Access and Method Calls
+
+`obj:name` is field access and
+it is the same for `obj::name`,
+however when using the call syntax this is not the case.
+`obj:name(...)` is sugar for `obj["name"](obj, ...)` like in Lua,
+but `obj::name(...)` is sugar for `obj["name"](...)` which is just a normal call.
+<br><br>
+This syntax is due to identifiers being allowed to contain dots.
+Note when reading a function, but not calling it, won't save it as a binding.
+This is due to MiLa using reference counting and the possibility of cyclic
+references.
+
 ## <a id="expr"></a>Expressions
 
 Expressions in MiLa are just like any other language's.

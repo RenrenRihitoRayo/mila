@@ -8184,7 +8184,7 @@ int main(int argc, char **argv)
                                           ? GET_STRING(env_get(g, "__mila_codename"))
                                           : "???");
 
-        printf("Builtins edition %ld version %ld (full %ld.%ld.%ld)\n",
+        printf("Edition %ld version %ld (full %ld.%ld.%ld)\n",
                MILA_EDITION,
                MILA_VERSION,
                MILA_EDITION,

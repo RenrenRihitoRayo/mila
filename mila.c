@@ -6797,46 +6797,6 @@ Value *eval_statement(Src *s, Env *env)
         mila_free(id);
         return vnull();
     }
-    if (is_keyword_at(s, "export"))
-    {
-        s->pos += strlen("export");
-        char *id = parse_ident(s);
-        if (!id)
-            return verror("Invalid export statement.");
-        Value *v = NULL;
-        if (match_char(s, '='))
-        {
-            v = eval_expr(s, env);
-            match_char(s, ';');
-        }
-        else if (match_char(s, ':'))
-        {
-            v = eval_statement(s, env);
-        }
-        else
-        {
-            return verror("Expected a proper export statement!");
-        }
-
-        if (v && v->type == T_RETURN)
-        {
-            Value *tmp = v;
-            v = (Value *)tmp->v;
-            val_release(tmp);
-        }
-        if (env->parent)
-        {
-            env_set(env->parent, id, v);
-            env_set_local(env, id, v);
-        }
-        else
-        {
-            env_set_local(env, id, v);
-            fprintf(stderr, "= Warning: %s not binded to an outer scope!\n", id);
-        }
-        mila_free(id);
-        return v;
-    }
     if (is_keyword_at(s, "forget"))
     {
         s->pos += strlen("forget");
@@ -8391,7 +8351,7 @@ int main(int argc, char **argv)
             env_set_raw(g, "argv", array);
         }
 
-        printf("MiLa REPL\n");
+        printf("|\\_/| Harry the Hare welcomes you to the\n(@w@) MiLa REPL\n");
         printf("Running MiLa '%s'\n", GET_STRING(env_get(g, "__mila_codename"))
                                           ? GET_STRING(env_get(g, "__mila_codename"))
                                           : "???");

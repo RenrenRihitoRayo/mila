@@ -12,6 +12,7 @@
 	* [Control Values](#values-ctrl)
 	* [Getting Values](#values-get)
 	* [Value Types](#values-type)
+* [VIOO](#vioo)
 
 ---
 
@@ -423,3 +424,22 @@ MiLa has different enums for different kinds of types.
 | `T_NATIVE`       | `native`       | `struct NativeV*`        |
 | `T_NONE`         | `none`         | `struct Value*`          |
 | `T_NULL`         | `null`         | `struct Value*`          |
+
+## <a id="vioo"></a>VIOO
+
+This is only a highlight, check VIOO.md for more.
+<br><br>
+VIOO is MiLas way of adding pseudo dynamic but
+fast operator overloading for types.
+It internally uses an artay of function pointers each
+corresponding to a method.
+
+| Operation    | VIOO Method    |
+|--------------|----------------|
+| `+`          | TMethodBinop   |
+| `-`          | TMethodBinop   |
+| `*`          | TMethodBinop   |
+| `/`          | TMethodBinop   |
+| `%`          | TMethodBinop   |
+| `v[...]`     | BMethodGetItem |
+| `set v[...]` | TMethodSetItem |

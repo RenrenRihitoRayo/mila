@@ -1,21 +1,21 @@
 # Welcome to MiLa
 
-A small embeddable scripting language framework.
-Canonical MiLa is small simple and fast for general computation.
+A small embeddable scripting language.
+MiLa is small simple and fast for general applications.
 
 ## What MiLa is
 
 * A scaffold
 
-MiLa is the build-a-bear of scripting.
-Directly add bash commands as builtin functions?
-Why not?
+  MiLa is the build-a-bear of scripting.
+  Directly add bash commands as builtin functions?
+  Why not?
+  Because of its FFI interface wrappers are easier to write.
 
-* A kernel
+* A Scripting Language
 
-MiLa already has the bare minimum to work.
-You can even make a programming language using
-MiLa.
+  Although MiLa started its origins from being a language kernel,
+  it developed into being a proper programming language that follows the UNIX philosophy.
 
 ## Keywords (22 total)
 

@@ -51,10 +51,10 @@ Less than most programming languages' number of keywords!
 
 |      Method      | Operation/Statement |
 |-----------------:|:-------------------:|
-|    BMethodAdd    |        a +  b       |
-|    BMethodSub    |        a -  b       |
-|    BMethodMul    |        a *  b       |
-|    BMethodDiv    |        a /  b       |
+|    TMethodBinop  |        a +  b       |
+|    TMethodBinop  |        a -  b       |
+|    TMethodBinop  |        a *  b       |
+|    TMethodBinop  |        a /  b       |
 |  BMethodRshift   |        a >> b       |
 |  BMethodLshift   |        a << b       |
 |    BMethodOr     |        a \|\| b       |

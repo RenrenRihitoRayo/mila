@@ -1,7 +1,7 @@
 # Welcome to MiLa
 
 A small embeddable scripting language.
-MiLa is small simple and fast for general applications.
+MiLa is small, simple, and fast for general applications.
 
 ## What MiLa is
 

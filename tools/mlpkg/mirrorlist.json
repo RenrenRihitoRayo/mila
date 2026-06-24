@@ -1,11 +1,8 @@
-// Example Mirror List
 [
     {
         "name": "My Mirror",
         "link": "https://github.com/renrenrihitorayo/mila-<package>/archive/refs/heads/<version>.zip",
         "recent-marker": "master",
-        // optional fields
-        "command": "echo This will print after your package installs!",
-        "check-ver": "github hosted packages doesnt have this"
+        "command": "echo This will print after your package installs!"
     }
 ]

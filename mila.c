@@ -7613,6 +7613,7 @@ Value *eval_statement(Src *s, Env *env)
             return obj;
         }
         Env *class_env = env_new(env);
+        env_set_local_raw(env, name, obj);
         Value *res = eval_block_raw(s, class_env);
         if (IS_ERROR(res))
         {
@@ -7631,7 +7632,6 @@ Value *eval_statement(Src *s, Env *env)
             val_release(name);
         }
 
-        env_set_local_raw(env, name, obj);
         mila_free(name);
         env_free(class_env);
         return val_retain(obj);

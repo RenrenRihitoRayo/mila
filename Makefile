@@ -76,7 +76,7 @@ web $(targets_web): $(files_web)
 
 test-embed: embed.c
 	gcc -o embed embed.c -Iheaders
-	./embed
+	./embed && ls -lh embed
 	rm embed
 
 clean:

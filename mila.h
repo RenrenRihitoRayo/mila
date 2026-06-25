@@ -13,7 +13,6 @@
 #define MILA_LPREFIX "mila:"
 #define ML(x) MILA_LPREFIX x
 
-#include "ml_maths.h"
 #include "ml_paths.h"
 
 // Year-Month edition started
@@ -83,10 +82,8 @@ _Static_assert(sizeof(void*) >= 8, "MiLa: pointer sizes cannot be smaller than 8
 #define GET_STRING(val) (val ? (char*)val->v : NULL)
 #define GET_INTEGER(val) (val ? val->v->i : 0)
 #define GET_INTEGER_REF(val) (val ? (val->type == T_INT ? &val->v->i : &val->v) : NULL)
-#define GET_BINTEGER(val) (val ? val->v->bi : 0)
 #define GET_UINTEGER(val) (val ? val->v->ui : 0)
 #define GET_FLOAT(val) (val ? val->v->f : 0.0)
-#define GET_BFLOAT(val) (val ? val->v->bf : (mila_float128_internal){0.0, 0.0})
 #define GET_BOOL(val) (val ? (long)val->v : 0)
 #define GET_OPAQUE(val) (val ? (void*)val->v : NULL)
 #define GET_FUNCTION(val) (val ? (FunctionV*)val->v : NULL)
@@ -168,8 +165,6 @@ typedef enum
     T_INT,
     T_UINT,
     T_FLOAT,
-    T_BINT,
-    T_BFLOAT,
     T_STRING,
     T_BOOL,
     T_FUNCTION,
@@ -318,8 +313,6 @@ void env_register_builtins(Env *g);
 
 // == Value Related
 
-// Convert a 128 bit into a string
-char *i128toa(__int128 value);
 // Return an int if a MiLa value is truthy
 int is_truthy(Value *value);
 // Make a new value with a type
@@ -358,10 +351,6 @@ extern Value *vptr_int(long x);
 extern Value *vuint(unsigned long i);
 // Float constructor
 extern Value *vfloat(double f);
-// Bool constructor
-extern Value *vbint(__int128 i);
-// Float constructor
-extern Value *vbfloat(mila_float128_internal f);
 // Bool constructor
 extern Value *vbool(int b);
 // Duplicate a string
@@ -510,8 +499,6 @@ const char *MILA_TYPE_NAMES[] = {
     "int",
     "uint",
     "float",
-    "bint",
-    "bfloat",
     "string",
     "bool",
     "function",
@@ -610,8 +597,6 @@ typedef union {
     long i;
     unsigned long ui;
     double f;
-    mila_float128_internal bf;
-    __int128 bi;
     struct {
         char* message;
         ErrorType type;
@@ -678,8 +663,6 @@ Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);
 extern double to_double(Value *v);
-extern mila_float128_internal to_bdouble(Value *v);
-extern __int128 to_bint(Value *v);
 
 // == Helpers
 void sleep_ms(uint64_t ms);

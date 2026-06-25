@@ -54,7 +54,6 @@
 #include "ml_threading.c"
 
 #undef MILA_PROTO
-#include "ml_maths.c"
 
 #include "mila.h"
 
@@ -379,12 +378,6 @@ Value *val_copy(Value *src)
     case T_FLOAT:
         copy->v->f = src->v->f;
         break;
-    case T_BFLOAT:
-        copy->v->bf = src->v->bf;
-        break;
-    case T_BINT:
-        copy->v->bi = src->v->bi;
-        break;
     case T_ERROR:
         /* Error messages: duplicate the message */
         if (src->v)
@@ -476,12 +469,6 @@ Value *val_copy_shallow(Value *src)
 
     case T_FLOAT:
         copy->v->f = src->v->f;
-        break;
-    case T_BFLOAT:
-        copy->v->bf = src->v->bf;
-        break;
-    case T_BINT:
-        copy->v->bi = src->v->bi;
         break;
     case T_ERROR:
         /* Error messages: duplicate the message */
@@ -617,10 +604,6 @@ inline int is_truthy(Value *value)
         return GET_FLOAT(value) ? 1 : 0;
     case T_UINT:
         return GET_UINTEGER(value) ? 1 : 0;
-    case T_BINT:
-        return GET_BINTEGER(value) ? 1 : 0;
-    case T_BFLOAT:
-        return !b_ff_is_zero(GET_BFLOAT(value));
     case T_BOOL:
         return GET_BOOL(value) ? 1 : 0;
     case T_STRING:
@@ -897,20 +880,6 @@ inline Value *vfloat(double f)
 {
     Value *v = val_new(T_FLOAT);
     v->v->f = f;
-    return v;
-}
-
-inline Value *vbint(__int128 x)
-{
-    Value *v = val_new(T_BINT);
-    v->v->bi = x;
-    return v;
-}
-
-inline Value *vbfloat(mila_float128_internal f)
-{
-    Value *v = val_new(T_BFLOAT);
-    v->v->bf = f;
     return v;
 }
 
@@ -1239,20 +1208,6 @@ char *as_c_string(Value *v)
     case T_UINT:
         malloc_sprintf(&buffer, "%luu", v->v->ui);
         break;
-    case T_BINT:
-    {
-        char *s = i128toa(v->v->bi);
-        malloc_sprintf(&buffer, "%s~", s);
-        free(s);
-        break;
-    }
-    case T_BFLOAT:
-    {
-        char *s = b_ff_to_string(v->v->bf);
-        malloc_sprintf(&buffer, "%s~", s);
-        free(s);
-        break;
-    }
     case T_RETURN:
     {
         char *str = as_c_string_repr((Value *)v->v);
@@ -1438,20 +1393,6 @@ int raw_print_value(Value *v)
             return printf("<owned opaque:%p>", v->v);
     case T_UINT:
         return printf("%luu", v->v->ui);
-    case T_BINT:
-    {
-        char *s = i128toa(v->v->bi);
-        int i = printf("%s~", s);
-        free(s);
-        return i;
-    }
-    case T_BFLOAT:
-    {
-        char *s = b_ff_to_string(v->v->bf);
-        int i = printf("%s~", s);
-        free(s);
-        return i;
-    }
     case T_RETURN:
     {
         return printf("<return:");
@@ -3667,7 +3608,6 @@ inline Value *parse_number(Src *s)
     _Bool is_unsigned = 0;
     _Bool is_percent = 0;
     char base = 10;
-    _Bool big = 0;
     if (src_peek(s) == '-')
     {
         src_get(s);
@@ -3675,8 +3615,7 @@ inline Value *parse_number(Src *s)
     // either normal number or hex
     while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.' ||
            src_peek(s) == 'x' || src_peek(s) == 'X' ||
-           isxdigit((unsigned char)src_peek(s)) ||
-           src_peek(s) == '~')
+           isxdigit((unsigned char)src_peek(s)))
     {
         if (src_peek(s) == '.')
         {
@@ -3694,14 +3633,6 @@ inline Value *parse_number(Src *s)
                 break;
             }
             base = 16;
-        }
-        else if (src_peek(s) == '~')
-        {
-            if (big)
-            {
-                break;
-            }
-            big = 1;
         }
         src_get(s);
     }
@@ -3723,7 +3654,7 @@ inline Value *parse_number(Src *s)
     if (len <= 0)
         return NULL;
 
-    if (len < (int)sizeof(tmp) && !big)
+    if (len < (int)sizeof(tmp))
     {
         memcpy(tmp, s->src + st, len);
         tmp[len] = 0;
@@ -3742,30 +3673,7 @@ inline Value *parse_number(Src *s)
             return is_unsigned ? vuint(i > 0 ? i : -i) : vint(i);
         }
     }
-    else
-    {
-        // implement arbritrarily sized integers in the future
-        char *buf = mila_malloc(len + 1);
-        memcpy(buf, s->src + st, len);
-        buf[len] = 0;
-        Value *r;
-        if (seen_dot)
-        {
-            mila_float128_internal f = b_ff_from_string(buf);
-            if (is_percent)
-                f = b_ff_div(f, b_ff_from_double(100.0));
-            r = vbfloat(f);
-        }
-        else
-        {
-            long tmp = atoi128(buf);
-            if (is_percent)
-                return vbfloat(b_ff_div(b_ff_from_i128(tmp), b_ff_from_double(100.0)));
-            r = vbint(tmp);
-        }
-        mila_free(buf);
-        return r;
-    }
+    return vint(0);
 }
 
 char *strip(char *str)
@@ -5648,7 +5556,7 @@ Value *eval_primary(Src *s, Env *env)
 // helper to convert numeric types and do arithmetic
 inline int is_number(Value *v)
 {
-    return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT || v->type == T_BINT || v->type == T_BFLOAT);
+    return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
 }
 
 inline double to_double(Value *v)
@@ -5661,44 +5569,6 @@ inline double to_double(Value *v)
         return v->v->f;
     if (v->type == T_UINT)
         return (double)v->v->ui;
-    if (v->type == T_BINT)
-        return (double)v->v->bi;
-    if (v->type == T_BFLOAT)
-        return (double)v->v->bi;
-    return 0.0;
-}
-
-inline mila_float128_internal to_bdouble(Value *v)
-{
-    if (!v)
-        return b_ff_from_double(0.0);
-    if (v->type == T_INT)
-        return b_ff_from_long(v->v->i);
-    if (v->type == T_FLOAT)
-        return b_ff_from_double(v->v->f);
-    if (v->type == T_UINT)
-        return b_ff_from_ulong(v->v->ui);
-    if (v->type == T_BINT)
-        return b_ff_from_i128(v->v->bi);
-    if (v->type == T_BFLOAT)
-        return v->v->bf;
-    return b_ff_from_double(0.0);
-}
-
-inline __int128 to_bint(Value *v)
-{
-    if (!v)
-        return 0.0;
-    if (v->type == T_INT)
-        return (__int128)v->v->i;
-    if (v->type == T_FLOAT)
-        return (__int128)v->v->f;
-    if (v->type == T_UINT)
-        return (__int128)v->v->ui;
-    if (v->type == T_BINT)
-        return v->v->bi;
-    if (v->type == T_BFLOAT)
-        return b_ff_to_i128(v->v->bf);
     return 0.0;
 }
 
@@ -5712,10 +5582,6 @@ inline unsigned long to_uint(Value *v)
         return (unsigned long)v->v->f;
     if (v->type == T_UINT)
         return v->v->ui;
-    if (v->type == T_BINT)
-        return (unsigned long)v->v->bi;
-    if (v->type == T_BFLOAT)
-        return b_ff_to_ulong(v->v->bf);
     return 0.0;
 }
 
@@ -5729,10 +5595,6 @@ FN_UNUSED static inline long to_int(Value *v)
         return (long)v->v->f;
     if (v->type == T_UINT)
         return v->v->ui;
-    if (v->type == T_BINT)
-        return (long)v->v->bi;
-    if (v->type == T_BFLOAT)
-        return b_ff_to_long(v->v->bf);
     return 0;
 }
 
@@ -5776,61 +5638,7 @@ inline Value *binary_op(Value *a, MethodType op, Value *b)
     }
     else if (is_number(a) && is_number(b))
     {
-        if (a->type == T_BFLOAT || b->type == T_BFLOAT)
-        {
-            mila_float128_internal ra = to_bdouble(a), rb = to_bdouble(b);
-            if (op == BMethodAdd)
-                return vbfloat(b_ff_add(ra, rb));
-            if (op == BMethodSub)
-                return vbfloat(b_ff_sub(ra, rb));
-            if (op == BMethodMul)
-                return vbfloat(b_ff_mul(ra, rb));
-            if (op == BMethodDiv)
-                return vbfloat(b_ff_div(ra, rb));
-            if (op == BMethodLess)
-                return vbool(b_ff_cmp(ra, rb) < 0);
-            if (op == BMethodGreat)
-                return vbool(b_ff_cmp(ra, rb) > 0);
-            if (op == BMethodLE)
-                return vbool(b_ff_cmp(ra, rb) <= 0);
-            if (op == BMethodGE)
-                return vbool(b_ff_cmp(ra, rb) >= 0);
-            if (op == BMethodEq)
-                return vbool(b_ff_cmp(ra, rb) == 0);
-            if (op == BMethodNe)
-                return vbool(b_ff_cmp(ra, rb) != 0);
-            return vnull();
-        }
-        else if (a->type == T_BINT || b->type == T_BINT)
-        {
-            __int128 ra = to_bint(a), rb = to_bint(b);
-            if (op == BMethodAdd)
-                return vbint(ra + rb);
-            if (op == BMethodSub)
-                return vbint(ra - rb);
-            if (op == BMethodMul)
-                return vbint(ra * rb);
-            if (op == BMethodDiv)
-                return vbint(ra / rb);
-            if (op == BMethodLess)
-                return vbool(ra < rb);
-            if (op == BMethodGreat)
-                return vbool(ra > rb);
-            if (op == BMethodLE)
-                return vbool(ra <= rb);
-            if (op == BMethodLShift)
-                a->v->bi = ra << rb;
-            if (op == BMethodRShift)
-                a->v->bi = ra >> rb;
-            if (op == BMethodGE)
-                return vbool(ra >= rb);
-            if (op == BMethodEq)
-                return vbool(ra == rb);
-            if (op == BMethodNe)
-                return vbool(ra != rb);
-            return vnull();
-        }
-        else if (a->type == T_UINT || b->type == T_UINT)
+        if (a->type == T_UINT || b->type == T_UINT)
         // treat both numbers as unsigned.
         {
             unsigned long ia = to_uint(a), ib = to_uint(b);
@@ -6769,12 +6577,6 @@ Value *eval_statement(Src *s, Env *env)
             break;
         case T_UINT:
             a->v->ui = GET_UINTEGER(val);
-            break;
-        case T_BINT:
-            a->v->bi = GET_BINTEGER(val);
-            break;
-        case T_BFLOAT:
-            a->v->bf = GET_BFLOAT(val);
             break;
         case T_OWNED_OPAQUE:
         case T_OPAQUE:

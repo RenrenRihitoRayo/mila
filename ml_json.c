@@ -464,15 +464,7 @@ char* _mila_to_json(Value* v, int level) {
         case T_UINT:
             malloc_sprintf(&result, "%ld", GET_INTEGER(v));
             break;
-        case T_BINT:
-            {
-                char* num = i128toa(GET_BINTEGER(v));
-                malloc_sprintf(&result, "%s", num);
-                mila_free(num);
-            }
-            break;
         case T_FLOAT:
-        case T_BFLOAT:
             {
                 double d = GET_FLOAT(v);
                 if (d == (long long)d)
@@ -556,15 +548,7 @@ char* _mila_to_mjson(Value* v, int level) {
         case T_UINT:
             malloc_sprintf(&result, "%ld", GET_INTEGER(v));
             break;
-        case T_BINT:
-            {
-                char* num = i128toa(GET_BINTEGER(v));
-                malloc_sprintf(&result, "%s", num);
-                mila_free(num);
-            }
-            break;
         case T_FLOAT:
-        case T_BFLOAT:
             {
                 double d = GET_FLOAT(v);
                 if (d == (long long)d)

@@ -1683,10 +1683,6 @@ void env_register_builtins(Env *g)
 #else
     env_set_raw(g, "__mila_codename", vstring_dup("mila:canon"));
 #endif
-    env_set_raw(g, "INF", vfloat(INFINITY));
-    env_set_raw(g, "NINF", vfloat(-INFINITY));
-    env_set_raw(g, "BINF", vbfloat(INFINITY128));
-    env_set_raw(g, "BNINF", vbfloat(NINFINITY128));
 
     // === Misc
     env_register_native(g, "range", native_range);
@@ -1859,6 +1855,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "rand", native_rand);
     env_register_native(g, "fabs", native_fabs);
     env_register_native(g, "abs", native_abs);
+    env_set_raw(g, "INF", vfloat(INFINITY));
+    env_set_raw(g, "NINF", vfloat(-INFINITY));
 #endif // ML_NO_MATH
     env_set_raw(g, "RAND_MAX", vint(RAND_MAX));
     // === Env

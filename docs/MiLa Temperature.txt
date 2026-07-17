@@ -1,0 +1,62 @@
+MiLa Temperature (MT)
+=====================
+
+Purpose
+-------
+MiLa Temperature measures the practical capability density of a
+language implementation.
+
+While the MiLa Index evaluates the quality of individual features,
+MiLa Temperature measures how efficiently those features occupy
+the final executable.
+
+Definitions
+-----------
+
+FeatureScore
+    The MiLa Index score assigned to a feature.
+
+MI
+    Sum of every FeatureScore.
+
+BinarySize
+    Final stripped release binary size in kilobytes.
+
+Formula
+-------
+
+                MI
+MT = -----------------------
+      BinarySize (KB)
+
+Unit
+----
+
+Points per Kilobyte (pt/KB)
+
+Interpretation
+--------------
+
+MT >= 5.0
+    Extremely Dense
+    Every kilobyte contributes meaningful functionality.
+
+4.0 - 4.99
+    Dense
+    Very little implementation waste.
+
+3.0 - 3.99
+    Practical
+    Healthy balance between features and size.
+
+2.0 - 2.99
+    Moderate
+    Some redundancy or implementation overhead.
+
+1.0 - 1.99
+    Sparse
+    Either lacks useful features or is becoming bloated.
+
+< 1.0
+    Cold
+    Significant implementation cost for the capabilities offered.

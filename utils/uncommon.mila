@@ -1,0 +1,70 @@
+// uncommon.mila
+// Easter eggs. Tons of them.
+// Python may have inspiration from Monthy Python,
+// We got it from The Hitchhiker's Guide to the Galaxy and
+// from caffeine deprived developers.
+
+object uncommon {
+    fn _choose_random(list) {
+        srandom(cast.f2i(get_time()));
+        var len = list.len(list);
+        return list[random(0, len)];
+    } 
+    fn answer() {
+        return 42;
+    }
+    fn question() {
+        return "its obvious isnt it?";
+    }
+    fn no_aas():[uncommon] {
+        return uncommon::_choose_random([
+            "No.",
+            "Invalid.",
+            "I refuse!",
+            "Felt lazy...",
+            "Womp womp",
+            "Works on my machine",
+            "Sorry Mercurys in retrograde. (I think.)",
+            "Denied.",
+            "Too much work.",
+            "Skill Issue",
+            "Too many tabs currently open.",
+            "Asking the machine gods... they said no.",
+            "Relaying to Deep Thought, they said 42. Well I say 404.",
+            "Bring me coffee then try again.",
+            "Oof that should not be in production.",
+            "Request had a problem.",
+            "Request was denied.",
+            "Request... not a request?",
+            "Request looked like latin, I dont know latin."
+        ]);
+    }
+    fn bsod_lin() {
+        println("\
+     .--.        _
+    |o_o |      | |
+    |:_/ |      | |
+   //   \\ \\     |_| 
+  (|     | )     _
+ /'\\_   _/`\\    (_)
+ \\___)=(___/
+
+Womp womp ;P
+
+Your ricing was mid, the kernel had to intervene.
+
+Please reboot your computer.");
+    }
+    fn bsod_win() {
+        println("\
+ :(
+    Your potato PC encountered a problem,
+    we'll go spy on you then automatically restart your system.
+
+0% Complete, Never Will
+
+Stop code: TOO_MANY_CHROME_TABS");
+    }
+}
+
+return uncommon;

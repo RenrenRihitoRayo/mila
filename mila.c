@@ -643,78 +643,328 @@ inline int is_truthy(Value *value)
     return 0;
 }
 
-int match_range(const char **pat, char c)
-{
-    int negate = 0;
-    if (**pat == '!')
-    {
-        negate = 1;
-        (*pat)++;
-    }
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-    int matched = 0;
-    while (**pat && **pat != ']')
-    {
-        if ((*pat)[1] == '-' && (*pat)[2] && (*pat)[2] != ']')
-        {
-            // Handle range a-z
-            if (c >= **pat && c <= (*pat)[2])
-                matched = 1;
-            *pat += 3; // skip 'a-z'
-        }
-        else
-        {
-            if (c == **pat)
-                matched = 1;
-            (*pat)++;
-        }
+static const char *find_close(const char *p, char close) {
+    while (*p) {
+        if (*p == '\\' && *(p + 1)) { p += 2; continue; }
+        if (*p == close) return p;
+        p++;
     }
-
-    if (**pat == ']')
-        (*pat)++; // skip closing bracket
-    return negate ? !matched : matched;
+    return NULL;
 }
 
-int match(const char *pattern, const char *str)
-{
-    while (*pattern)
-    {
-        if (*pattern == '*')
-        {
-            pattern++;
-            if (!*pattern)
-                return 1;
-            while (*str)
-            {
-                if (match(pattern, str))
-                    return 1;
-                str++;
-            }
-            return 0;
-        }
-        else if (*pattern == '?')
-        {
-            if (!*str)
-                return 0;
-            pattern++;
-            str++;
-        }
-        else if (*pattern == '[')
-        {
-            pattern++;
-            if (!*str || !match_range(&pattern, *str))
-                return 0;
-            str++;
-        }
-        else
-        {
-            if (*pattern != *str)
-                return 0;
-            pattern++;
-            str++;
+static int set_match(const char *start, const char *end, char c) {
+    const char *p = start;
+    while (p < end) {
+        char lo;
+        if (*p == '\\' && p + 1 < end) { lo = *(p + 1); p += 2; }
+        else { lo = *p; p++; }
+
+        if (p < end && *p == '-' && p + 1 < end) {
+            char hi;
+            p++;
+            if (*p == '\\' && p + 1 < end) { hi = *(p + 1); p += 2; }
+            else { hi = *p; p++; }
+            if (c >= lo && c <= hi) return 1;
+        } else {
+            if (c == lo) return 1;
         }
     }
-    return !*str;
+    return 0;
+}
+
+static int do_match(const char *p, const char *s) {
+    if (*p == '\0') return *s == '\0';
+
+    if (*p == '\\') {
+        p++;
+        if (*p == '\0') return 0;
+        if (*s == '\0' || *s != *p) return 0;
+        return do_match(p + 1, s + 1);
+    }
+
+    if (*p == '?') {
+        if (*s == '\0') return 0;
+        return do_match(p + 1, s + 1);
+    }
+
+    if (*p == '*') {
+        const char *rest = p + 1;
+        const char *cur = s;
+        while (1) {
+            if (do_match(rest, cur)) return 1;
+            if (*cur == '\0') return 0;
+            cur++;
+        }
+    }
+
+    if (*p == '[') {
+        const char *close = find_close(p + 1, ']');
+        if (!close) {
+            if (*s != '[') return 0;
+            return do_match(p + 1, s + 1);
+        }
+        if (*s == '\0' || !set_match(p + 1, close, *s)) return 0;
+        return do_match(close + 1, s + 1);
+    }
+
+    if (*p == '{') {
+        const char *close = find_close(p + 1, '}');
+        if (!close) {
+            if (*s != '{') return 0;
+            return do_match(p + 1, s + 1);
+        }
+        const char *cur = s;
+        if (*cur == '\0' || !set_match(p + 1, close, *cur)) return 0;
+        cur++;
+        while (1) {
+            if (do_match(close + 1, cur)) return 1;
+            if (*cur == '\0' || !set_match(p + 1, close, *cur)) return 0;
+            cur++;
+        }
+    }
+
+    if (*s == '\0' || *s != *p) return 0;
+    return do_match(p + 1, s + 1);
+}
+
+int match(const char *pattern, const char *str) {
+    return do_match(pattern, str);
+}
+
+static const char *match_end(const char *p, const char *s) {
+    if (*p == '\0') return s;
+
+    if (*p == '\\') {
+        p++;
+        if (*p == '\0' || *s == '\0' || *s != *p) return NULL;
+        return match_end(p + 1, s + 1);
+    }
+
+    if (*p == '?') {
+        if (*s == '\0') return NULL;
+        return match_end(p + 1, s + 1);
+    }
+
+    if (*p == '*') {
+        const char *rest = p + 1;
+        const char *cur = s;
+        while (1) {
+            const char *r = match_end(rest, cur);
+            if (r) return r;
+            if (*cur == '\0') return NULL;
+            cur++;
+        }
+    }
+
+    if (*p == '[') {
+        const char *close = find_close(p + 1, ']');
+        if (!close) {
+            if (*s != '[') return NULL;
+            return match_end(p + 1, s + 1);
+        }
+        if (*s == '\0' || !set_match(p + 1, close, *s)) return NULL;
+        return match_end(close + 1, s + 1);
+    }
+
+    if (*p == '{') {
+        const char *close = find_close(p + 1, '}');
+        if (!close) {
+            if (*s != '{') return NULL;
+            return match_end(p + 1, s + 1);
+        }
+        const char *cur = s;
+        if (*cur == '\0' || !set_match(p + 1, close, *cur)) return NULL;
+        cur++;
+        while (1) {
+            const char *r = match_end(close + 1, cur);
+            if (r) return r;
+            if (*cur == '\0' || !set_match(p + 1, close, *cur)) return NULL;
+            cur++;
+        }
+    }
+
+    if (*s == '\0' || *s != *p) return NULL;
+    return match_end(p + 1, s + 1);
+}
+
+int find_match(const char *pattern, const char *str, const char **out_start, size_t *out_len) {
+    const char *s = str;
+    while (1) {
+        const char *end = match_end(pattern, s);
+        if (end) {
+            *out_start = s;
+            *out_len = (size_t)(end - s);
+            return 1;
+        }
+        if (*s == '\0') break;
+        s++;
+    }
+    return 0;
+}
+
+typedef struct { char *buf; size_t len; size_t cap; } strbuf;
+
+static void sb_init(strbuf *b) { b->cap = 16; b->buf = malloc(b->cap); b->len = 0; b->buf[0] = '\0'; }
+
+static void sb_append(strbuf *b, const char *data, size_t n) {
+    if (b->len + n + 1 > b->cap) {
+        while (b->len + n + 1 > b->cap) b->cap *= 2;
+        b->buf = realloc(b->buf, b->cap);
+    }
+    memcpy(b->buf + b->len, data, n);
+    b->len += n;
+    b->buf[b->len] = '\0';
+}
+
+char *mapped_replace_match(const char *pattern, const char *str, const char *replacement, int count) {
+    strbuf out;
+    sb_init(&out);
+    size_t rep_len = strlen(replacement);
+    const char *cursor = str;
+    int done = 0;
+
+    while (count == -1 || done < count) {
+        const char *m_start, *m_end;
+        size_t m_len;
+        if (!find_match(pattern, cursor, &m_start, &m_len)) break;
+        m_end = m_start + m_len;
+
+        sb_append(&out, cursor, (size_t)(m_start - cursor));
+        sb_append(&out, replacement, rep_len);
+
+        if (m_len == 0) {
+            if (*m_end == '\0') { cursor = m_end; done++; break; }
+            sb_append(&out, m_end, 1);
+            cursor = m_end + 1;
+        } else {
+            cursor = m_end;
+        }
+        done++;
+        if (*cursor == '\0') break;
+    }
+
+    sb_append(&out, cursor, strlen(cursor));
+    return out.buf;
+}
+
+/* like find_match but returns index of first match, -1 if none, out_len optional */
+long find_match_index(const char *pattern, const char *str, size_t *out_len) {
+    const char *start;
+    size_t len;
+    if (!find_match(pattern, str, &start, &len)) return -1;
+    if (out_len) *out_len = len;
+    return (long)(start - str);
+}
+
+/* greedy version of match_end: * and {} consume max chars, backtrack only if needed */
+static const char *greedy_match_end(const char *p, const char *s) {
+    if (*p == '\0') return s;
+
+    if (*p == '\\') {
+        p++;
+        if (*p == '\0' || *s == '\0' || *s != *p) return NULL;
+        return greedy_match_end(p + 1, s + 1);
+    }
+
+    if (*p == '?') {
+        if (*s == '\0') return NULL;
+        return greedy_match_end(p + 1, s + 1);
+    }
+
+    if (*p == '*') {
+        const char *rest = p + 1;
+        const char *cur = s + strlen(s);
+        while (cur >= s) {
+            const char *r = greedy_match_end(rest, cur);
+            if (r) return r;
+            if (cur == s) break;
+            cur--;
+        }
+        return NULL;
+    }
+
+    if (*p == '[') {
+        const char *close = find_close(p + 1, ']');
+        if (!close) {
+            if (*s != '[') return NULL;
+            return greedy_match_end(p + 1, s + 1);
+        }
+        if (*s == '\0' || !set_match(p + 1, close, *s)) return NULL;
+        return greedy_match_end(close + 1, s + 1);
+    }
+
+    if (*p == '{') {
+        const char *close = find_close(p + 1, '}');
+        if (!close) {
+            if (*s != '{') return NULL;
+            return greedy_match_end(p + 1, s + 1);
+        }
+        const char *run_end = s;
+        while (*run_end && set_match(p + 1, close, *run_end)) run_end++;
+        if (run_end == s) return NULL;
+        const char *cur = run_end;
+        while (cur > s) {
+            const char *r = greedy_match_end(close + 1, cur);
+            if (r) return r;
+            cur--;
+        }
+        return NULL;
+    }
+
+    if (*s == '\0' || *s != *p) return NULL;
+    return greedy_match_end(p + 1, s + 1);
+}
+
+/* find leftmost longest substring of str matching pattern */
+static int find_match_greedy(const char *pattern, const char *str, const char **out_start, size_t *out_len) {
+    const char *s = str;
+    while (1) {
+        const char *end = greedy_match_end(pattern, s);
+        if (end) {
+            *out_start = s;
+            *out_len = (size_t)(end - s);
+            return 1;
+        }
+        if (*s == '\0') break;
+        s++;
+    }
+    return 0;
+}
+
+/* replace up to count full matches (-1 = replace all), caller must free result */
+char *replace_match(const char *pattern, const char *str, const char *replacement, int count) {
+    strbuf out;
+    sb_init(&out);
+    size_t rep_len = strlen(replacement);
+    const char *cursor = str;
+    int done = 0;
+
+    while (count == -1 || done < count) {
+        const char *m_start, *m_end;
+        size_t m_len;
+        if (!find_match_greedy(pattern, cursor, &m_start, &m_len)) break;
+        m_end = m_start + m_len;
+
+        sb_append(&out, cursor, (size_t)(m_start - cursor));
+        sb_append(&out, replacement, rep_len);
+
+        if (m_len == 0) {
+            if (*m_end == '\0') { cursor = m_end; done++; break; }
+            sb_append(&out, m_end, 1);
+            cursor = m_end + 1;
+        } else {
+            cursor = m_end;
+        }
+        done++;
+        if (*cursor == '\0') break;
+    }
+
+    sb_append(&out, cursor, strlen(cursor));
+    return out.buf;
 }
 
 inline Value *vnull() { return val_new_raw(T_NULL); }
@@ -2739,6 +2989,7 @@ const char *skip_primary(Src *s)
     {
         src_get(s);
         skip_ws(s);
+        match_char(s, '@');
         if (src_peek(s) != ']')
         {
             for (;;)
@@ -7742,7 +7993,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
                     val_release(call_native_with(env, native_list_append, val_retain(list), vstring_dup(argv[i]), NULL));
                     for (i++; i < argc; ++i)
                     {
-                        val_release(call_native_with(env, native_list_new, val_retain(list), vstring_dup(argv[i]), NULL));
+                        val_release(call_native_with(env, native_list_append, val_retain(list), vstring_dup(argv[i]), NULL));
                     }
                     break;
                 }

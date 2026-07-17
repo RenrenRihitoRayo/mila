@@ -254,6 +254,14 @@ typedef struct {
     and return the index of the first character,
     disregarding the character's cases.
 
+* `str.match_replace(str: "string", pattern: "string", replacement: "string") -> "string"`
+
+    Find every match of `pattern` in `str` and replace it with `replacement`.
+
+* `str.match_find(str: "string", pattern: "string") -> "int"`
+
+    Find the first match from the left of `pattern` in `str` and return the index to the first character of the match.
+
 * `istring(str: "string") -> "opaque:istring"`
 
     Turn the string into an iterable string.
@@ -412,6 +420,10 @@ Theres no date object shenanigans if theres no date object.
 * `exit(code: "int"=0) -> "tagged_error!"`
 
     Exit with the error code `code`.
+
+* `abort() -> "!"`
+
+    Call C abort.
 
 * `report(message: "string") -> "error!"`
 

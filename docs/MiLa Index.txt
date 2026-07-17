@@ -1,0 +1,126 @@
+MiLa Index (MI)
+===============
+
+Purpose
+-------
+The MiLa Index (MI) is a heuristic for evaluating the practical value
+of a programming language's built-in features.
+
+Rather than measuring how many features a language has, the MiLa Index
+measures how well each feature justifies its existence.
+
+The resulting score can then be compared against the implementation's
+binary size to estimate its capability density.
+
+-----------------------------------------------------------------------
+
+Feature Evaluation
+------------------
+
+Every feature begins with a base score of 20.
+
+Positive Criteria
+-----------------
+
++5  Fundamental to the language's intended purpose.
++4  Solves a common real-world problem.
++4  Difficult or impractical for users to implement correctly.
++3  Improves developer productivity.
++3  Integrates naturally with existing language semantics.
++3  Encourages composition, modularity, or code reuse.
++3  Improves safety, correctness, or reliability.
++2  Improves runtime performance or efficiency.
++2  Improves portability, interoperability, or extensibility.
++2  Broadly applicable across common domains.
++2  Simple to understand and document.
++2  Simple to implement and maintain.
+
+Negative Criteria
+-----------------
+
+-5  Conflicts with the language's design philosophy.
+-4  Better suited as an external library or package.
+-4  Significant implementation complexity.
+-4  Significant long-term maintenance burden.
+-3  Introduces semantic inconsistencies or special cases.
+-3  Rarely useful in practice.
+-3  Easily implemented by users.
+-3  Complicates the public API.
+-2  Adds unnecessary runtime overhead.
+-2  Encourages poor programming practices.
+-2  Primarily duplicates existing functionality.
+-2  Increases implementation size disproportionately.
+
+Feature Score
+-------------
+
+FeatureScore(feature)
+    = 20
+    + Σ(Positive Criteria)
+    - Σ(Negative Criteria)
+
+Feature Quality
+---------------
+
+40+  Essential
+35-39 Excellent
+30-34 Strong
+25-29 Acceptable
+20-24 Questionable
+15-19 Extension Candidate
+<15   Removal Candidate
+
+-----------------------------------------------------------------------
+
+Language Score
+--------------
+
+LanguageScore = Σ FeatureScore(feature)
+
+-----------------------------------------------------------------------
+
+MiLa Temperature (MT)
+---------------------
+
+MiLa Temperature measures the implementation efficiency of a language
+runtime.
+
+It is defined as:
+
+                    LanguageScore
+MT = -------------------------------------
+     Stripped Release Binary Size (KB)
+
+Unit
+
+    Feature Points / Kilobyte
+
+-----------------------------------------------------------------------
+
+Temperature Scale
+-----------------
+
+MT >= 5.00    Exceptional capability density
+4.00-4.99     Dense
+3.00-3.99     Efficient
+2.00-2.99     Moderate
+1.00-1.99     Sparse
+<1.00         Bloated
+
+-----------------------------------------------------------------------
+
+Notes
+-----
+
+* The MiLa Index is implementation-oriented rather than language-oriented.
+  Different implementations of the same language may produce different scores.
+
+* The MiLa Index does not measure execution speed, popularity,
+  expressiveness, or ecosystem size.
+
+* Adding a feature does not necessarily improve the score.
+  Every builtin must justify both its implementation cost and
+  the increase in binary size.
+
+* Removing an unnecessary feature may increase the MiLa Temperature if
+  the reduction in complexity outweighs the lost capability.

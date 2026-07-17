@@ -784,9 +784,10 @@ Value *native_str_slice(Env *env, int argc, Value **argv)
 {
     (void)env;
     (void)argc;
-    if (!match_types(argv, T_STRING, T_INT, T_INT, T_ARG_END))
-        return verror("str.slice(str, index, len): Expected 3 arguments.");
-    return vstring_slice(GET_STRING(argv[0]), argv[1]->v->i, argv[2]->v->i);
+    if (!(match_types(argv, T_STRING, T_INT, T_ARG_END) || match_types(argv, T_STRING, T_INT, T_INT, T_ARG_END)))
+        return verror("str.slice(str, index, len): Expected atleast 2 arguments.");
+    if (argc == 3) return vstring_slice(GET_STRING(argv[0]), argv[1]->v->i, argv[2]->v->i);
+    else return vstring_slice(GET_STRING(argv[0]), GET_INTEGER(argv[1]), strlen(GET_STRING(argv[0])+GET_INTEGER(argv[1])));
 }
 
 Value *native_str_copy(Env *env, int argc, Value **argv)
@@ -814,6 +815,24 @@ Value *native_str_patch(Env *env, int argc, Value **argv)
     if (!match_types(argv, T_STRING, T_STRING, T_STRING, T_ARG_END))
         return vnull();
     return vstring_replace(GET_STRING(argv[0]), GET_STRING(argv[1]), GET_STRING(argv[2]));
+}
+
+Value *native_str_match_replace(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    (void)argc;
+    if (!match_types(argv, T_STRING, T_STRING, T_STRING, T_ARG_END))
+        return vnull();
+    return vstring_take(replace_match(GET_STRING(argv[1]), GET_STRING(argv[0]), GET_STRING(argv[2]), -1));
+}
+
+Value *native_str_match_find(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    (void)argc;
+    if (!match_types(argv, T_STRING, T_STRING, T_ARG_END))
+        return vnull();
+    return vint(find_match_index(GET_STRING(argv[1]), GET_STRING(argv[0]), NULL));
 }
 
 Value *native_str_len(Env *env, int argc, Value **argv)
@@ -887,7 +906,7 @@ Value* native_str_contains(Env* env, int argc, Value** argv) {
 }
 
 Value* native_str_contains_caseless(Env* env, int argc, Value** argv) {
-    if (argc != 2) return verror("str.contains(needle, haystack): Expected 2 arguments!");
+    if (argc != 2) return verror("str.contains_caseless(needle, haystack): Expected 2 arguments!");
     char* needle = GET_STRING(argv[0]);
     char* haystack = GET_STRING(argv[1]);
     if (strcasestr(haystack, needle)) return vbool(1);

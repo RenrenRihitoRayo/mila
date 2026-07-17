@@ -1,0 +1,28 @@
+
+!fn (argc, ...argv) -> ">IO"
+
+fn parse_args(args: "list[str]")
+-> "list(list[str], dict[str, str])" {
+    var positionals = [];
+    var values = [@];
+    
+    foreach arg : args {
+        if (str.startswith(arg, "--")) {
+            if (not(str.contains("=" , arg))) {
+                var data = str.slice(arg, 2);
+                set values[data] = true;
+            } else {
+                var data = str.split(str.slice(arg, 2), "=");
+                set values[data[0]] = data[1];
+            }
+        } elif (str.startswith(arg, "-")) {
+            var data = str.slice(arg, 1);
+            set values[data] = true;
+        } else {
+            list.append(positionals, arg);
+        }
+    }
+    return [positionals, values];
+}
+
+println(argv, parse_args(argv));

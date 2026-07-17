@@ -1,0 +1,96 @@
+MiLa Feature Utilization (MFU)
+==============================
+
+Purpose
+-------
+
+MiLa Feature Utilization (MFU) measures how effectively a language
+implementation converts major implementation subsystems into practical
+language features.
+
+Unlike MiLa Temperature, which measures capability per kilobyte,
+MFU measures capability per subsystem.
+
+Definitions
+-----------
+
+LanguageScore
+    Sum of every Feature Score.
+
+Subsystem
+    A major implementation component responsible for one
+    logical responsibility.
+
+Examples include:
+
+    * Lexer
+    * Parser
+    * AST
+    * Bytecode Generator
+    * Virtual Machine
+    * Runtime
+    * Garbage Collector
+    * Memory Manager
+    * Object System
+    * Thread Scheduler
+    * Module Loader
+    * Standard Library
+    * FFI
+    * Optimizer
+    * JIT Compiler
+
+Subsystems should only be counted once.
+
+Formula
+-------
+
+             LanguageScore
+MFU = ----------------------------
+      Number of Major Subsystems
+
+Unit
+----
+
+Feature Points / Subsystem
+
+Interpretation
+--------------
+
+MFU >= 180
+    Exceptional
+
+150-179
+    Excellent
+
+120-149
+    Efficient
+
+90-119
+    Moderate
+
+60-89
+    Fragmented
+
+<60
+    Inefficient
+
+Notes
+-----
+
+* High MFU indicates that each subsystem provides substantial practical
+  value.
+
+* Low MFU may indicate subsystem duplication, overengineering,
+  specialization, or architectural fragmentation.
+
+* MFU intentionally ignores binary size.
+  This allows fair comparison between interpreters,
+  JIT runtimes, and managed runtimes.
+
+* MFU complements MiLa Temperature.
+
+    MT answers:
+        "How much capability does each kilobyte provide?"
+
+    MFU answers:
+        "How much capability does each major subsystem provide?"

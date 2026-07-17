@@ -12,3 +12,7 @@ List of all MiLa features
 * Common string escapes (as well as hex and octal codes)
 * Anything as identifiers
 Example: var 'Das variable Name ist ein Stück Scheiße' = 90;
+* json parser (builtin)
+* globbing
+* Loading native libraried
+* Threads

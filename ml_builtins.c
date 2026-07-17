@@ -163,6 +163,11 @@ Value *native_print(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value *native_abort(Env *env, int argc, Value **argv)
+{
+    abort();
+}
+
 Value *native_printr(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -1836,6 +1841,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.caseless_contains", native_str_contains_caseless);
     env_register_native(g, "str.find", native_str_find);
     env_register_native(g, "str.caseless_find", native_str_caseless_find);
+    env_register_native(g, "str.match_replace", native_str_match_replace);
+    env_register_native(g, "str.match_find", native_str_match_find);
 
     env_register_native(g, "istring", native_istring);
     // === ASCII
@@ -1892,6 +1899,7 @@ void env_register_builtins(Env *g)
     env_set_local_raw(g, "E_ASSERT", vint(E_ASSERT));
     env_set_local_raw(g, "E_THREAD_HALT", vint(E_THREAD_HALT));
     env_register_native(g, "exit", native_exit);
+    env_register_native(g, "abort", native_abort);
     // === Time measurement
     env_register_native(g, "get_time", native_get_time);
     env_register_native(g, "time_sleep", native_time_sleep);

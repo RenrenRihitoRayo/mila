@@ -2,6 +2,7 @@
 
 * [Text IO](#io-text)
 * [File IO](#io-file)
+* [File Operations](#file-ops)
 * [Lists](#list)
 * [Dictionaries](#dict)
 * [Arrays](#arr)
@@ -13,6 +14,7 @@
 * [System](#system)
 * [Running and Loading](#run)
 * [Error Handling](#error)
+* [JSON and MJSON](#json)
 * [Others](#other)
 
 NOTE: Not all functions are monkey patch safe!!!
@@ -84,6 +86,36 @@ and thus may not be guaranteed as safe for monkey patching.
 
     Standard in file descriptor. (safe for piping data in)
 
+## <a id="file-ops"></a>File Operations
+
+* `file.exists(path: "string") -> "bool"`
+
+    Check if a file exists.
+
+* `file.is_file(path: "string") -> "bool"`
+
+    Check if a path is a file.
+
+* `file.is_dir(path: "string") -> "string"`
+
+    Check if a path is a directory.
+
+* `file.list_dir(path: "string") -> "list[dict]"`
+
+    Return the contents of a directory.
+    Return a dict with the following keys:
+    
+    * "name"
+    
+        File name.
+    
+    * "type"
+    
+        File type.
+        * "d" for directory
+        * "f" for file
+        * "?" for others
+
 ## <a id="list"></a>Lists
 
 * `[item1, item2, item3, ..., itemN]`
@@ -114,7 +146,7 @@ and thus may not be guaranteed as safe for monkey patching.
 * `list.deconstruct(pattern: "opaque:list", list: "opaque:list") -> "opaque:dict"`
 
     Deconstruct a list into a dict.<br>
-    Example: `list.deconstruct([...a, b], [90, 70, 80])`
+    Example: `list.deconstruct("[...a, b]", [90, 70, 80])`
     would become `[@ "a"=[90, 70], "b"=80]`
 
 * `some_list[index]`
@@ -180,7 +212,7 @@ typedef struct {
 
 * `some_array[index]`
 
-    Syntax to index am array item.
+    Syntax to index an array item.
     Returns `null` when it isn't found.
 
 * `set some_array[index] = value;`
@@ -204,7 +236,7 @@ typedef struct {
 
 * `str.copy(str: "string") -> "string"`
 
-    Copyba string.
+    Copy a string.
 
 * `str.len(str: "string") -> "int"`
 
@@ -312,6 +344,35 @@ Self explanatory names.
 * `typeof(a: "any") -> "string"`
 
     Arguably the most useful function in MiLa
+
+* `as_opaque(any) -> "opaue"`
+
+    Cast any type into an opaque.<br>
+    May only work for certain primitives like:
+    
+    * int
+    * float
+    * uint
+    * string
+
+* `from_opaque(type: "string", opaque: "opaque") -> "any"`
+
+    Cast an opaque into a type.<br>
+    Supports these strings for `type`:
+    
+    * "string"
+    * "owned_string"
+    * "int"
+    * "uint"
+    * "float"
+    * "long"
+    * "ulong"
+    * "char"
+    
+    These correspond to a C type not MiLa types.
+    Under the hood MiLa int variations are actually "long" and
+    "ulong".
+
 
 ## <a id="time"></a>Time
 
@@ -474,6 +535,41 @@ Theres no date object shenanigans if theres no date object.
     Simply stops the thread that this is raised in,
     if used in the main interprter this just exits.
 
+## <a id="json"></a>JSON and MJSON
+
+* `json.loads(json: "string") -> "list|dict"`
+
+    Loads a json string as MiLa types.
+
+* `json.dumps(mila: "list|dict") -> "string"`
+
+    Dumps a MiLa type as json.
+
+* `mjson.loads(mjson: "string") -> "list|dict"`
+
+    Loads an mjson string as MiLa types.
+
+* `mjson.dumps(mila: "list|dict") -> "string"`
+
+    Dumps a MiLa type as mjson.
+
+## MJSON vs JSON
+
+* MiLa - JS Object Notation
+
+    Is just json with MiLa functions.
+    MJSON does not allow expression as values and thus
+    does not execute code even when loading an mjson file.
+
+* JSON (MiLa implementation)
+
+    Supports:
+    - Trailing Commas
+    - Multi line and single line comments
+    - Identifiers as keys
+    
+    Note every standard JSON is valid MJSON.
+
 ## <a id="other"></a>Miscellaneous
 
 * `is(a, b) -> "bool"`
@@ -506,35 +602,3 @@ Theres no date object shenanigans if theres no date object.
 * `range(start: "int", stop: "int", step: "int"=1) -> "opaque:list[int]"`
 
     Just like in python, exlusive.
-
-### Miscellaneous of the Miscellaneous
-
-These two are the most unsafe but also safe.
-Opaque pointers cant just be modified
-
-* `as_opaque(any) -> "opaue"`
-
-    Cast any type into an opaque.<br>
-    May only work for certain primitives like:
-    * int
-    * float
-    * uint
-    * bfloat
-    * bint
-    * string
-
-* `from_opaque(type: "string", opaque: "opaque") -> "any"`
-
-    Cast an opaque into a type.<br>
-    Supports these strings for `type`:
-    * "string"
-    * "owned_string"
-    * "int"
-    * "uint"
-    * "float"
-    * "long"
-    * "ulong"
-    * "char"
-    These correspond to a C type not MiLa types.
-    Under the hood MiLa int variations are actually "long" and
-    "ulong".

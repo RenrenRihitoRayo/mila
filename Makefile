@@ -5,7 +5,12 @@ targets_web = ./build/web/mila.wasm ./build/web/mila.js
 
 libraries ?= -lm
 eflags ?=
-cflags = -O3 $(libraries) -march=native -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 $(eflags) -Iheaders -Wno-overflow
+cflags_debug = $(libraries) -Wextra -Wall -Wno-nonnull\
+         -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
+         $(eflags) -Iheaders -Wno-overflow -fno-omit-frame-pointer
+cflags = $(libraries) -march=native -Wextra -Wall -Wno-nonnull\
+         -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
+         $(eflags) -Iheaders -Wno-overflow -flto
 
 .PHONY: web
 
@@ -17,7 +22,7 @@ debug: $(files)
 	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_DEBUG
 
 debug-asan: $(files)
-	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_DEBUG -fsanitize=address
+	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_DEBUG -fsanitize=address -Iheaders
 
 test:
 	$(cc) -o test.o0.mila -O0 mila.c $(libraries)
@@ -58,15 +63,15 @@ test:
 	@rm test.*
 
 static: $(files)
-	$(cc) -o mila -Os mila.c $(libraries) -static 
+	$(cc) $(cflags) -o mila mila.c -static -v
 	strip mila
 
 smallest: $(files)
-	$(cc) -o mila -Os mila.c $(libraries) -Iheaders
+	$(cc) $(cflags) -o mila -Os mila.c
 	strip mila
 
 release: $(files)
-	$(cc) $(cflags) -o mila mila.c
+	$(cc) $(cflags) -O3 -o mila mila.c
 	strip mila
 
 web $(targets_web): $(files_web)

@@ -1,26 +1,12 @@
 // This project is licensed under the GNU Affero General Public License
 #pragma once
 
-#define _GNU_SOURCE
-
-#include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <limits.h>
-
-#define MILA_LPREFIX "mila:"
-#define ML(x) MILA_LPREFIX x
-
-#include "ml_paths.h"
-
 // Year-Month edition started
 #define MILA_EDITION 202603L
-// Incremented per edition update (optimally maxes out to 9)
+// Incremented per edition update (optimally maxes out to 20)
 #define MILA_VERSION 1L
 // Patch number
-#define MILA_PATCH 0L
+#define MILA_PATCH 1L
 
 /*
     To avoid compat issues
@@ -34,6 +20,30 @@
     Ed.Ver.Patch for referring to specific versions of MiLa
     (for source level discernment)
 */
+
+#ifdef SAFE_BUILD
+    #define ML_NO_MATH
+    #define ML_NO_C_CAST
+    #define ML_NO_THREADING
+    #define ML_NO_PLATFORM
+    #define ML_NO_EXECUTABLES
+    #define ML_NO_TIME
+    #define ML_NO_FILE_IO
+#endif
+
+#define _GNU_SOURCE
+
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <limits.h>
+
+#define MILA_LPREFIX "mila:"
+#define ML(x) MILA_LPREFIX x
+
+#include "ml_paths.h"
 
 #define MAX_NUMBER_DIGITS 19
 #define MILA_N_ESCAPE_DIGITS 10
@@ -81,7 +91,7 @@ _Static_assert(sizeof(void*) >= 8, "MiLa: pointer sizes cannot be smaller than 8
 #define IS_FATAL(v) ((GET_ERROR_TYPE(v) == E_FATAL || GET_ERROR_TYPE(v) == E_SYNTAX_ERROR || GET_ERROR_TYPE(v) == E_THREAD_HALT))
 #define GET_STRING(val) (val ? (char*)val->v : NULL)
 #define GET_INTEGER(val) (val ? val->v->i : 0)
-#define GET_INTEGER_REF(val) (val ? (val->type == T_INT ? &val->v->i : &val->v) : NULL)
+#define GET_INTEGER_REF(val) (val ? &(val->v->i) : NULL)
 #define GET_UINTEGER(val) (val ? val->v->ui : 0)
 #define GET_FLOAT(val) (val ? val->v->f : 0.0)
 #define GET_BOOL(val) (val ? (long)val->v : 0)
@@ -345,7 +355,7 @@ extern void val_release(Value *v);
 void val_kill(Value *v);
 // Integer contructor
 extern Value *vint(long i);
-// Pointer Inlined Integer Cosntructor
+// Pointer Inlined Integer Constructor
 extern Value *vptr_int(long x);
 // Uint constructor
 extern Value *vuint(unsigned long i);
@@ -378,6 +388,8 @@ extern Value *vnative(NativeFn fn, const char *name);
 extern Value *vtruthy(Value *value);
 extern Value *vbreak();
 extern Value *vcontinue();
+extern Value *vbreak_step(unsigned long step);
+extern Value *vcontinue_step(unsigned long step);
 // Null
 extern Value *vnull();
 // None
@@ -422,6 +434,10 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...);
 Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Create an owned opaque
 Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+// Short hand to create a dict
+Value *make_dict(Value *first, ...);
+// Short hand to create a list
+Value *make_list(Value *first, ...);
 #ifndef EXT_WEB
 __int128 atoi128(char* num);
 char* i128toa(__int128 num);

@@ -29,6 +29,7 @@ Comments in MiLa are just C-style comments.
 ## <a id="prim"></a>Primitives
 
 Primitives are:
+
 * Strings `"Hello, Reiley"`
 
     By default every string in MiLa can be
@@ -48,14 +49,19 @@ Primitives are:
     as strings.
 
 * Integers `90`
+
 * Unsigned Integers `90u`
-* Big Integers `90~`
+
 * Float `90.0`
-* Big Float `90.0~`
+
 * Booleans `true` and `false`
+
 * None sentinel as `none`
+
 * Null sentinel as `null`
+
 * Functions (lambdas)
+
 * Natives
 
 ## <a id="id"></a>Identifiers

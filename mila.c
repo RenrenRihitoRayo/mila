@@ -7,6 +7,8 @@
  * Welcome to the MiLa Language Implementation.
  */
 
+#include "mila.h"
+
 #include <stdalign.h>
 #define _GNU_SOURCE
 
@@ -51,11 +53,11 @@
 
 #include "ml_builtins.c"
 
+#ifndef ML_NO_THREADS
 #include "ml_threading.c"
+#endif
 
 #undef MILA_PROTO
-
-#include "mila.h"
 
 CleanupRegistry *cleanup_registry = NULL;
 
@@ -529,7 +531,7 @@ Value *val_new(ValueType t)
     p->owns_table = 1;
     p->v = (ValueValue *)malloc(sizeof(ValueValue));
 #ifdef MILA_DEBUG
-    printf("  ++ %s type allocated!\n     pointer: %p\n", MILA_GET_TYPENAME(p),
+    printf("  ++ %s type allocated!\n     pointer: %p\n", GET_TYPENAME(p),
            p);
 #endif
     return p;
@@ -545,7 +547,7 @@ Value *val_new_raw(ValueType t)
     p->owns_table = 1;
     p->v = NULL;
 #ifdef MILA_DEBUG
-    printf("  ++ %s raw type allocated!\n     pointer: %p\n", MILA_GET_TYPENAME(p),
+    printf("  ++ %s raw type allocated!\n     pointer: %p\n", GET_TYPENAME(p),
            p);
 #endif
     return p;
@@ -647,172 +649,266 @@ inline int is_truthy(Value *value)
 #include <stdlib.h>
 #include <string.h>
 
-static const char *find_close(const char *p, char close) {
-    while (*p) {
-        if (*p == '\\' && *(p + 1)) { p += 2; continue; }
-        if (*p == close) return p;
+static const char *find_close(const char *p, char close)
+{
+    while (*p)
+    {
+        if (*p == '\\' && *(p + 1))
+        {
+            p += 2;
+            continue;
+        }
+        if (*p == close)
+            return p;
         p++;
     }
     return NULL;
 }
 
-static int set_match(const char *start, const char *end, char c) {
+static int set_match(const char *start, const char *end, char c)
+{
     const char *p = start;
-    while (p < end) {
+    while (p < end)
+    {
         char lo;
-        if (*p == '\\' && p + 1 < end) { lo = *(p + 1); p += 2; }
-        else { lo = *p; p++; }
+        if (*p == '\\' && p + 1 < end)
+        {
+            lo = *(p + 1);
+            p += 2;
+        }
+        else
+        {
+            lo = *p;
+            p++;
+        }
 
-        if (p < end && *p == '-' && p + 1 < end) {
+        if (p < end && *p == '-' && p + 1 < end)
+        {
             char hi;
             p++;
-            if (*p == '\\' && p + 1 < end) { hi = *(p + 1); p += 2; }
-            else { hi = *p; p++; }
-            if (c >= lo && c <= hi) return 1;
-        } else {
-            if (c == lo) return 1;
+            if (*p == '\\' && p + 1 < end)
+            {
+                hi = *(p + 1);
+                p += 2;
+            }
+            else
+            {
+                hi = *p;
+                p++;
+            }
+            if (c >= lo && c <= hi)
+                return 1;
+        }
+        else
+        {
+            if (c == lo)
+                return 1;
         }
     }
     return 0;
 }
 
-static int do_match(const char *p, const char *s) {
-    if (*p == '\0') return *s == '\0';
+static int do_match(const char *p, const char *s)
+{
+    if (*p == '\0')
+        return *s == '\0';
 
-    if (*p == '\\') {
+    if (*p == '\\')
+    {
         p++;
-        if (*p == '\0') return 0;
-        if (*s == '\0' || *s != *p) return 0;
+        if (*p == '\0')
+            return 0;
+        if (*s == '\0' || *s != *p)
+            return 0;
         return do_match(p + 1, s + 1);
     }
 
-    if (*p == '?') {
-        if (*s == '\0') return 0;
+    if (*p == '?')
+    {
+        if (*s == '\0')
+            return 0;
         return do_match(p + 1, s + 1);
     }
 
-    if (*p == '*') {
+    if (*p == '*')
+    {
         const char *rest = p + 1;
         const char *cur = s;
-        while (1) {
-            if (do_match(rest, cur)) return 1;
-            if (*cur == '\0') return 0;
+        while (1)
+        {
+            if (do_match(rest, cur))
+                return 1;
+            if (*cur == '\0')
+                return 0;
             cur++;
         }
     }
 
-    if (*p == '[') {
+    if (*p == '[')
+    {
         const char *close = find_close(p + 1, ']');
-        if (!close) {
-            if (*s != '[') return 0;
+        if (!close)
+        {
+            if (*s != '[')
+                return 0;
             return do_match(p + 1, s + 1);
         }
-        if (*s == '\0' || !set_match(p + 1, close, *s)) return 0;
+        if (*s == '\0' || !set_match(p + 1, close, *s))
+            return 0;
         return do_match(close + 1, s + 1);
     }
 
-    if (*p == '{') {
+    if (*p == '{')
+    {
         const char *close = find_close(p + 1, '}');
-        if (!close) {
-            if (*s != '{') return 0;
+        if (!close)
+        {
+            if (*s != '{')
+                return 0;
             return do_match(p + 1, s + 1);
         }
         const char *cur = s;
-        if (*cur == '\0' || !set_match(p + 1, close, *cur)) return 0;
+        if (*cur == '\0' || !set_match(p + 1, close, *cur))
+            return 0;
         cur++;
-        while (1) {
-            if (do_match(close + 1, cur)) return 1;
-            if (*cur == '\0' || !set_match(p + 1, close, *cur)) return 0;
+        while (1)
+        {
+            if (do_match(close + 1, cur))
+                return 1;
+            if (*cur == '\0' || !set_match(p + 1, close, *cur))
+                return 0;
             cur++;
         }
     }
 
-    if (*s == '\0' || *s != *p) return 0;
+    if (*s == '\0' || *s != *p)
+        return 0;
     return do_match(p + 1, s + 1);
 }
 
-int match(const char *pattern, const char *str) {
+int match(const char *pattern, const char *str)
+{
     return do_match(pattern, str);
 }
 
-static const char *match_end(const char *p, const char *s) {
-    if (*p == '\0') return s;
+static const char *match_end(const char *p, const char *s)
+{
+    if (*p == '\0')
+        return s;
 
-    if (*p == '\\') {
+    if (*p == '\\')
+    {
         p++;
-        if (*p == '\0' || *s == '\0' || *s != *p) return NULL;
+        if (*p == '\0' || *s == '\0' || *s != *p)
+            return NULL;
         return match_end(p + 1, s + 1);
     }
 
-    if (*p == '?') {
-        if (*s == '\0') return NULL;
+    if (*p == '?')
+    {
+        if (*s == '\0')
+            return NULL;
         return match_end(p + 1, s + 1);
     }
 
-    if (*p == '*') {
+    if (*p == '*')
+    {
         const char *rest = p + 1;
         const char *cur = s;
-        while (1) {
+        while (1)
+        {
             const char *r = match_end(rest, cur);
-            if (r) return r;
-            if (*cur == '\0') return NULL;
+            if (r)
+                return r;
+            if (*cur == '\0')
+                return NULL;
             cur++;
         }
     }
 
-    if (*p == '[') {
+    if (*p == '[')
+    {
         const char *close = find_close(p + 1, ']');
-        if (!close) {
-            if (*s != '[') return NULL;
+        if (!close)
+        {
+            if (*s != '[')
+                return NULL;
             return match_end(p + 1, s + 1);
         }
-        if (*s == '\0' || !set_match(p + 1, close, *s)) return NULL;
+        if (*s == '\0' || !set_match(p + 1, close, *s))
+            return NULL;
         return match_end(close + 1, s + 1);
     }
 
-    if (*p == '{') {
+    if (*p == '{')
+    {
         const char *close = find_close(p + 1, '}');
-        if (!close) {
-            if (*s != '{') return NULL;
+        if (!close)
+        {
+            if (*s != '{')
+                return NULL;
             return match_end(p + 1, s + 1);
         }
         const char *cur = s;
-        if (*cur == '\0' || !set_match(p + 1, close, *cur)) return NULL;
+        if (*cur == '\0' || !set_match(p + 1, close, *cur))
+            return NULL;
         cur++;
-        while (1) {
+        while (1)
+        {
             const char *r = match_end(close + 1, cur);
-            if (r) return r;
-            if (*cur == '\0' || !set_match(p + 1, close, *cur)) return NULL;
+            if (r)
+                return r;
+            if (*cur == '\0' || !set_match(p + 1, close, *cur))
+                return NULL;
             cur++;
         }
     }
 
-    if (*s == '\0' || *s != *p) return NULL;
+    if (*s == '\0' || *s != *p)
+        return NULL;
     return match_end(p + 1, s + 1);
 }
 
-int find_match(const char *pattern, const char *str, const char **out_start, size_t *out_len) {
+int find_match(const char *pattern, const char *str, const char **out_start, size_t *out_len)
+{
     const char *s = str;
-    while (1) {
+    while (1)
+    {
         const char *end = match_end(pattern, s);
-        if (end) {
+        if (end)
+        {
             *out_start = s;
             *out_len = (size_t)(end - s);
             return 1;
         }
-        if (*s == '\0') break;
+        if (*s == '\0')
+            break;
         s++;
     }
     return 0;
 }
 
-typedef struct { char *buf; size_t len; size_t cap; } strbuf;
+typedef struct
+{
+    char *buf;
+    size_t len;
+    size_t cap;
+} strbuf;
 
-static void sb_init(strbuf *b) { b->cap = 16; b->buf = malloc(b->cap); b->len = 0; b->buf[0] = '\0'; }
+static void sb_init(strbuf *b)
+{
+    b->cap = 16;
+    b->buf = malloc(b->cap);
+    b->len = 0;
+    b->buf[0] = '\0';
+}
 
-static void sb_append(strbuf *b, const char *data, size_t n) {
-    if (b->len + n + 1 > b->cap) {
-        while (b->len + n + 1 > b->cap) b->cap *= 2;
+static void sb_append(strbuf *b, const char *data, size_t n)
+{
+    if (b->len + n + 1 > b->cap)
+    {
+        while (b->len + n + 1 > b->cap)
+            b->cap *= 2;
         b->buf = realloc(b->buf, b->cap);
     }
     memcpy(b->buf + b->len, data, n);
@@ -820,31 +916,43 @@ static void sb_append(strbuf *b, const char *data, size_t n) {
     b->buf[b->len] = '\0';
 }
 
-char *mapped_replace_match(const char *pattern, const char *str, const char *replacement, int count) {
+char *mapped_replace_match(const char *pattern, const char *str, const char *replacement, int count)
+{
     strbuf out;
     sb_init(&out);
     size_t rep_len = strlen(replacement);
     const char *cursor = str;
     int done = 0;
 
-    while (count == -1 || done < count) {
+    while (count == -1 || done < count)
+    {
         const char *m_start, *m_end;
         size_t m_len;
-        if (!find_match(pattern, cursor, &m_start, &m_len)) break;
+        if (!find_match(pattern, cursor, &m_start, &m_len))
+            break;
         m_end = m_start + m_len;
 
         sb_append(&out, cursor, (size_t)(m_start - cursor));
         sb_append(&out, replacement, rep_len);
 
-        if (m_len == 0) {
-            if (*m_end == '\0') { cursor = m_end; done++; break; }
+        if (m_len == 0)
+        {
+            if (*m_end == '\0')
+            {
+                cursor = m_end;
+                done++;
+                break;
+            }
             sb_append(&out, m_end, 1);
             cursor = m_end + 1;
-        } else {
+        }
+        else
+        {
             cursor = m_end;
         }
         done++;
-        if (*cursor == '\0') break;
+        if (*cursor == '\0')
+            break;
     }
 
     sb_append(&out, cursor, strlen(cursor));
@@ -852,115 +960,156 @@ char *mapped_replace_match(const char *pattern, const char *str, const char *rep
 }
 
 /* like find_match but returns index of first match, -1 if none, out_len optional */
-long find_match_index(const char *pattern, const char *str, size_t *out_len) {
+long find_match_index(const char *pattern, const char *str, size_t *out_len)
+{
     const char *start;
     size_t len;
-    if (!find_match(pattern, str, &start, &len)) return -1;
-    if (out_len) *out_len = len;
+    if (!find_match(pattern, str, &start, &len))
+        return -1;
+    if (out_len)
+        *out_len = len;
     return (long)(start - str);
 }
 
 /* greedy version of match_end: * and {} consume max chars, backtrack only if needed */
-static const char *greedy_match_end(const char *p, const char *s) {
-    if (*p == '\0') return s;
+static const char *greedy_match_end(const char *p, const char *s)
+{
+    if (*p == '\0')
+        return s;
 
-    if (*p == '\\') {
+    if (*p == '\\')
+    {
         p++;
-        if (*p == '\0' || *s == '\0' || *s != *p) return NULL;
+        if (*p == '\0' || *s == '\0' || *s != *p)
+            return NULL;
         return greedy_match_end(p + 1, s + 1);
     }
 
-    if (*p == '?') {
-        if (*s == '\0') return NULL;
+    if (*p == '?')
+    {
+        if (*s == '\0')
+            return NULL;
         return greedy_match_end(p + 1, s + 1);
     }
 
-    if (*p == '*') {
+    if (*p == '*')
+    {
         const char *rest = p + 1;
         const char *cur = s + strlen(s);
-        while (cur >= s) {
+        while (cur >= s)
+        {
             const char *r = greedy_match_end(rest, cur);
-            if (r) return r;
-            if (cur == s) break;
+            if (r)
+                return r;
+            if (cur == s)
+                break;
             cur--;
         }
         return NULL;
     }
 
-    if (*p == '[') {
+    if (*p == '[')
+    {
         const char *close = find_close(p + 1, ']');
-        if (!close) {
-            if (*s != '[') return NULL;
+        if (!close)
+        {
+            if (*s != '[')
+                return NULL;
             return greedy_match_end(p + 1, s + 1);
         }
-        if (*s == '\0' || !set_match(p + 1, close, *s)) return NULL;
+        if (*s == '\0' || !set_match(p + 1, close, *s))
+            return NULL;
         return greedy_match_end(close + 1, s + 1);
     }
 
-    if (*p == '{') {
+    if (*p == '{')
+    {
         const char *close = find_close(p + 1, '}');
-        if (!close) {
-            if (*s != '{') return NULL;
+        if (!close)
+        {
+            if (*s != '{')
+                return NULL;
             return greedy_match_end(p + 1, s + 1);
         }
         const char *run_end = s;
-        while (*run_end && set_match(p + 1, close, *run_end)) run_end++;
-        if (run_end == s) return NULL;
+        while (*run_end && set_match(p + 1, close, *run_end))
+            run_end++;
+        if (run_end == s)
+            return NULL;
         const char *cur = run_end;
-        while (cur > s) {
+        while (cur > s)
+        {
             const char *r = greedy_match_end(close + 1, cur);
-            if (r) return r;
+            if (r)
+                return r;
             cur--;
         }
         return NULL;
     }
 
-    if (*s == '\0' || *s != *p) return NULL;
+    if (*s == '\0' || *s != *p)
+        return NULL;
     return greedy_match_end(p + 1, s + 1);
 }
 
 /* find leftmost longest substring of str matching pattern */
-static int find_match_greedy(const char *pattern, const char *str, const char **out_start, size_t *out_len) {
+static int find_match_greedy(const char *pattern, const char *str, const char **out_start, size_t *out_len)
+{
     const char *s = str;
-    while (1) {
+    while (1)
+    {
         const char *end = greedy_match_end(pattern, s);
-        if (end) {
+        if (end)
+        {
             *out_start = s;
             *out_len = (size_t)(end - s);
             return 1;
         }
-        if (*s == '\0') break;
+        if (*s == '\0')
+            break;
         s++;
     }
     return 0;
 }
 
 /* replace up to count full matches (-1 = replace all), caller must free result */
-char *replace_match(const char *pattern, const char *str, const char *replacement, int count) {
+char *replace_match(const char *pattern, const char *str, const char *replacement, int count)
+{
     strbuf out;
     sb_init(&out);
     size_t rep_len = strlen(replacement);
     const char *cursor = str;
     int done = 0;
 
-    while (count == -1 || done < count) {
+    while (count == -1 || done < count)
+    {
         const char *m_start, *m_end;
         size_t m_len;
-        if (!find_match_greedy(pattern, cursor, &m_start, &m_len)) break;
+        if (!find_match_greedy(pattern, cursor, &m_start, &m_len))
+            break;
         m_end = m_start + m_len;
 
         sb_append(&out, cursor, (size_t)(m_start - cursor));
         sb_append(&out, replacement, rep_len);
 
-        if (m_len == 0) {
-            if (*m_end == '\0') { cursor = m_end; done++; break; }
+        if (m_len == 0)
+        {
+            if (*m_end == '\0')
+            {
+                cursor = m_end;
+                done++;
+                break;
+            }
             sb_append(&out, m_end, 1);
             cursor = m_end + 1;
-        } else {
+        }
+        else
+        {
             cursor = m_end;
         }
         done++;
-        if (*cursor == '\0') break;
+        if (*cursor == '\0')
+            break;
     }
 
     sb_append(&out, cursor, strlen(cursor));
@@ -971,6 +1120,18 @@ inline Value *vnull() { return val_new_raw(T_NULL); }
 inline Value *vnone() { return val_new_raw(T_NONE); }
 inline Value *vbreak() { return val_new_raw(T_BREAK); }
 inline Value *vcontinue() { return val_new_raw(T_CONTINUE); }
+inline Value *vcontinue_step(unsigned long steps)
+{
+    Value *v = val_new(T_CONTINUE);
+    v->v->ui = steps;
+    return v;
+}
+inline Value *vbreak_step(unsigned long steps)
+{
+    Value *v = val_new(T_CONTINUE);
+    v->v->ui = steps;
+    return v;
+}
 
 #ifndef SAFE_BUILD
 __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
@@ -1901,7 +2062,7 @@ inline Value *val_retain(Value *v)
     {
         printf("  ?? val_retain:\n     type: %s\n     refcount ++%i -> %i\n     "
                "value: ",
-               MILA_GET_TYPENAME(v), v->refcount, v->refcount + 1);
+               GET_TYPENAME(v), v->refcount, v->refcount + 1);
         print_value_repr(v);
         puts("");
     }
@@ -1996,10 +2157,12 @@ inline void val_release(Value *v)
             mila_free(v->method_table);
         switch (GET_TYPE(v))
         {
-        case T_ERROR:
-        case T_RETURN:
         case T_CONTINUE:
         case T_BREAK:
+            mila_free(v->v);
+            break;
+        case T_ERROR:
+        case T_RETURN:
         case T_FUNCTION:
         case T_NATIVE:
         case T_OPAQUE:
@@ -2008,7 +2171,6 @@ inline void val_release(Value *v)
         case T_NONE:
         case T_NULL:
         case T_BOOL:
-
         case T_STRING:
             break;
         default:
@@ -2087,6 +2249,10 @@ cleanup:;
         mila_free(v->method_table);
     switch (GET_TYPE(v))
     {
+    case T_CONTINUE:
+    case T_BREAK:
+        mila_free(v->v);
+        break;
     case T_FUNCTION:
     case T_NATIVE:
     case T_BOOL:
@@ -2095,9 +2261,6 @@ cleanup:;
     case T_NULL:
     case T_ERROR:
     case T_RETURN:
-    case T_CONTINUE:
-    case T_BREAK:
-
     case T_STRING:
         break;
     default:
@@ -3052,7 +3215,8 @@ const char *skip_primary(Src *s)
         if (src_peek(s) == ':')
         {
             src_get(s);
-            if (src_peek(s) == ':') src_get(s);
+            if (src_peek(s) == ':')
+                src_get(s);
             char *method = parse_ident(s);
             if (!method)
                 return ERR_INVALID_IDENT;
@@ -3153,7 +3317,8 @@ const char *skip_primary(Src *s)
         if (src_peek(s) == ':')
         {
             src_get(s);
-            if (src_peek(s) == ':') src_get(s);
+            if (src_peek(s) == ':')
+                src_get(s);
             char *method = parse_ident(s);
             if (!method)
                 return ERR_INVALID_IDENT;
@@ -3923,6 +4088,13 @@ inline Value *parse_number(Src *s)
                 return vfloat((double)i / 100.0);
             return is_unsigned ? vuint(i > 0 ? i : -i) : vint(i);
         }
+    }
+    else
+    {
+        char number[len + 1];
+        sprintf(number, "%.*s", (int)len, s->src + en);
+        fprintf(stderr, "%s is too big to fit in long!", s->src + st);
+        abort();
     }
     return vint(0);
 }
@@ -4732,6 +4904,52 @@ Value **make_args(Value *first, ...)
     return args;
 }
 
+Value *make_list(Value *first, ...)
+{
+    va_list ap;
+    Value *lst = call_native_with(NULL, native_list_new, NULL);
+    if (!lst)
+        return NULL;
+    va_start(ap, first);
+    for (Value *item = first; item != NULL; item = va_arg(ap, Value *))
+    {
+        val_release(call_native_with(NULL, native_list_append, val_retain(lst), item, NULL));
+    }
+    va_end(ap);
+    return lst;
+}
+
+Value *make_dict(Value *first, ...)
+{
+    va_list ap;
+    size_t count = 0;
+
+    va_start(ap, first);
+    for (Value *v = first; v != NULL; v = va_arg(ap, Value *))
+    {
+        count++;
+    }
+    if ((count - 1) % 2 == 0)
+    {
+        return NULL;
+    }
+    va_end(ap);
+
+    Value *d = call_native_with(NULL, native_new_dict, NULL);
+    if (!d)
+        return NULL;
+    va_start(ap, first);
+    for (Value *name = first; name != NULL; name = va_arg(ap, Value *))
+    {
+        val_release(call_native_with(NULL, native_set_dict,
+                                     val_retain(d),
+                                     name,
+                                     va_arg(ap, Value *) /* value */, NULL));
+    }
+    va_end(ap);
+    return d;
+}
+
 Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
 {
     if (!fnval)
@@ -4893,13 +5111,19 @@ Value *eval_primary(Src *s, Env *env)
         char is_dict = match_char(s, '@');
         size_t start = s->pos;
         Value **args = NULL;
-        Value *list = call_function_str(env, "list", NULL);
+        Value *list = call_native_with(env, native_list_new, NULL);
         int argc = 0;
         skip_ws(s);
         if (src_peek(s) != ']')
         {
             for (;;)
             {
+                char expand = 0;
+                if (is_keyword_at(s, "..."))
+                {
+                    expand = 1;
+                    s->pos += 3;
+                }
                 Value *a = eval_expr(s, env);
                 if (IS_ERROR(a))
                 {
@@ -4909,7 +5133,17 @@ Value *eval_primary(Src *s, Env *env)
                 }
                 args = mila_realloc(args, sizeof(Value *) * (argc + 1));
                 args[argc++] = a;
-                val_release(call_function_str(env, "list.append", val_retain(list), a, NULL));
+                if (expand && strcmp(GET_TYPENAME(a), MILA_LPREFIX "list") == 0)
+                {
+                    Value **vl = ll_to_iter((LinkedList *)a->v);
+                    unsigned long vl_len = GET_UINTEGER(vl[0]);
+                    for (unsigned long i = 1; i < vl_len; i++)
+                    {
+                        val_release(call_function_str(env, "list.append", val_retain(list), vl[i], NULL));
+                    }
+                }
+                else
+                    val_release(call_function_str(env, "list.append", val_retain(list), a, NULL));
                 skip_ws(s);
                 if (match_char(s, ','))
                     continue;
@@ -4932,8 +5166,8 @@ Value *eval_primary(Src *s, Env *env)
                 int len = end - start + 1;
                 return vtagged_error(
                     E_SYNTAX_ERROR,
-                    "Expected a %s or closing bracket!\nAt list `%.*s`",
-                    is_dict && argc % 2 ? "colon" : "comma",
+                    "Expected a %s or closing bracket!\nAt `%.*s`",
+                    is_dict && argc % 2 ? "equal" : "comma",
                     len, s->src + start - 1);
             }
         }
@@ -5074,21 +5308,22 @@ Value *eval_primary(Src *s, Env *env)
         else if (src_peek(s) == ':')
         {
             src_get(s); // skip the colon
-            if (src_peek(s) == ':') {
+            if (src_peek(s) == ':')
+            {
                 src_get(s);
                 char *method = parse_ident(s);
-    
+
                 Value *obj = expr;
                 Value *attr = vstring_take(method);
                 Value *function = NULL;
-    
+
                 if (!obj)
                 {
                     val_release(attr);
                     Value *ret = verror("cannot be subscripted as it is cnull");
                     return ret;
                 }
-    
+
                 if (obj->method_table && obj->method_table[BMethodGetItem])
                 {
                     function =
@@ -5107,7 +5342,7 @@ Value *eval_primary(Src *s, Env *env)
                     return verror("Type %s does not support BMethodGetItem!",
                                   GET_TYPENAME(obj));
                 }
-    
+
                 if (src_peek(s) == '(')
                 {
                     // parse args
@@ -5116,7 +5351,7 @@ Value *eval_primary(Src *s, Env *env)
                     Value **args = NULL;
                     int argc = 0;
                     skip_ws(s);
-    
+
                     // handle (value)(...) calls
                     if (src_peek(s) != ')')
                     {
@@ -5173,20 +5408,22 @@ Value *eval_primary(Src *s, Env *env)
                 {
                     return obj;
                 }
-            } else {
+            }
+            else
+            {
                 char *method = parse_ident(s);
-    
+
                 Value *obj = expr;
                 Value *attr = vstring_take(method);
                 Value *function = NULL;
-    
+
                 if (!obj)
                 {
                     val_release(attr);
                     Value *ret = verror("cannot be subscripted as it is cnull");
                     return ret;
                 }
-    
+
                 if (obj->method_table && obj->method_table[BMethodGetItem])
                 {
                     function =
@@ -5205,7 +5442,7 @@ Value *eval_primary(Src *s, Env *env)
                     return verror("Type %s does not support BMethodGetItem!",
                                   GET_TYPENAME(obj));
                 }
-    
+
                 if (src_peek(s) == '(')
                 {
                     // parse args
@@ -5215,7 +5452,7 @@ Value *eval_primary(Src *s, Env *env)
                     args[0] = val_retain(obj);
                     int argc = 1;
                     skip_ws(s);
-    
+
                     // handle (value)(...) calls
                     if (src_peek(s) != ')')
                     {
@@ -5428,16 +5665,6 @@ Value *eval_primary(Src *s, Env *env)
             mila_free(id);
             return vbool(0);
         }
-        if (strcmp(id, "break") == 0)
-        {
-            mila_free(id);
-            return vbreak();
-        }
-        if (strcmp(id, "continue") == 0)
-        {
-            mila_free(id);
-            return vcontinue();
-        }
         // look ahead: function call? subscript?
         skip_ws(s);
         if (src_peek(s) == '(')
@@ -5511,7 +5738,7 @@ Value *eval_primary(Src *s, Env *env)
             mila_free(id);
             // callp
 #ifdef MILA_DEBUG
-            printf("  ?? Call to %s\n", callee->v->native->name);
+            printf("  ?? Call to %s\n", ((NativeFunctionV *)(callee->v))->name);
 #endif
             Value *res = call_function(callee, env, argc, args);
             for (int i = 0; i < argc; i++)
@@ -5566,14 +5793,15 @@ Value *eval_primary(Src *s, Env *env)
         else if (src_peek(s) == ':')
         {
             src_get(s); // skip the colon
-            if (src_peek(s) == ':') {
+            if (src_peek(s) == ':')
+            {
                 src_get(s);
                 char *method = parse_ident(s);
-    
+
                 Value *obj = env_get(env, id);
                 Value *attr = vstring_take(method);
                 Value *function = NULL;
-    
+
                 if (!obj)
                 {
                     val_release(attr);
@@ -5581,7 +5809,7 @@ Value *eval_primary(Src *s, Env *env)
                     mila_free(id);
                     return ret;
                 }
-    
+
                 if (obj->method_table && obj->method_table[BMethodGetItem])
                 {
                     function =
@@ -5603,7 +5831,7 @@ Value *eval_primary(Src *s, Env *env)
                     return verror("Type %s does not support BMethodGetItem!",
                                   GET_TYPENAME(obj));
                 }
-    
+
                 if (src_peek(s) == '(')
                 {
                     // parse args
@@ -5612,7 +5840,7 @@ Value *eval_primary(Src *s, Env *env)
                     Value **args = NULL;
                     int argc = 0;
                     skip_ws(s);
-    
+
                     // handle (value)(...) calls
                     if (src_peek(s) != ')')
                     {
@@ -5673,13 +5901,15 @@ Value *eval_primary(Src *s, Env *env)
                     mila_free(id);
                     return val_retain(function);
                 }
-            } else {
+            }
+            else
+            {
                 char *method = parse_ident(s);
-    
+
                 Value *obj = env_get(env, id);
                 Value *attr = vstring_take(method);
                 Value *function = NULL;
-    
+
                 if (!obj)
                 {
                     val_release(attr);
@@ -5687,7 +5917,7 @@ Value *eval_primary(Src *s, Env *env)
                     mila_free(id);
                     return ret;
                 }
-    
+
                 if (obj->method_table && obj->method_table[BMethodGetItem])
                 {
                     function =
@@ -5709,7 +5939,7 @@ Value *eval_primary(Src *s, Env *env)
                     return verror("Type %s does not support BMethodGetItem!",
                                   GET_TYPENAME(obj));
                 }
-    
+
                 if (src_peek(s) == '(')
                 {
                     // parse args
@@ -5719,7 +5949,7 @@ Value *eval_primary(Src *s, Env *env)
                     args[0] = val_retain(obj);
                     int argc = 1;
                     skip_ws(s);
-    
+
                     // handle (value)(...) calls
                     if (src_peek(s) != ')')
                     {
@@ -7061,6 +7291,27 @@ Value *eval_statement(Src *s, Env *env)
         }
         return verror("While loops condition must be wrapped in parenthesis!");
     }
+
+    if (is_keyword_at(s, "break"))
+    {
+        s->pos += strlen("break");
+        if (!match_char(s, ';'))
+        {
+            Value *n = eval_expr(s, env);
+            return vbreak_step(GET_UINTEGER(n));
+        }
+        return vbreak();
+    }
+    if (is_keyword_at(s, "continue"))
+    {
+        s->pos += strlen("continue");
+        if (!match_char(s, ';'))
+        {
+            Value *n = eval_expr(s, env);
+            return vcontinue_step(GET_UINTEGER(n));
+        }
+        return vcontinue();
+    }
     if (is_keyword_at(s, "foreach"))
     {
         s->pos += strlen("foreach");
@@ -7237,12 +7488,21 @@ Value *eval_statement(Src *s, Env *env)
                     {
                         s->pos = body_start_pos;
                         if (bod)
+                        {
+                            for (unsigned long steps = GET_UINTEGER(bod) - 1; steps > 0; steps--)
+                            {
+                                Value *v = ((unary_method)iter_obj->method_table[UMethodStepIter])(iter_state);
+                                if (!v)
+                                {
+                                    s->pos = body_end_pos;
+                                    mila_free(id);
+                                    ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                                    val_release(iter_obj);
+                                    return vnull();
+                                }
+                            }
                             val_release(bod);
-                        mila_free(v);
-                        mila_free(value);
-                        mila_free(id);
-                        ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
-                        val_release(iter_obj);
+                        }
                         continue;
                     }
                     case T_RETURN:
@@ -7305,10 +7565,10 @@ Value *eval_statement(Src *s, Env *env)
 
                 // we execute the loop until the condition is false or a control-flow
                 // statement is hit
-                size_t i = 0;
+                unsigned long max = GET_UINTEGER(value[0]);
+                size_t i = 1;
                 Value *v = value[i];
-                i++;
-                for (; v; v = value[i++])
+                for (; i < max; v = value[++i])
                 {
                     // reset the position to the start of the body for execution
                     s->pos = body_start_pos;
@@ -7330,18 +7590,18 @@ Value *eval_statement(Src *s, Env *env)
                         val_release(bod);
                         mila_free(value);
                         mila_free(id);
+                        val_release(value[0]);
                         return vnull();
                     }
                     case T_CONTINUE:
                     {
                         s->pos = body_start_pos;
                         if (bod)
+                        {
+                            if (bod->v)
+                                i += GET_UINTEGER(bod) - 1;
                             val_release(bod);
-                        for (; value[i]; ++i)
-                            val_release(value[i]);
-                        mila_free(v);
-                        mila_free(value);
-                        mila_free(id);
+                        }
                         continue;
                     }
                     case T_RETURN:
@@ -7351,6 +7611,7 @@ Value *eval_statement(Src *s, Env *env)
                             val_release(value[i]);
                         mila_free(value);
                         mila_free(id);
+                        val_release(value[0]);
                         return bod;
                     }
                     case T_TAGGED_ERROR:
@@ -7361,6 +7622,7 @@ Value *eval_statement(Src *s, Env *env)
                             val_release(value[i]);
                         mila_free(value);
                         mila_free(id);
+                        val_release(value[0]);
                         return bod;
                     }
                     default:;
@@ -7370,6 +7632,7 @@ Value *eval_statement(Src *s, Env *env)
                 s->pos = body_end_pos;
                 mila_free(id);
                 mila_free(value);
+                val_release(value[0]);
             }
             else
             {
@@ -8155,12 +8418,11 @@ Env *mila_global_init(void)
     }
     else
     {
-        fprintf(stderr, "mila_init called more than once.\n");
+        fprintf(stderr, "mila_global_init called more than once.\n");
         abort();
     }
     Env *g = env_new(NULL);
     env_register_builtins(g);
-    register_thread_builtins(g);
     return g;
 }
 
@@ -8168,7 +8430,6 @@ Env *mila_init(void)
 {
     Env *g = env_new(NULL);
     env_register_builtins(g);
-    register_thread_builtins(g);
     return g;
 }
 
@@ -8191,11 +8452,13 @@ void mila_global_deinit(Env *g)
     }
     else
     {
-        fprintf(stderr, "mila_init wasnt called.\n");
+        fprintf(stderr, "mila_global_init wasnt called.\n");
         abort();
     }
     env_free(g);
+#ifndef ML_NO_THREADING
     mila_threads_cleanup();
+#endif
     env_free_builtins();
     path_list_free(search_path);
 }
@@ -8211,15 +8474,15 @@ void print_primitive(char *text)
 
 void handle_signal(int signal)
 {
-    mila_global_deinit(NULL);
+    // mila_global_deinit(NULL);
     _exit(signal);
 }
 
 #if !(defined(SAFE_BUILD) || defined(ML_LIB))
 int main(int argc, char **argv)
 {
-    // read file if provided or use built-in demo
     char *src_text = NULL;
+    Value *array = NULL;
     if (argc == 2)
     {
         if (strcmp(argv[1], "--info") == 0)
@@ -8238,9 +8501,9 @@ int main(int argc, char **argv)
                    "\nVariable size (metadata):\n"
                    "  %lu Bytes for primitive types\n "
                    "   For types:\n"
-                   "     bint, float, bfloat\n"
+                   "     int, uint, float\n"
                    "  %lu For shortcut types\n"
-                   "    Values: int, strings, bools, none, null, functions, natives, opaques\n"
+                   "    Values: strings, bools, none, null, functions, natives, opaques\n"
                    "  %lu Bytes for types with Value Instance Operator Overloading\n"
                    "    For types like:\n"
                    "      arrays, lists, and dictionaries, and others\n"
@@ -8268,16 +8531,42 @@ int main(int argc, char **argv)
         else if (strcmp(argv[1], "--version") == 0 ||
                  strcmp(argv[1], "-v") == 0)
         {
-            printf("MiLa Specification v1.0\n"
-                   "CLI v1.0\n"
-                   "API v1.0\n");
+            printf("MiLa %ld.%ld.%ld\n",
+                   MILA_EDITION, MILA_VERSION, MILA_PATCH);
+            return 0;
+        }
+        else if (strcmp(argv[1], "--dry") == 0)
+        {
+            Env *g = mila_global_init();
+            signal(SIGABRT, handle_signal);
+            signal(SIGFPE, handle_signal);
+            signal(SIGILL, handle_signal);
+            signal(SIGINT, handle_signal);
+            signal(SIGSEGV, handle_signal);
+            signal(SIGTERM, handle_signal);
+            signal(SIGINT, handle_signal);
+
+            search_path = path_list_new();
+            char *cwd = path_get_cwd();
+            if (!cwd)
+                fprintf(stderr, "current working directory was not determined.");
+            else
+                path_list_add(search_path, cwd);
+
+            path_list_add(search_path, "~/.local/mila");
+
+            val_release(eval_str("println(\"Hello, world!\");", g));
+
+            mila_global_deinit(g);
             return 0;
         }
         else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
         {
             printf("MiLa v1.0\n"
                    "  --info         = For internal info as well as version info\n"
-                   "  --check        = Syntactically check the file\n"
+                   "  --check [file] = Syntactically check the file\n"
+                   "  -r [code]      = Run code then exit.\n"
+                   "  --dry          = Dry run. Init, hello world, deinit, then exit.\n"
                    "  --version | -v = Prints version\n"
                    "  --help    | -h = Prints this list\n");
             return 0;
@@ -8307,18 +8596,83 @@ int main(int argc, char **argv)
             mila_free(src_text);
             return err;
         }
+        else if (strcmp(argv[1], "-r") == 0)
+        {
+            Env *g = mila_global_init();
+            signal(SIGFPE, handle_signal);
+            signal(SIGILL, handle_signal);
+            signal(SIGINT, handle_signal);
+            signal(SIGSEGV, handle_signal);
+            signal(SIGTERM, handle_signal);
+
+            search_path = path_list_new();
+            char *cwd = path_get_cwd();
+            if (!cwd)
+                fprintf(stderr, "current working directory was not determined.");
+            else
+                path_list_add(search_path, cwd);
+
+            path_list_add(search_path, "~/.local/mila");
+
+            env_set_raw(g, "argc", vint(argc - 2));
+            array = call_function_str(g, "array", vint(argc - 1), NULL);
+            for (int i = 2; i < argc; i++)
+            {
+                Value *str = vstring_dup(argv[i]);
+                val_release(call_function_str(g, "array.set", val_retain(array),
+                                              vint(i - 2), str, NULL));
+            }
+            env_set_raw(g, "argv", array);
+            env_set_raw(g, "__argv", vopaque(argv));
+            free(cwd);
+            int return_code = 0;
+
+            Value *res = eval_str(argv[2], g);
+            if (IS_ERROR(res))
+            {
+                print_error(res);
+                return_code = 1;
+            }
+
+            if (GET_TYPE(res) == T_TAGGED_ERROR)
+            {
+                switch (res->v->tagged_error.type)
+                {
+                case E_EXIT:
+                {
+                    if (res->v->tagged_error.return_code == -1)
+                    {
+                        return_code = E_EXIT;
+                    }
+                    else
+                    {
+                        return_code = res->v->tagged_error.return_code;
+                    }
+                }
+                break;
+                default:
+                    return_code = res->v->tagged_error.type;
+                    break;
+                }
+            }
+
+            // cleanup
+            val_release(res);
+
+            mila_free(src_text);
+
+            mila_global_deinit(g);
+            return return_code;
+        }
     }
-    Value *array = NULL;
 
     Env *g = mila_global_init();
 
-    signal(SIGABRT, handle_signal);
     signal(SIGFPE, handle_signal);
     signal(SIGILL, handle_signal);
     signal(SIGINT, handle_signal);
     signal(SIGSEGV, handle_signal);
     signal(SIGTERM, handle_signal);
-    signal(SIGINT, handle_signal);
 
     search_path = path_list_new();
     char *cwd = path_get_cwd();
@@ -8350,14 +8704,14 @@ int main(int argc, char **argv)
         env_set_raw(g, "argv", array);
         env_set_raw(g, "__argv", vopaque(argv));
         free(cwd);
+        int return_code = 0;
 
         Value *res = invoke_main_file(argv[1], g, argc, argv);
         if (IS_ERROR(res))
         {
             print_error(res);
+            return_code = 1;
         }
-
-        int return_code = 0;
 
         if (GET_TYPE(res) == T_TAGGED_ERROR)
         {

@@ -564,20 +564,3 @@ void mila_threads_cleanup(void)
     pthread_mutex_unlock(&thread_registry.lock);
     pthread_mutex_destroy(&thread_registry.lock);
 }
-
-void register_thread_builtins(Env *env)
-{
-    env_register_native(env, "thread.make", native_thread_create);
-    env_register_native(env, "thread.join", native_thread_join);
-    env_register_native(env, "thread.cancel", native_thread_cancel);
-    env_register_native(env, "thread.check_cancel", native_thread_check_cancel);
-    env_register_native(env, "thread.set_daemon", native_thread_set_daemon);
-    env_register_native(env, "thread.get_pthread_id", native_thread_pthread_id);
-    env_register_native(env, "thread.status", native_thread_status);
-    env_register_native(env, "thread.mutex", native_make_mutex);
-    env_register_native(env, "thread.mutex_unlock", native_mutex_unlock);
-    env_register_native(env, "thread.mutex_lock", native_mutex_lock);
-    env_register_native(env, "thread.yield", native_thread_yield);
-    env_register_native(env, "thread.next", native_thread_next);
-    env_register_native(env, "thread.dump", native_thread_dump);
-}

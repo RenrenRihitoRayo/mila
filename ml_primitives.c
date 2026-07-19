@@ -10,7 +10,9 @@
 #include "ml_ll.c"
 #include "ml_dict.h"
 #include <stdlib.h>
-#include "ml_threading.c"
+#ifndef ML_NO_THREADING
+    #include "ml_threading.c"
+#endif
 #include "ml_string.h"
 
 // Define meta tables
@@ -36,10 +38,10 @@ Value *list_repr(Value *self)
     Value **iter = ll_to_iter(lst);
 
     char *buffer = mila_strdup("[");
-    for (size_t i = 0; iter[i]; i++)
+    for (size_t i = 1; iter[i]; i++)
     {
         char *repr = as_c_string_repr(iter[i]);
-        if (i < lst->size - 1)
+        if (i-1 < lst->size - 1)
             malloc_sprintf(&buffer, "%s, ", repr);
         else
             malloc_sprintf(&buffer, "%s", repr);
@@ -57,10 +59,10 @@ Value *list_str(Value *self)
     Value **iter = ll_to_iter(lst);
 
     char *buffer = mila_strdup("[");
-    for (size_t i = 0; iter[i]; i++)
+    for (size_t i = 1; iter[i]; i++)
     {
         char *repr = as_c_string_repr(iter[i]);
-        if (i < lst->size - 1)
+        if (i-1 < lst->size - 1)
             malloc_sprintf(&buffer, "%s, ", repr);
         else
             malloc_sprintf(&buffer, "%s", repr);
@@ -150,15 +152,6 @@ Value *native_list_pop(Env *e, int argc, Value **argv)
 
 Value *list_free(Value *self)
 {
-    Value **iter = ll_to_iter((LinkedList*)self->v);
-
-    for (int i = 0; iter[i]; i++)
-    {
-        val_release(iter[i]);
-        val_release(iter[i]);
-    }
-
-    mila_free(iter);
     ll_free((LinkedList*)self->v);
     self->type = T_NULL;
     self->v = NULL;
@@ -316,6 +309,10 @@ Value *array_to_repr(Value *self)
         malloc_sprintf(&buffer, "<null-array-data>");
         return vstring_take(buffer);
     }
+    
+    if (arr->size > MAX_ITEMS_DISPLAYED) {
+        return vstring_fmt("array(%d)", arr->size);
+    }
 
     malloc_sprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
@@ -355,13 +352,14 @@ Value *array_to_iter(Value *self)
     Value **values = (Value **)mila_malloc(sizeof(Value *) * (arr->size + 1));
     values[arr->size] = NULL;
 
-    int i = 0;
+    int i = 1;
     for (int t = 0; t < arr->size; ++t)
     {
         if (arr->array[t] == NULL)
             continue;
         values[i++] = val_retain(arr->array[t]);
     }
+    values[0] = vuint((unsigned long)arr->size);
 
     return vopaque(values);
 }
@@ -407,13 +405,14 @@ Value *range_to_iter(Value *self)
 {
     Range *data = (Range *)(self->v);
     Value **v = (Value **)mila_malloc(
-        sizeof(Value *) * (range_len(data->start, data->end, data->step) + 1));
-    long index = 0;
+        sizeof(Value *) * (range_len(data->start, data->end, data->step) + 1) + 1);
+    long index = 1;
     for (long i = data->start; i < data->end; i += data->step)
     {
         v[index++] = vint(i);
     }
     v[index] = NULL;
+    v[0] = vuint(index);
     return vopaque(v);
 }
 
@@ -497,7 +496,7 @@ Value *native_new_array(Env *env, int argc, Value **argv)
     }
 
     int size = (int)argv[0]->v->i;
-    if (size < 0)
+    if (size < 0) // what.
     {
         return verror("array(size): negative size\n");
     }

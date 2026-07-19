@@ -32,6 +32,7 @@ void ll_free(LinkedList *list) {
     return;
   LLNode *node = list->head;
   while (node) {
+    val_release(node->value);
     LLNode *next = node->next;
     free(node);
     node = next;
@@ -140,16 +141,17 @@ Value *ll_pop(LinkedList *list, long index) {
 Value **ll_to_iter(LinkedList *list) {
   if (!list)
     return NULL;
-  Value **arr = malloc((list->size + 1) * sizeof(Value *));
+  Value **arr = malloc((list->size + 2) * sizeof(Value *));
   if (!arr)
     return NULL;
   LLNode *cur = list->head;
-  size_t i = 0;
+  size_t i = 1;
   while (cur) {
     arr[i++] = val_retain(cur->value);
     cur = cur->next;
   }
   arr[i] = NULL;
+  arr[0] = vuint(i);
   return arr;
 }
 

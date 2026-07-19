@@ -12,6 +12,11 @@
  *   Byte methods (ascii)
  *   Math
  *   Bitwise
+ *   JSON and MJSON (de)serializers
+ *   Threading
+ *   Platform Information
+ *   Shelling
+ *   and more...
  */
 
 #pragma once
@@ -46,6 +51,8 @@
 #include <limits.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #endif
 
 #include <time.h>
@@ -53,6 +60,10 @@
 #include "ml_primitives.c"
 #include "ml_platform_specific.c"
 #include "ml_commons.h"
+
+#ifndef ML_NO_THREADING
+#include "ml_threading.c"
+#endif
 
 Value *self_free(Value *self)
 {
@@ -364,7 +375,7 @@ Value *native_is_numeric(Env *env, int argc, Value **argv)
     return vbool(is_number(argv[0]));
 }
 
-#ifndef SAFE_BUILD
+#ifndef ML_NO_FILE_IO
 
 Value *file_printer(Value *self)
 {
@@ -488,6 +499,55 @@ Value *native_file_is_dir(Env *env, int argc, Value **argv)
     }
     free(file);
     return vbool(0);
+}
+
+Value* native_file_list_dir(Env* e, int argc, Value** argv) {
+    Value* l = call_native_with(NULL, native_list_new, NULL);
+    DIR *dir;
+    struct dirent *entry;
+    struct stat st;
+
+    char* dir_name = argc == 1 ? GET_STRING(argv[0]) : ".";
+    dir = opendir(dir_name);
+    if (dir == NULL) {
+        return verror("opendir failed");
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        // skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+            
+        char name[2048];
+        if (dir_name[strlen(dir_name)-1] != '/') sprintf(name, "%s/%s", dir_name, entry->d_name);
+        else sprintf(name, "%s%s", dir_name, entry->d_name);
+
+        // optional: check if it's file or dir
+        if (stat(name, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(
+                    vstring_dup("name"), vstring_dup(entry->d_name),
+                    vstring_dup("type"), vstring_dup("d"),
+                    NULL
+                ), NULL));
+            } else {
+                val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(
+                    vstring_dup("name"), vstring_dup(entry->d_name),
+                    vstring_dup("type"), vstring_dup("f"),
+                    NULL
+                ), NULL));
+            }
+        } else {
+            val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(
+                vstring_dup("name"), vstring_dup(entry->d_name),
+                vstring_dup("type"), vstring_dup("?"),
+                NULL
+            ), NULL));
+        }
+    }
+
+    closedir(dir);
+    return l;
 }
 
 Value *native_fprint(Env *env, int argc, Value **argv)
@@ -926,148 +986,6 @@ Value* native_env_new(Env* env, int argc, Value** argv) {
     return vopaque_extra(e, NULL, "environment");
 }
 
-Value* native_env_new_from(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("env");
-    Env* e = env_new(NULL);
-    return vopaque_extra(e, NULL, "environment");
-}
-
-Value *native_env_set(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 3)
-        return verror("env.set(env, name, val): Requires three arguments");
-    env_set((Env*)GET_OPAQUE(argv[0]), GET_STRING(argv[1]), argv[2]);
-    return vnull();
-}
-
-Value *native_env_set_local(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 3)
-        return verror("env.set_local(env, name, val): Requires three arguments");
-    env_set_local((Env*)GET_OPAQUE(argv[0]), GET_STRING(argv[1]), argv[2]);
-    return vnull();
-}
-
-Value *native_env_free(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1)
-        return verror("env.free(env): Requires one arguments");
-    env_free((Env*)GET_OPAQUE(argv[0]));
-    return vnull();
-}
-
-
-Value *native_env_kill(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1)
-        return verror("env.kill(env): Requires one arguments");
-    env_kill((Env*)GET_OPAQUE(argv[0]));
-    return vnull();
-}
-
-Value *native_vars_set(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 2)
-        return verror("vars.set(name, val): Requires two arguments");
-    env_set(env, GET_STRING(argv[0]), argv[1]);
-    return vnull();
-}
-
-Value *native_vars_set_local(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 2)
-        return verror("vars.set_local(name, val): Requires two arguments");
-    env_set_local(env, GET_STRING(argv[0]), argv[1]);
-    return vnull();
-}
-
-Value *native_vars_get(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1)
-        return verror("vars.get(name): Requires one argument");
-    return env_get(env, GET_STRING(argv[0]));
-}
-
-Value *native_vars_get_global(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1)
-        return verror("vars.get_global(name): Requires one argument");
-    for (Env *cur = env; cur; cur = cur->parent)
-    {
-        if (cur->parent == NULL) {
-            return env_get(cur, GET_STRING(argv[0]));
-        }
-    }
-    return vnull();
-}
-
-Value *native_vfree(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1)
-        return verror("vfree(value): Requires one argument");
-    val_release(argv[0]);
-    return vnull();
-}
-
-Value *native_vars_local(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    (void)argv;
-    if (argc != 0)
-        return verror("vars.local(): Requires no arguments");
-    for (Var *v = env->vars; v; v = v->next)
-    {
-        printf("%s", v->name);
-        if (v->next)
-        {
-            printf(", ");
-        }
-    }
-    putchar(10);
-    return vnull();
-}
-
-Value *native_vars_global(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    (void)argv;
-    if (argc != 0)
-        return verror("vars.local(): Requires no arguments");
-    for (Env *cur = env; cur; cur = cur->parent)
-    {
-        if (cur->parent == NULL) {
-            for (Var *v = cur->vars; v; v = v->next)
-            {
-                printf("%s", v->name);
-                if (v->next)
-                {
-                    printf(", ");
-                }
-            }
-            break;
-        }
-    }
-    putchar(10);
-    return vnull();
-}
-
-Value *native_meep(Env *e, int argc, Value **argv)
-{
-    (void)argc;
-    (void)argv;
-    env_dump(e);
-    return vnull();
-}
-
 Value *native_list_append(Env *env, int argc, Value **argv)
 {
     ll_append(GET_OPAQUE(argv[0]), val_retain(argv[1]));
@@ -1173,34 +1091,15 @@ Value *istring_to_iter(Value *self)
 {
     char *str = (char *)self->v;
     size_t slen = strlen(str);
-    Value **iter = (Value **)mila_malloc(sizeof(Value *) * (slen + 1));
-    for (size_t i = 0; i < slen; ++i)
+    Value **iter = (Value **)mila_malloc(sizeof(Value *) * (slen + 2));
+    size_t i = 1;
+    for (; i < slen+1; ++i)
     {
-        iter[i] = vstring_dup((char[]){str[i], 0});
+        iter[i] = vstring_dup((char[]){str[i-1], 0});
     }
     iter[slen] = NULL;
+    iter[0] = vuint((unsigned long)slen);
     return vopaque(iter);
-}
-
-Value *istring_genth_worker(CGenData *cgen_data)
-{
-    ThreadContext *ctx = cgen_data->ctx;
-    char *data = GET_STRING(cgen_data->data);
-    size_t len = strlen(data);
-    for (size_t i = 0; i < len; ++i)
-    {
-        Value *tmp = vstring_dup((char[]){data[i], 0});
-        thread_yield(ctx, tmp);
-        val_kill(tmp);
-    }
-    thread_yield(ctx, NULL);
-    return NULL;
-}
-
-Value *istring_to_gen(Value *self)
-{
-    int th_id = make_cgen(istring_genth_worker, self);
-    return vint(th_id);
 }
 
 Value *istring_get(Value *self, Value *index)
@@ -1573,9 +1472,9 @@ Value* native_list_deconstruct_v1(Env* env, int argc, Value** argv) {
 }
 
 Value* native_list_deconstruct(Env* env, int argc, Value** argv) {
-    if (argc != 2) return verror("ll_deconstruct(pattern, list): Expected 2 args!");
+    if (argc != 2) return verror("list.deconstruct(pattern, list): Expected 2 args!");
     if (GET_TYPE(argv[0]) != T_STRING) return verror("Pattern must be string");
-    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX"list")) return verror("Must be list");
+    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list")) return verror("Must be list");
     
     char* pattern = GET_STRING(argv[0]);
     LinkedList* list = (LinkedList*)GET_OPAQUE(argv[1]);
@@ -1665,7 +1564,6 @@ Value* native_list_deconstruct(Env* env, int argc, Value** argv) {
     return result;
 }
 
-
 #ifdef EXT_SOCK
 #include "addon/ml_socket.c"
 #endif
@@ -1677,69 +1575,6 @@ Value* native_list_deconstruct(Env* env, int argc, Value** argv) {
 void env_register_builtins(Env *g)
 {
     // === Setup
-    // canonical builtins reports edition (2026 march)
-    env_set_raw(g, "__mila_edition", vint(MILA_EDITION));
-    // canonical builtins version reports actual version (integer, any changes
-    // means ver++)
-    env_set_raw(g, "__mila_version", vint(MILA_VERSION));
-    // tell users what implementation it is
-#ifdef SAFE_BUILD
-    env_set_raw(g, "__mila_codename", vstring_dup("mila:safe_canon"));
-#else
-    env_set_raw(g, "__mila_codename", vstring_dup("mila:canon"));
-#endif
-
-    // === Misc
-    env_register_native(g, "range", native_range);
-    env_register_native(g, "as_opaque", native_as_opaque);
-    env_register_native(g, "from_opaque", native_from_opaque);
-    env_register_native(g, "dump_vars", native_meep);
-    env_register_native(g, "own", native_own);
-    env_register_native(g, "unown", native_unown);
-    env_register_native(g, "copy", native_copy);
-    env_register_native(g, "repr", native_repr);
-    env_register_native(g, "repr_raw", native_repr_raw);
-    env_register_native(g, "random", native_random);
-    env_register_native(g, "srandom", native_srandom);
-    env_register_native(g, "noise", native_noise);
-    env_register_native(g, "crandom", native_crandom);
-    env_register_native(g, "dump_search_paths", native_dump_search_list);
-    env_register_native(g, "is", native_is);
-    env_register_native(g, "hash", native_hash);
-    env_register_native(g, "hash.set_seed", native_hash_set_seed);
-    env_register_native(g, "hash._get_seed", native_hash_get_seed);
-    // === Text IO
-    env_register_native(g, "print", native_print);
-    env_register_native(g, "printr", native_printr);
-    env_register_native(g, "println", native_println);
-    env_register_native(g, "input", native_input);
-    // === Logic and Bitwise
-    env_register_native(g, "and", native_bitwise_and);
-    env_register_native(g, "or", native_bitwise_or);
-    env_register_native(g, "xor", native_bitwise_xor);
-    env_register_native(g, "not", native_not);
-#ifndef SAFE_BUILD
-    // === File IO
-    env_register_native(g, "open", native_open);
-    env_register_native(g, "fclose", native_fclose);
-    env_register_native(g, "fprint", native_fprint);
-    env_register_native(g, "fread", native_fread);
-    env_register_native(g, "fread_all", native_fread_all);
-    env_register_native(g, "fseek", native_fseek);
-    env_register_native(g, "ftell", native_ftell);
-    env_register_native(g, "fflush", native_fflush);
-    env_register_native(g, "file.exists", native_file_exists);
-    env_register_native(g, "file.is_file", native_file_is_file);
-    env_register_native(g, "file.is_dir", native_file_is_dir);
-    env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
-    env_set_raw(g, "SEEK_END", vint(SEEK_END));
-    env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
-    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
-    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
-    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin fd'"));
-    file_meta = val_make_table();
-    val_set_method_table(file_meta, UMethodToString, file_printer);
-#endif // SAFE_BUILD
 
     dict_meta = val_make_table();
 
@@ -1785,7 +1620,69 @@ void env_register_builtins(Env *g)
     val_set_method_table(istring_meta, UMethodToIter, istring_to_iter);
     val_set_method_table(istring_meta, BMethodGetItem, istring_get);
     val_set_method_table(istring_meta, UMethodToString, istring_to_str);
-    val_set_method_table(istring_meta, UMethodToGen, istring_to_gen);
+    
+    // canonical builtins reports version
+    env_set_raw(g, "__mila_version", make_list(vint(MILA_EDITION), vint(MILA_VERSION), vint(MILA_PATCH), NULL));
+#ifdef SAFE_BUILD
+    env_set_raw(g, "__mila_codename", vstring_dup("mila:safe_canon"));
+#else
+    env_set_raw(g, "__mila_codename", vstring_dup("mila:canon"));
+#endif
+
+    // === Misc
+    env_register_native(g, "range", native_range);
+    env_register_native(g, "own", native_own);
+    env_register_native(g, "unown", native_unown);
+    env_register_native(g, "copy", native_copy);
+    env_register_native(g, "repr", native_repr);
+    env_register_native(g, "repr_raw", native_repr_raw);
+    env_register_native(g, "random", native_random);
+    env_register_native(g, "srandom", native_srandom);
+    env_register_native(g, "noise", native_noise);
+    env_register_native(g, "crandom", native_crandom);
+    env_register_native(g, "dump_search_paths", native_dump_search_list);
+    env_register_native(g, "is", native_is);
+    env_register_native(g, "hash", native_hash);
+    env_register_native(g, "hash.set_seed", native_hash_set_seed);
+    env_register_native(g, "hash._get_seed", native_hash_get_seed);
+    // === Text IO
+    env_register_native(g, "print", native_print);
+    env_register_native(g, "printr", native_printr);
+    env_register_native(g, "println", native_println);
+    env_register_native(g, "input", native_input);
+    // === Logic and Bitwise
+    env_register_native(g, "and", native_bitwise_and);
+    env_register_native(g, "or", native_bitwise_or);
+    env_register_native(g, "xor", native_bitwise_xor);
+    env_register_native(g, "not", native_not);
+#ifndef ML_NO_FILE_IO
+    // === File IO
+    env_register_native(g, "open", native_open);
+    env_register_native(g, "fclose", native_fclose);
+    env_register_native(g, "fprint", native_fprint);
+    env_register_native(g, "fread", native_fread);
+    env_register_native(g, "fread_all", native_fread_all);
+    env_register_native(g, "fseek", native_fseek);
+    env_register_native(g, "ftell", native_ftell);
+    env_register_native(g, "fflush", native_fflush);
+    env_register_native(g, "file.exists", native_file_exists);
+    env_register_native(g, "file.is_file", native_file_is_file);
+    env_register_native(g, "file.is_dir", native_file_is_dir);
+    env_register_native(g, "file.list_dir", native_file_list_dir);
+    env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
+    env_set_raw(g, "SEEK_END", vint(SEEK_END));
+    env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
+#ifdef _WIN32
+    env_set_raw(g, "PATH_SEP", vstring_dup("\\"));
+#else
+    env_set_raw(g, "PATH_SEP", vstring_dup("/"));
+#endif
+    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
+    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
+    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin fd'"));
+    file_meta = val_make_table();
+    val_set_method_table(file_meta, UMethodToString, file_printer);
+#endif // ML_NO_FILE_IO
 
     // === Lists
     env_register_native(g, "list", native_list_new);
@@ -1820,6 +1717,14 @@ void env_register_builtins(Env *g)
     env_register_native(g, "typeof", native_type_of);
     env_register_native(g, "_typeof", native_type_of_extra);
     env_register_native(g, "is_numeric", native_is_numeric);
+#ifndef ML_NO_C_CAST
+    env_register_native(g, "as_opaque", native_as_opaque);
+    env_register_native(g, "from_opaque", native_from_opaque);
+#endif
+    /*
+     * _typeof differentiates between native and non native functions
+     * this is for very specific use cases
+     */
     // === JSON
     env_register_native(g, "mjson.loads", native_mjson_loads);
     env_register_native(g, "mjson.dumps", native_mjson_dumps);
@@ -1866,25 +1771,6 @@ void env_register_builtins(Env *g)
     env_set_raw(g, "NINF", vfloat(-INFINITY));
 #endif // ML_NO_MATH
     env_set_raw(g, "RAND_MAX", vint(RAND_MAX));
-    // === Env
-    env_register_native(g, "env.new", native_env_new);
-    env_register_native(g, "env.new_from", native_env_new_from);
-    env_register_native(g, "env.set", native_env_set);
-    env_register_native(g, "env.set_local", native_env_set_local);
-    env_register_native(g, "env.free", native_env_free);
-    env_register_native(g, "env.kill", native_env_kill);
-    env_register_native(g, "vars.set", native_vars_set);
-    env_register_native(g, "vars.set_local", native_vars_set_local);
-    env_register_native(g, "vars.bind", native_vars_bind);
-    env_register_native(g, "vars.get", native_vars_get);
-    env_register_native(g, "vars.get_global", native_vars_get_global);
-    env_register_native(g, "vars.local", native_vars_local);
-    env_register_native(g, "vars.global", native_vars_global);
-
-    /*
-     * _typeof differentiates between native and non native functions
-     * this is for very specific use cases
-     */
     // === Error handling
     env_register_native(g, "report", native_report);
     env_register_native(g, "report_tagged", native_report_tagged);
@@ -1901,25 +1787,45 @@ void env_register_builtins(Env *g)
     env_register_native(g, "exit", native_exit);
     env_register_native(g, "abort", native_abort);
     // === Time measurement
+#ifndef ML_NO_TIME
     env_register_native(g, "get_time", native_get_time);
     env_register_native(g, "time_sleep", native_time_sleep);
     env_register_native(g, "time_sleep_ms", native_time_sleep_ms);
     env_register_native(g, "strftime", native_strftime);
     env_register_native(g, "get_tm_gmt", native_get_tm_gmt);
     env_register_native(g, "get_tm_local", native_get_tm_local);
+#endif
     // === Debugging
     env_register_native(g, "_breakpoint", native_break_point);
     // === OS Stuff
+#ifndef ML_NO_PLATFORM
     env_register_native(g, "system", native_system);
     env_register_native(g, "sys.get_platform", native_sys_get_platform);
     env_register_native(g, "sys.get_arch", native_sys_get_arch);
     env_register_native(g, "sys.get_pid", native_sys_get_pid);
-    // === Modules
-#ifndef SAFE_BUILD
+#endif
+    // === Modules and Libs
+#ifndef ML_NO_EXECUTABLES
     env_register_native(g, "run", native_run);   // runs file
     env_register_native(g, "invoke", native_run);   // invokes file
     env_register_native(g, "load", native_load); // loads dlls or so file
     env_register_native(g, "eval", native_eval); // runs string
+#endif
+    // === Threading
+#ifndef ML_NO_THREADING
+    env_register_native(g, "thread.make", native_thread_create);
+    env_register_native(g, "thread.join", native_thread_join);
+    env_register_native(g, "thread.cancel", native_thread_cancel);
+    env_register_native(g, "thread.check_cancel", native_thread_check_cancel);
+    env_register_native(g, "thread.set_daemon", native_thread_set_daemon);
+    env_register_native(g, "thread.get_pthread_id", native_thread_pthread_id);
+    env_register_native(g, "thread.status", native_thread_status);
+    env_register_native(g, "thread.mutex", native_make_mutex);
+    env_register_native(g, "thread.mutex_unlock", native_mutex_unlock);
+    env_register_native(g, "thread.mutex_lock", native_mutex_lock);
+    env_register_native(g, "thread.yield", native_thread_yield);
+    env_register_native(g, "thread.next", native_thread_next);
+    env_register_native(g, "thread.dump", native_thread_dump);
 #endif
 
     // ==== EXTENSIONS (not meant for prod) ====

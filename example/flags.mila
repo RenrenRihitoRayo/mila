@@ -1,6 +1,7 @@
 
-!fn (argc, ...argv) -> ">IO"
+!fn (argc, name, type, ...argv) -> ">IO"
 
+// doesnt support "--name value" only "--name=value"
 fn parse_args(args: "list[str]")
 -> "list(list[str], dict[str, str])" {
     var positionals = [];
@@ -25,4 +26,42 @@ fn parse_args(args: "list[str]")
     return [positionals, values];
 }
 
-println(argv, parse_args(argv));
+// supports both "--name value" and "--name=value"
+fn parse_args_ind(args: "list[str]")
+-> "list(list[str], dict[str, str])" {
+    var positionals = [];
+    var values = [@];
+    
+    foreach idx : range(list.len(args)) {
+        if (str.startswith(args[idx], "--")) {
+            if (not(str.contains("=" , args[idx]))) {
+                var data = str.slice(args[idx], 2);
+                if (idx+1 < list.len(args)) {
+                    set values[data] = args[idx+1];
+                    continue 2; // skip the next iteration
+                } else {
+                    report("flag '" + data + "' expected to have a value.");
+                }
+            } else {
+                var data = str.split(str.slice(args[idx], 2), "=");
+                set values[data[0]] = data[1];
+            }
+        } elif (str.startswith(args[idx], "-")) {
+            var data = str.slice(args[idx], 1);
+            set values[data] = true;
+        } else {
+            list.append(positionals, args[idx]);
+        }
+    }
+    return [positionals, values];
+}
+
+if (argc == 2) {
+    println(parse_args([type, ...argv]));
+} elif (type == "norm") {
+    println(parse_args(argv));
+} elif (type == "index") {
+    println(parse_args_ind(argv));
+} else {
+    println(parse_args([type, ...argv]));
+}

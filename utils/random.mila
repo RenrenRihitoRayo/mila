@@ -1,3 +1,4 @@
+
 object rand {
     fn make_indexes(len):[rand, random] {
         var l = [];
@@ -32,6 +33,15 @@ object rand {
         }
         return new;
     }
+    
+    fn shuffle_string(s):[rand] {
+        var new = "";
+        var indexes = rand::make_indexes(str.len(s));
+        foreach index : indexes {
+            set new += str.index(s, index);
+        }
+        return new;
+    }
 
     fn test():[rand] {
         var l = list(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
@@ -42,6 +52,10 @@ object rand {
         println(a);
         set a = rand::shuffle_array(a);
         println(a);
+        var s = "hello, world!";
+        println(s);
+        set s = rand::shuffle_string(s);
+        println(s);
     }
 }
 

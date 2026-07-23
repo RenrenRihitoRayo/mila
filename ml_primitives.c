@@ -901,7 +901,9 @@ Value* native_str_find(Env* env, int argc, Value** argv) {
     if (argc != 2) return verror("str.caseless_find(needle, haystack): Expected 2 arguments!");
     char* needle = GET_STRING(argv[0]);
     char* haystack = GET_STRING(argv[1]);
-    long index = strstr(haystack, needle) - haystack;
+    char* v = strstr(haystack, needle);
+    if (!v) return vint(-1);
+    long index = v - haystack;
     return vint(index);
 }
 
@@ -909,6 +911,8 @@ Value* native_str_caseless_find(Env* env, int argc, Value** argv) {
     if (argc != 2) return verror("str.find(needle, haystack): Expected 2 arguments!");
     char* needle = GET_STRING(argv[0]);
     char* haystack = GET_STRING(argv[1]);
-    long index = strcasestr(haystack, needle) - haystack;
+    char* v = strcasestr(haystack, needle);
+    if (!v) return vint(-1);
+    long index = v - haystack;
     return vint(index);
 }

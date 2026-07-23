@@ -1,0 +1,44 @@
+
+!fn (argc, _, for="vim")
+// Generate syntax for vim or sublime files
+
+var names = [];
+
+print("Parsing");
+
+var file = open("ml_builtins.c", "r");
+var text = fread_all(file);
+var start = str.find("env_register_builtins", text);
+var final_text = str.slice(text, start);
+var lines = str.split(final_text, "\n");
+
+foreach line : lines {
+    if (str.startswith(line, "    env_register_native")) {
+        set line = str.slice(line, 28);
+        var end = str.find("\"", line);
+        list.append(names, str.slice(line, 0, end));
+    }
+}
+
+println(": Done.");
+
+println("For:", for);
+
+fclose(file);
+
+if (for == "vim") {
+    println("syntax match milaBuiltins \"" + str.join("\\|", names) + "\"");
+} elif (for == "sublime") {
+    // Esxape dots because sublime regex
+    foreach i : range(list.len(names)) {
+        var name = names[i];
+        if (str.find(".", name) != -1) {
+            var name = str.join("\\.", str.split(name, "."));
+            set names[i] = name;
+        }
+    }
+    println("  - match: '\\b(" + str.join("|", names) + ")\\b'")
+    println("    scope: support.function.mila")
+} else {
+    println("Invalid target:", for);
+}

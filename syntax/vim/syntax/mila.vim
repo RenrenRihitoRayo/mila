@@ -2,29 +2,20 @@
 " Save as ~/.vim/syntax/mila.vim
 
 " Keywords
-syntax keyword milaKeyword if elif else while fn set var export return break continue contextual
+syntax keyword milaKeyword if elif else while fn set var export return break continue contextual forget
 
 syntax keyword keyword_indent "{"
 syntax keyword keyword_dedent "}"
 
 " Builtins
-syntax keyword milaBuiltins xor and or not
-syntax keyword milaBuiltins println printr print input printf
-syntax keyword milaBuiltins array dict typeof _typeof
-syntax match milaBuiltins "cast.\(int\|float\|string\|i2f\|f2i\|u2i\|i2u\)"
-syntax match milaBuiltins "array.\(get\|set\|len\)"
-syntax match milaBuiltins "dict.\(get\|set\|rem\)"
-syntax keyword milaBuiltins open fread fprint ftell fseek
-syntax keyword milaBuiltins floor ceil pow tan cos sin atan2 sqrt fabs abs crandom random srandom
-syntax match milaBuiltins "str.\(slice\|index\|patch\|length\|pop_f\|pop_b\)"
-syntax match milaBuiltins "ascii.\(to\|from\)"
+syntax match milaBuiltins "range\|own\|unown\|copy\|repr\|repr_raw\|random\|srandom\|noise\|crandom\|dump_mila_search_paths\|is\|hash\|hash.set_seed\|hash._get_seed\|print\|printr\|println\|input\|and\|or\|xor\|not\|open\|fdopen\|fdredirect\|fclose\|close\|fprint\|fprint_bytes\|fread\|fread_all\|fread_bytes\|fread_all_bytes\|fseek\|ftell\|fflush\|file.exists\|file.is_file\|file.is_dir\|file.list_dir\|list\|list.pop\|list.len\|list.append\|list.contains\|list.index\|list.slice\|list.deconstruct\|array\|array.from\|array.len\|dict\|dict.rem\|dict.keys\|cast.int\|cast.float\|cast.str\|cast.i2f\|cast.i2u\|cast.u2i\|cast.f2i\|typeof\|_typeof\|is_numeric\|as_opaque\|from_opaque\|mjson.loads\|mjson.dumps\|json.loads\|json.dumps\|str.slice\|str.index\|str.patch\|str.copy\|str.len\|str.pop_f\|str.pop_b\|str.split\|str.join\|str.startswith\|str.endswith\|str.contains\|str.caseless_contains\|str.find\|str.caseless_find\|str.match_replace\|str.match_find\|istring\|ascii.from_int\|ascii.from_string\|floor\|ceil\|sqrt\|sqrtf\|sin\|cos\|tan\|atan2\|pow\|rand\|fabs\|abs\|report\|report_tagged\|assert\|exit\|abort\|get_time\|time_sleep\|time_sleep_ms\|strftime\|get_tm_gmt\|get_tm_local\|_breakpoint\|system\|sys.get_platform\|sys.get_arch\|sys.get_pid\|run\|require\|invoke\|load\|eval\|thread.make\|thread.join\|thread.cancel\|thread.check_cancel\|thread.set_daemon\|thread.get_pthread_id\|thread.status\|thread.mutex\|thread.mutex_unlock\|thread.mutex_lock\|thread.dump"
 
 " Constants
 syntax keyword milaConstant true false null none
 syntax keyword milaConstant stderr stdout SEEK_SET SEEK_END SEEK_CUR
 
 " Numbers
-syntax match milaNumber "\v<\d+(\.\d+)?>"
+syntax match milaNumber "\v<\d+(\.\d+)?u?>"
 
 " Operators
 syntax match milaOperator "[-+*/=<>!:%]=\?"
@@ -36,7 +27,7 @@ syntax region milaString start='"' end='"' contains=milaEscape
 syntax match milaEscape "\\[nrt\"'\\]" contained
 
 " Comments
-syntax keyword milaTodo TODO FIXME contained
+syntax keyword milaTodo TODO FIXME NOTE contained
 syntax region milaMLComment start="//" end="$" contains=milaTodo
 " syntax match milaComment "//.*\$" contains=milaTodo containedin=ALL
 syntax region milaMLComment start="/\*" end="\*/" contains=milaTodo

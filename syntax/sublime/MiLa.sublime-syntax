@@ -38,14 +38,11 @@ contexts:
           pop: true
 
   keyword:
-    - match: '\b(namespace|block|catch|if|elif|else|while|fn|set|var|export|forget|return|break|continue|foreach)\b'
+    - match: '\b(namespace|block|catch|if|elif|else|while|fn|set|var|sync|forget|return|break|continue|foreach)\b'
       scope: keyword.control.mila
 
   builtin:
-    - match: '\b(xor|and|or|not|println|printr|print|input|printf|array|dict|typeof|open|fread|fprint|ftell|fseek|floor|ceil|pow|tan|cos|sin|atan2|sqrt|fabs|abs|run|eval|load|own|unown|report)\b'
-      scope: support.function.mila
-      
-    - match: '\b(str|str.(contains|caseless_contains|find|caseless_find|startswith|endswith|join|split|patch))\b'
+    - match: '\b(range|own|unown|copy|repr|repr_raw|random|srandom|noise|crandom|dump_mila_search_paths|is|hash|hash\.set_seed|hash\._get_seed|print|printr|println|input|and|or|xor|not|open|fdopen|fdredirect|fclose|close|fprint|fprint_bytes|fread|fread_all|fread_bytes|fread_all_bytes|fseek|ftell|fflush|file\.exists|file\.is_file|file\.is_dir|file\.list_dir|list|list\.pop|list\.len|list\.append|list\.contains|list\.index|list\.slice|list\.deconstruct|array|array\.from|array\.len|dict|dict\.rem|dict\.keys|cast\.int|cast\.float|cast\.str|cast\.i2f|cast\.i2u|cast\.u2i|cast\.f2i|typeof|_typeof|is_numeric|as_opaque|from_opaque|mjson\.loads|mjson\.dumps|json\.loads|json\.dumps|str\.slice|str\.index|str\.patch|str\.copy|str\.len|str\.pop_f|str\.pop_b|str\.split|str\.join|str\.startswith|str\.endswith|str\.contains|str\.caseless_contains|str\.find|str\.caseless_find|str\.match_replace|str\.match_find|istring|ascii\.from_int|ascii\.from_string|floor|ceil|sqrt|sqrtf|sin|cos|tan|atan2|pow|rand|fabs|abs|report|report_tagged|assert|exit|abort|get_time|time_sleep|time_sleep_ms|strftime|get_tm_gmt|get_tm_local|_breakpoint|system|sys\.get_platform|sys\.get_arch|sys\.get_pid|run|require|invoke|load|eval|thread\.make|thread\.join|thread\.cancel|thread\.check_cancel|thread\.set_daemon|thread\.get_pthread_id|thread\.status|thread\.mutex|thread\.mutex_unlock|thread\.mutex_lock|thread\.dump)\b'
       scope: support.function.mila
 
   constant:

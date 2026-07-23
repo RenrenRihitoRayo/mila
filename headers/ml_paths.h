@@ -27,6 +27,7 @@ void path_list_free(path_list *pl);
 int path_list_add(path_list *pl, const char *path);
 int path_list_remove(path_list *pl, const char *path);
 char *path_list_find(path_list *pl, const char *file);
+char *path_list_find_alternative(path_list *pl, const char *file);
 char *path_get_cwd(void);
 char* path_join_alloc(char* path, ...);
 int path_list_add_top(path_list *pl, const char *path);

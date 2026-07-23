@@ -6,199 +6,265 @@
 #include <stdlib.h>
 #include "ml_primitives.h"
 
-typedef struct LLNode {
-  Value *value;
-  struct LLNode *next;
+typedef struct LLNode
+{
+    Value *value;
+    struct LLNode *next;
 } LLNode;
 
-typedef struct LinkedList {
-  LLNode *head;
-  LLNode *tail;
-  size_t size;
+typedef struct LinkedList
+{
+    LLNode *head;
+    LLNode *tail;
+    size_t size;
 } LinkedList;
 
-LinkedList *ll_create() {
-  LinkedList *list = malloc(sizeof(LinkedList));
-  if (!list)
-    return NULL;
-  list->head = NULL;
-  list->tail = NULL;
-  list->size = 0;
-  return list;
+LinkedList *ll_create()
+{
+    LinkedList *list = malloc(sizeof(LinkedList));
+    if (!list)
+        return NULL;
+    list->head = NULL;
+    list->tail = NULL;
+    list->size = 0;
+    return list;
 }
 
-void ll_free(LinkedList *list) {
-  if (!list)
-    return;
-  LLNode *node = list->head;
-  while (node) {
-    val_release(node->value);
-    LLNode *next = node->next;
-    free(node);
-    node = next;
-  }
-  free(list);
+void ll_free(LinkedList *list)
+{
+    if (!list)
+        return;
+    LLNode *node = list->head;
+    while (node)
+    {
+        val_release(node->value);
+        LLNode *next = node->next;
+        free(node);
+        node = next;
+    }
+    free(list);
 }
 
-void ll_append(LinkedList *list, Value *val) {
-  if (!list)
-    return;
-  LLNode *node = malloc(sizeof(LLNode));
-  if (!node)
-    return;
-  node->value = val;
-  node->next = NULL;
+void ll_append(LinkedList *list, Value *val)
+{
+    if (!list)
+        return;
+    LLNode *node = malloc(sizeof(LLNode));
+    if (!node)
+        return;
+    node->value = val;
+    node->next = NULL;
 
-  if (!list->head) {
-    list->head = node;
-    list->tail = node;
-  } else {
-    list->tail->next = node;
-    list->tail = node;
-  }
-  list->size++;
+    if (!list->head)
+    {
+        list->head = node;
+        list->tail = node;
+    }
+    else
+    {
+        list->tail->next = node;
+        list->tail = node;
+    }
+    list->size++;
 }
 
-void ll_insert(LinkedList *list, size_t index, Value *val) {
-  if (!list)
-    return;
+void ll_insert(LinkedList *list, size_t index, Value *val)
+{
+    if (!list)
+        return;
 
-  if (index >= list->size) {
-    ll_append(list, val);
-    return;
-  }
+    if (index >= list->size)
+    {
+        ll_append(list, val);
+        return;
+    }
 
-  LLNode *node = malloc(sizeof(LLNode));
-  if (!node)
-    return;
-  node->value = val;
+    LLNode *node = malloc(sizeof(LLNode));
+    if (!node)
+        return;
+    node->value = val;
 
-  if (index == 0) {
-    node->next = list->head;
-    list->head = node;
-    if (!list->tail)
-      list->tail = node;
-  } else {
+    if (index == 0)
+    {
+        node->next = list->head;
+        list->head = node;
+        if (!list->tail)
+            list->tail = node;
+    }
+    else
+    {
+        LLNode *cur = list->head;
+        for (size_t i = 0; i < index - 1; i++)
+            cur = cur->next;
+        node->next = cur->next;
+        cur->next = node;
+    }
+
+    list->size++;
+}
+
+Value *ll_get(LinkedList *list, size_t index)
+{
+    if (!list || index >= list->size)
+        return NULL;
     LLNode *cur = list->head;
-    for (size_t i = 0; i < index - 1; i++)
-      cur = cur->next;
-    node->next = cur->next;
-    cur->next = node;
-  }
-
-  list->size++;
+    for (size_t i = 0; i < index; i++)
+        cur = cur->next;
+    return cur->value;
 }
 
-Value *ll_get(LinkedList *list, size_t index) {
-  if (!list || index >= list->size)
-    return NULL;
-  LLNode *cur = list->head;
-  for (size_t i = 0; i < index; i++)
-    cur = cur->next;
-  return cur->value;
+void ll_set(LinkedList *list, size_t index, Value *val)
+{
+    if (!list || index >= list->size)
+        return;
+    LLNode *cur = list->head;
+    for (size_t i = 0; i < index; i++)
+        cur = cur->next;
+    val_release(cur->value); // free previous tenant
+    cur->value = val;
 }
 
-void ll_set(LinkedList *list, size_t index, Value *val) {
-  if (!list || index >= list->size)
-    return;
-  LLNode *cur = list->head;
-  for (size_t i = 0; i < index; i++)
-    cur = cur->next;
-  val_release(cur->value); // free previous tenant
-  cur->value = val;
+Value *ll_pop(LinkedList *list, long index)
+{
+    if (!list)
+        return verror("ll_pop: list data is null.");
+    if (index < 0)
+        index = (~index);
+    size_t t_index = (size_t)index;
+    if (t_index >= list->size)
+        return verror("ll_pop: index out of bounds.");
+
+    LLNode *cur = list->head;
+    LLNode *prev = NULL;
+    for (size_t i = 0; i < t_index; i++)
+    {
+        prev = cur;
+        cur = cur->next;
+    }
+
+    if (prev)
+        prev->next = cur->next;
+    else
+        list->head = cur->next;
+
+    if (cur == list->tail)
+        list->tail = prev;
+
+    Value *val = cur->value;
+    free(cur);
+    list->size--;
+    return val;
 }
 
-Value *ll_pop(LinkedList *list, long index) {
-  if (!list)
-    return verror("ll_pop: list data is null.");
-  if (index < 0)
-    index = (~index);
-  size_t t_index = (size_t)index;
-  if (t_index >= list->size)
-    return verror("ll_pop: index out of bounds.");
-
-  LLNode *cur = list->head;
-  LLNode *prev = NULL;
-  for (size_t i = 0; i < t_index; i++) {
-    prev = cur;
-    cur = cur->next;
-  }
-
-  if (prev)
-    prev->next = cur->next;
-  else
-    list->head = cur->next;
-
-  if (cur == list->tail)
-    list->tail = prev;
-
-  Value *val = cur->value;
-  free(cur);
-  list->size--;
-  return val;
+Value **ll_to_iter(LinkedList *list)
+{
+    if (!list)
+        return NULL;
+    Value **arr = malloc((list->size + 2) * sizeof(Value *));
+    if (!arr)
+        return NULL;
+    LLNode *cur = list->head;
+    size_t i = 1;
+    while (cur)
+    {
+        arr[i++] = val_retain(cur->value);
+        cur = cur->next;
+    }
+    arr[i] = NULL;
+    arr[0] = vuint(i);
+    return arr;
 }
 
-Value **ll_to_iter(LinkedList *list) {
-  if (!list)
-    return NULL;
-  Value **arr = malloc((list->size + 2) * sizeof(Value *));
-  if (!arr)
-    return NULL;
-  LLNode *cur = list->head;
-  size_t i = 1;
-  while (cur) {
-    arr[i++] = val_retain(cur->value);
-    cur = cur->next;
-  }
-  arr[i] = NULL;
-  arr[0] = vuint(i);
-  return arr;
+Value **ll_slice_front(LinkedList *list, unsigned long start)
+{
+    Value **l = ll_to_iter(list);
+    unsigned long size = GET_INTEGER(l[0]);
+    unsigned long true_size = GET_INTEGER(l[0]) - start;
+    for (unsigned long i = 1; i < start; ++i)
+        val_release(l[i]);
+    Value **values = mila_malloc(sizeof(Value *) * true_size + 2);
+    values[0] = vuint(true_size);
+    unsigned long idx = 1;
+    for (unsigned long i = start; i < size; ++i)
+        values[idx++] = l[i];
+    values[true_size - 1] = NULL;
+    val_release(l[0]);
+    return values;
 }
 
-typedef struct {
-  LLNode* current;
+Value *ll_slice_ll(LinkedList *list, unsigned long start, unsigned long len)
+{
+    Value **l = ll_to_iter(list);
+    unsigned long size = GET_INTEGER(l[0]);
+    start++; // account for [len, ...] that ll_to_iter returns
+    for (unsigned long i = 1; i < start - 1; ++i)
+        val_release(l[i]);
+    Value *values = make_list(NULL);
+    if (len != -1)
+    {
+        for (unsigned long i = start; i < size && i < start + len; ++i)
+            val_release(call_native_with(NULL, native_list_append, val_retain(values), l[i], NULL));
+    }
+    else
+    {
+        for (unsigned long i = start; i < size; ++i)
+            val_release(call_native_with(NULL, native_list_append, val_retain(values), l[i], NULL));
+    }
+    return values;
+}
+
+typedef struct
+{
+    LLNode *current;
 } LLIterState;
 
-LLIterState* ll_iter_init(Value* self) {
-  LLIterState* state = (LLIterState*)mila_malloc(sizeof(LLIterState));
-  state->current = ((LinkedList*)GET_OPAQUE(self))->head;
-  return state;
+LLIterState *ll_iter_init(Value *self)
+{
+    LLIterState *state = (LLIterState *)mila_malloc(sizeof(LLIterState));
+    state->current = ((LinkedList *)GET_OPAQUE(self))->head;
+    return state;
 }
 
-Value* ll_iter_next(LLIterState* state) {
-  if (!state->current) return NULL;
-  Value* val = state->current->value;
-  state->current = state->current->next;
-  return val_retain(val);
+Value *ll_iter_next(LLIterState *state)
+{
+    if (!state->current)
+        return NULL;
+    Value *val = state->current->value;
+    state->current = state->current->next;
+    return val_retain(val);
 }
 
-void ll_iter_cleanup(LLIterState* state) {
-  free(state);
+void ll_iter_cleanup(LLIterState *state)
+{
+    free(state);
 }
 
-Value *ll_copy(Value *self) {
-  if (!self || !GET_OPAQUE(self))
-    return NULL;
-  
-  LinkedList *original = (LinkedList *)GET_OPAQUE(self);
-  LinkedList *copy = ll_create();
-  if (!copy)
-    return NULL;
-  
-  // Deep copy all nodes
-  LLNode *cur = original->head;
-  while (cur) {
-    Value *copied_value = val_copy(cur->value);
-    if (!copied_value) {
-      ll_free(copy);
-      return NULL;
+Value *ll_copy(Value *self)
+{
+    if (!self || !GET_OPAQUE(self))
+        return NULL;
+
+    LinkedList *original = (LinkedList *)GET_OPAQUE(self);
+    LinkedList *copy = ll_create();
+    if (!copy)
+        return NULL;
+
+    // Deep copy all nodes
+    LLNode *cur = original->head;
+    while (cur)
+    {
+        Value *copied_value = val_copy(cur->value);
+        if (!copied_value)
+        {
+            ll_free(copy);
+            return NULL;
+        }
+        ll_append(copy, copied_value);
+        cur = cur->next;
     }
-    ll_append(copy, copied_value);
-    cur = cur->next;
-  }
-  
-  Value *result = val_new(T_OPAQUE);
-  result->v = (void *)copy;
-  val_set_table(result, list_meta);
-  return result;
+
+    Value *result = val_new(T_OPAQUE);
+    result->v = (void *)copy;
+    val_set_table(result, list_meta);
+    return result;
 }

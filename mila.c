@@ -60,6 +60,37 @@
 #undef MILA_PROTO
 
 CleanupRegistry *cleanup_registry = NULL;
+#ifndef ML_NO_CACHED_MODS
+Value *mila_cached_modules = NULL;
+#endif
+
+#ifndef ML_NO_THREADING
+#ifndef ML_NO_CACHED_MODS
+pthread_mutex_t mila_cached_modules_lock = {0};
+pthread_mutex_t mila_cached_modules_lock_read = {0};
+#endif
+pthread_mutex_t mila_search_path_lock = {0};
+pthread_mutex_t mila_search_path_lock_read = {0};
+#endif
+
+double get_unix_timestamp(void)
+{
+#ifdef _WIN32
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+
+    uint64_t t = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+
+    t -= 116444736000000000ULL; // FILETIME -> Unix epoch
+
+    return (double)t / 10000000.0;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+#endif
+}
 
 void print_memory_usage()
 {
@@ -88,6 +119,26 @@ void print_memory_usage()
     printf("Memory usage: %.2f %s\n", memory_usage_d, units[unit_index]);
 }
 
+static inline void print_duration(double s)
+{
+    if (s >= 1.0)
+    {
+        printf("%.4fs", s);
+    }
+    else if (s * 1000.0 >= 1.0)
+    {
+        printf("%.4fms", s * 1000.0);
+    }
+    else if (s * 1000000.0 >= 1.0)
+    {
+        printf("%.4fus", s * 1000000.0);
+    }
+    else
+    {
+        printf("%.0fns", s * 1000000.0);
+    }
+}
+
 #if defined(_WIN32) || defined(_WIN64)
 unsigned long get_process_id(void)
 {
@@ -100,7 +151,7 @@ unsigned long get_process_id(void)
 }
 #endif
 
-path_list *search_path = NULL;
+path_list *mila_search_path = NULL;
 
 // Cleanup
 
@@ -138,17 +189,17 @@ void free_cleanup_registry(CleanupRegistry *registry)
 #include <stdio.h>
 #include <string.h>
 
-inline void *mila_malloc(size_t size)
+static inline void *mila_malloc(size_t size)
 {
     void *ptr = malloc(size);
     memset(ptr, 0, size);
     return ptr;
 }
-inline void *mila_realloc(void *ptr, size_t size)
+static inline void *mila_realloc(void *ptr, size_t size)
 {
     return realloc(ptr, size);
 }
-inline void mila_free(void *ptr)
+static inline void mila_free(void *ptr)
 {
     free(ptr);
 }
@@ -596,7 +647,7 @@ void val_unset_method_table(MethodTable *v, MethodType t) { v[t] = NULL; }
 
 // Helpers to create typed values or check their truthiness
 
-inline int is_truthy(Value *value)
+static inline int is_truthy(Value *value)
 {
     switch (GET_TYPE(value))
     {
@@ -1116,26 +1167,25 @@ char *replace_match(const char *pattern, const char *str, const char *replacemen
     return out.buf;
 }
 
-inline Value *vnull() { return val_new_raw(T_NULL); }
-inline Value *vnone() { return val_new_raw(T_NONE); }
-inline Value *vbreak() { return val_new_raw(T_BREAK); }
-inline Value *vcontinue() { return val_new_raw(T_CONTINUE); }
-inline Value *vcontinue_step(unsigned long steps)
+static inline Value *vnull() { return val_new_raw(T_NULL); }
+static inline Value *vnone() { return val_new_raw(T_NONE); }
+static inline Value *vbreak() { return val_new_raw(T_BREAK); }
+static inline Value *vcontinue() { return val_new_raw(T_CONTINUE); }
+static inline Value *vcontinue_step(unsigned long steps)
 {
     Value *v = val_new(T_CONTINUE);
     v->v->ui = steps;
     return v;
 }
-inline Value *vbreak_step(unsigned long steps)
+static inline Value *vbreak_step(unsigned long steps)
 {
     Value *v = val_new(T_CONTINUE);
     v->v->ui = steps;
     return v;
 }
 
-#ifndef SAFE_BUILD
-__attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
-                                                           char *fmt, ...)
+static inline __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
+                                                                         char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1170,8 +1220,8 @@ __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
     return v;
 }
 
-__attribute__((format(printf, 3, 4))) Value *vtagged_coded_error(ErrorType err, int ret_code,
-                                                                 char *fmt, ...)
+static inline __attribute__((format(printf, 3, 4))) Value *vtagged_coded_error(ErrorType err, int ret_code,
+                                                                               char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1206,7 +1256,7 @@ __attribute__((format(printf, 3, 4))) Value *vtagged_coded_error(ErrorType err, 
     return v;
 }
 
-__attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...)
+static inline __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1238,9 +1288,8 @@ __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...)
     v->v = (void *)buf;
     return v;
 }
-#endif
 
-__attribute__((format(printf, 1, 2))) inline Value *vstring_fmt(char *fmt, ...)
+__attribute__((format(printf, 1, 2))) static inline Value *vstring_fmt(char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1273,42 +1322,42 @@ __attribute__((format(printf, 1, 2))) inline Value *vstring_fmt(char *fmt, ...)
     return v;
 }
 
-inline Value *vint(long x)
+static inline Value *vint(long x)
 {
     Value *v = val_new(T_INT);
     v->v->i = x;
     return v;
 }
 
-inline Value *vuint(unsigned long x)
+static inline Value *vuint(unsigned long x)
 {
     Value *v = val_new(T_UINT);
     v->v->ui = x;
     return v;
 }
 
-inline Value *vfloat(double f)
+static inline Value *vfloat(double f)
 {
     Value *v = val_new(T_FLOAT);
     v->v->f = f;
     return v;
 }
 
-inline Value *vbool(int b)
+static inline Value *vbool(int b)
 {
     Value *v = val_new_raw(T_BOOL);
     v->v = (void *)(b ? 1L : 0L);
     return v;
 }
 
-inline Value *vstring_dup(const char *restrict s)
+static inline Value *vstring_dup(const char *restrict s)
 {
     Value *v = val_new_raw(T_STRING);
     v->v = (void *)mila_strdup(s ? s : "");
     return v;
 }
 
-inline Value *vstring_take(char *s)
+static inline Value *vstring_take(char *s)
 {
     Value *v = val_new_raw(T_STRING);
     v->v = (void *)s;
@@ -1316,7 +1365,7 @@ inline Value *vstring_take(char *s)
 }
 
 // String
-inline Value *vstring_slice(const char *restrict src, size_t start, size_t len)
+static inline Value *vstring_slice(const char *restrict src, size_t start, size_t len)
 {
     size_t n = strlen(src);
     if (start > n)
@@ -1335,7 +1384,7 @@ inline Value *vstring_slice(const char *restrict src, size_t start, size_t len)
     return vstring_take(buf);
 }
 
-inline Value *vstring_index(const char *restrict src, size_t index)
+static inline Value *vstring_index(const char *restrict src, size_t index)
 {
     size_t n = strlen(src);
     if (index >= n)
@@ -1351,7 +1400,7 @@ inline Value *vstring_index(const char *restrict src, size_t index)
     return vstring_take(buf);
 }
 
-inline Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict replacement)
+static inline Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict replacement)
 {
     if (!*needle)
         return vstring_dup(src); // can't match empty substring
@@ -1400,25 +1449,25 @@ inline Value *vstring_replace(const char *restrict src, const char *restrict nee
 
     return vstring_take(buf);
 }
-inline Value *vowned_opaque(void *p)
+static inline Value *vowned_opaque(void *p)
 {
     Value *v = val_new_raw(T_OWNED_OPAQUE);
     v->v = (void *)p;
     return v;
 }
-inline Value *vopaque(void *p)
+static inline Value *vopaque(void *p)
 {
     Value *v = val_new_raw(T_OPAQUE);
     v->v = (void *)p;
     return v;
 }
-inline Value *vweak_opaque(void *p)
+static inline Value *vweak_opaque(void *p)
 {
     Value *v = val_new_raw(T_WEAK_OPAQUE);
     v->v = (void *)p;
     return v;
 }
-inline Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
+static inline Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vopaque(p);
     if (dis && v)
@@ -1429,7 +1478,7 @@ inline Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
     v->type_name = mila_strdup(type_name);
     return v;
 }
-inline Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
+static inline Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vowned_opaque(p);
     if (dis && v)
@@ -1440,7 +1489,7 @@ inline Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
     v->type_name = mila_strdup(type_name);
     return v;
 }
-inline Value *vnative(NativeFn fn, const char *name)
+static inline Value *vnative(NativeFn fn, const char *name)
 {
     Value *v = val_new_raw(T_NATIVE);
     NativeFunctionV *native_function = (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
@@ -1451,8 +1500,8 @@ inline Value *vnative(NativeFn fn, const char *name)
     return v;
 }
 // vfunction creation
-inline Value *vfunction(char **params, char **defaults, char **contextuals, Env *closure,
-                        char *body_src)
+static inline Value *vfunction(char **params, char **defaults, char **contextuals, Env *closure,
+                               char *body_src)
 {
     Value *v = val_new_raw(T_FUNCTION);
     FunctionV *function = (FunctionV *)mila_malloc(sizeof(FunctionV));
@@ -1465,7 +1514,7 @@ inline Value *vfunction(char **params, char **defaults, char **contextuals, Env 
     v->v = (void *)function;
     return v;
 }
-inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
+static inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
 
 int malloc_sprintf(char **strp, const char *fmt, ...)
 {
@@ -2055,7 +2104,7 @@ int print_value_debug(Value *v)
     return i;
 }
 
-inline Value *val_retain(Value *v)
+static inline Value *val_retain(Value *v)
 {
 #ifdef MILA_DEBUG
     if (v)
@@ -2080,7 +2129,7 @@ inline Value *val_retain(Value *v)
 }
 
 // release
-inline void val_release(Value *v)
+static inline void val_release(Value *v)
 {
     if (!v)
         return;
@@ -2772,6 +2821,7 @@ int load_library(Env *env, const char *libpath)
     dlclose(lib);
     return -2;
 }
+
 int load_library_noisy(Env *env, const char *libpath)
 {
     int fail = 1;
@@ -2886,15 +2936,15 @@ void src_free(Src *s)
 }
 
 // helpers
-inline char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
-inline char src_get(Src *s)
+static inline char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
+static inline char src_get(Src *s)
 {
     char c = s->pos < s->len ? s->src[s->pos++] : '\0';
     return c;
 }
-inline int src_eof(Src *s) { return s->pos >= s->len; }
+static inline int src_eof(Src *s) { return s->pos >= s->len; }
 
-inline void skip_block(Src *s)
+static inline void skip_block(Src *s)
 {
     skip_ws(s);
     // body is block; extract substring from '{' to matching '}'
@@ -2951,7 +3001,7 @@ inline void skip_block(Src *s)
     s->pos = i;
 }
 
-inline void skip_expr(Src *s)
+static inline void skip_expr(Src *s)
 {
     skip_ws(s);
     // body is block; extract substring from '{' to matching '}'
@@ -2981,7 +3031,7 @@ inline void skip_expr(Src *s)
     s->pos = i;
 }
 
-inline void skip_stmt(Src *s)
+static inline void skip_stmt(Src *s)
 {
     skip_ws(s);
     size_t i = s->pos;
@@ -3011,7 +3061,7 @@ inline void skip_stmt(Src *s)
     s->pos = i;
 }
 
-inline void skip_ws(Src *s)
+static inline void skip_ws(Src *s)
 {
     for (;;)
     {
@@ -3636,13 +3686,6 @@ const char *skip_parse_statement(Src *s)
         char *id = parse_ident(s);
         if (!id)
             return ERR_INVALID_IDENT;
-        if (strcmp(id, "yield") == 0)
-        {
-            mila_free(id);
-            id = parse_ident(s);
-            if (!id)
-                return ERR_INVALID_IDENT;
-        }
         mila_free(id);
         if (!match_char(s, ':'))
             return ERR_EXPECTED_COLON;
@@ -3876,7 +3919,7 @@ int is_ident_start(char c)
     return isalpha((unsigned char)c) || c == '_' || c == '.' || c == '\'';
 }
 
-inline char *parse_ident_string(Src *s)
+static inline char *parse_ident_string(Src *s)
 {
     skip_ws(s);
     if (src_peek(s) != '\'')
@@ -3920,7 +3963,7 @@ inline char *parse_ident_string(Src *s)
 }
 
 // parse identifier
-inline char *parse_ident(Src *s)
+static inline char *parse_ident(Src *s)
 {
     skip_ws(s);
     int st = s->pos;
@@ -4016,7 +4059,7 @@ __int128 atoi128(char *s)
 }
 
 // parse number (int or float)
-inline Value *parse_number(Src *s)
+static inline Value *parse_number(Src *s)
 {
     skip_ws(s);
     int st = s->pos;
@@ -4184,7 +4227,7 @@ char *dedent(char *str)
 }
 
 // parse string literal (double quotes)
-inline Value *parse_string(Src *s)
+static inline Value *parse_string(Src *s)
 {
     skip_ws(s);
     if (src_peek(s) != '"')
@@ -4505,7 +4548,7 @@ inline Value *parse_string(Src *s)
 void src_advance_by(Src *s, size_t amount) { s->pos += amount; }
 
 // parse function literal: fn(a,b){ ... }
-inline int is_keyword_at(Src *s, const char *kw)
+static inline int is_keyword_at(Src *s, const char *kw)
 {
     skip_ws(s);
     int p = s->pos;
@@ -6035,12 +6078,12 @@ Value *eval_primary(Src *s, Env *env)
 }
 
 // helper to convert numeric types and do arithmetic
-inline int is_number(Value *v)
+static inline int is_number(Value *v)
 {
     return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
 }
 
-inline double to_double(Value *v)
+static inline double to_double(Value *v)
 {
     if (!v)
         return 0.0;
@@ -6053,7 +6096,7 @@ inline double to_double(Value *v)
     return 0.0;
 }
 
-inline unsigned long to_uint(Value *v)
+static inline unsigned long to_uint(Value *v)
 {
     if (!v)
         return 0.0;
@@ -6080,7 +6123,7 @@ FN_UNUSED static inline long to_int(Value *v)
 }
 
 // binary ops
-inline Value *binary_op(Value *a, MethodType op, Value *b)
+static inline Value *binary_op(Value *a, MethodType op, Value *b)
 {
     if (a->method_table && a->method_table[TMethodBinop])
     {
@@ -6473,7 +6516,7 @@ Value *binary_op_objects(Env *env, char right, Value *a, MethodType op, Value *b
 }
 
 // evaluate expression with precedence climbing
-inline int precedence_of(MethodType op)
+static inline int precedence_of(MethodType op)
 {
     if (BMethodAnd == op)
         return 1;
@@ -6497,7 +6540,7 @@ inline int precedence_of(MethodType op)
     return 0;
 }
 
-inline MethodType parse_op(Src *s)
+static inline MethodType parse_op(Src *s)
 {
     skip_ws(s);
     char a = src_peek(s);
@@ -7319,59 +7362,57 @@ Value *eval_statement(Src *s, Env *env)
         char *id = parse_ident(s);
         if (!id)
             return vnull();
-        if (strcmp(id, "yield") == 0)
+
+        if (!match_char(s, ':'))
         {
-            free(id);
-            id = parse_ident(s);
-            if (!match_char(s, ':'))
+            mila_free(id);
+            return verror("Foreach lacking ':'");
+        }
+        Value *iter_obj = eval_expr(s, env);
+        if (IS_ERROR(iter_obj))
+        {
+            mila_free(id);
+            return iter_obj;
+        }
+        Value **value = NULL;
+
+        // check new improved Iter method first
+        if (iter_obj->method_table && iter_obj->method_table[UMethodStepIterInit] && iter_obj->method_table[UMethodStepIter] && iter_obj->method_table[UMethodStepIterClean])
+        {
+            void *iter_state =
+                ((unary_method)iter_obj->method_table[UMethodStepIterInit])(iter_obj);
+            if (!iter_state)
             {
                 mila_free(id);
-                return verror("Foreach lacking ':'");
-            }
-            Value *dummy = NULL;
-            Value *iter_obj = eval_expr(s, env);
-            if (iter_obj->method_table && iter_obj->method_table[UMethodToGen])
-            {
-                Value *res = ((unary_method)iter_obj->method_table[UMethodToGen])(iter_obj);
-                dummy = iter_obj;
-                iter_obj = res;
+                return verror("Iterable initialization returned C null!");
             }
 
-            if (IS_ERROR(iter_obj))
-            {
-                mila_free(id);
-                return iter_obj;
-            }
-
+            skip_ws(s);
             uint64_t body_start_pos = s->pos;
             skip_block(s);
             uint64_t body_end_pos = s->pos;
             Value *bod = NULL;
-            if (GET_TYPE(iter_obj) != T_INT)
+
+            while (1)
             {
-                free(id);
-                val_release(iter_obj);
-                return verror("Expected an integer for the thread ID!");
-            }
-            ThreadContext *ctx = thread_registry_get(GET_INTEGER(iter_obj));
-            if (!ctx)
-            {
-                val_release(iter_obj);
-                free(id);
-                return verror("Thread ID %ld does not exist!", GET_INTEGER(iter_obj));
-            }
-            Value *v = thread_get_yield(ctx);
-            for (; v; v = thread_get_yield(ctx))
-            {
+                Value *v = ((unary_method)iter_obj->method_table[UMethodStepIter])(iter_state);
+                if (!v)
+                {
+                    s->pos = body_end_pos;
+                    mila_free(id);
+                    ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                    val_release(iter_obj);
+                    return vnull();
+                }
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
-                // Env *env = env_new(env);
-                env_set_local_raw(env, id, v);
-                bod = eval_block_raw(s, env);
-                // val_release(v);
-                // env_remove(frame, id);
+                Env *frame = env_new(env);
+                env_set_local_raw(frame, id, v);
+                bod = eval_block_raw(s, frame);
+                val_release(v);
+                env_remove(frame, id);
 
-                // env_free(frame);
+                env_free(frame);
                 // --- Handle body result ---
                 switch (GET_TYPE(bod))
                 {
@@ -7379,271 +7420,171 @@ Value *eval_statement(Src *s, Env *env)
                 {
                     s->pos = body_end_pos;
                     val_release(bod);
+                    mila_free(value);
                     mila_free(id);
-                    s->pos = body_end_pos;
+                    ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                    val_release(iter_obj);
                     return vnull();
                 }
-                break;
                 case T_CONTINUE:
                 {
                     s->pos = body_start_pos;
                     if (bod)
+                    {
+                        for (unsigned long steps = GET_UINTEGER(bod) - 1; steps > 0; steps--)
+                        {
+                            Value *v = ((unary_method)iter_obj->method_table[UMethodStepIter])(iter_state);
+                            if (!v)
+                            {
+                                s->pos = body_end_pos;
+                                mila_free(id);
+                                ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                                val_release(iter_obj);
+                                return vnull();
+                            }
+                        }
                         val_release(bod);
-                    mila_free(id);
+                    }
                     continue;
                 }
-                break;
                 case T_RETURN:
                 {
                     s->pos = body_end_pos;
+                    mila_free(value);
                     mila_free(id);
+                    ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                    val_release(iter_obj);
                     return bod;
                 }
-                break;
                 case T_TAGGED_ERROR:
                 case T_ERROR:
                 {
                     s->pos = body_end_pos;
+                    mila_free(value);
                     mila_free(id);
+                    ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
+                    val_release(iter_obj);
                     return bod;
                 }
-                break;
+                default:;
+                }
+
+                val_release(bod);
+            }
+            s->pos = body_end_pos;
+            mila_free(id);
+            mila_free(value);
+        }
+        else if (iter_obj->method_table && iter_obj->method_table[UMethodToIter])
+        {
+            Value *iter_instance =
+                ((unary_method)iter_obj->method_table[UMethodToIter])(iter_obj);
+            if (IS_ERROR(iter_instance))
+            {
+                mila_free(id);
+                return iter_instance;
+            }
+            if (!iter_instance)
+            {
+                mila_free(id);
+                return verror("Iterable is cnull!");
+            }
+            value = (Value **)iter_instance->v;
+            if (!value)
+            {
+                mila_free(id);
+                return verror("Value returned null!");
+            }
+            val_kill(iter_instance);
+
+            skip_ws(s);
+            val_release(iter_obj);
+
+            uint64_t body_start_pos = s->pos;
+            skip_block(s);
+            uint64_t body_end_pos = s->pos;
+            Value *bod = NULL;
+
+            // we execute the loop until the condition is false or a control-flow
+            // statement is hit
+            unsigned long max = GET_UINTEGER(value[0]);
+            size_t i = 1;
+            Value *v = value[i];
+            for (; i < max; v = value[++i])
+            {
+                // reset the position to the start of the body for execution
+                s->pos = body_start_pos;
+                Env *frame = env_new(env);
+                env_set_local_raw(frame, id, v);
+                bod = eval_block_raw(s, frame);
+                val_release(v);
+                env_remove(frame, id);
+
+                env_free(frame);
+                // --- Handle body result ---
+                switch (GET_TYPE(bod))
+                {
+                case T_BREAK:
+                {
+                    s->pos = body_end_pos;
+                    for (; value[i]; ++i)
+                        val_release(value[i]);
+                    val_release(bod);
+                    mila_free(value);
+                    mila_free(id);
+                    val_release(value[0]);
+                    return vnull();
+                }
+                case T_CONTINUE:
+                {
+                    s->pos = body_start_pos;
+                    if (bod)
+                    {
+                        if (bod->v)
+                            i += GET_UINTEGER(bod) - 1;
+                        val_release(bod);
+                    }
+                    continue;
+                }
+                case T_RETURN:
+                {
+                    s->pos = body_end_pos;
+                    for (; value[i]; ++i)
+                        val_release(value[i]);
+                    mila_free(value);
+                    mila_free(id);
+                    val_release(value[0]);
+                    return bod;
+                }
+                case T_TAGGED_ERROR:
+                case T_ERROR:
+                {
+                    s->pos = body_end_pos;
+                    for (; value[i]; ++i)
+                        val_release(value[i]);
+                    mila_free(value);
+                    mila_free(id);
+                    val_release(value[0]);
+                    return bod;
+                }
                 default:;
                 }
                 val_release(bod);
             }
             s->pos = body_end_pos;
-            val_release(v);
-            val_release(dummy);
-            val_release(iter_obj);
             mila_free(id);
-            return vnull();
+            mila_free(value);
+            val_release(value[0]);
         }
         else
         {
-            if (!match_char(s, ':'))
-            {
-                mila_free(id);
-                return verror("Foreach lacking ':'");
-            }
-            Value *iter_obj = eval_expr(s, env);
-            if (IS_ERROR(iter_obj))
-            {
-                mila_free(id);
-                return iter_obj;
-            }
-            Value **value = NULL;
-
-            // check new improved Iter method first
-            if (iter_obj->method_table && iter_obj->method_table[UMethodStepIterInit] && iter_obj->method_table[UMethodStepIter] && iter_obj->method_table[UMethodStepIterClean])
-            {
-                void *iter_state =
-                    ((unary_method)iter_obj->method_table[UMethodStepIterInit])(iter_obj);
-                if (!iter_state)
-                {
-                    mila_free(id);
-                    return verror("Iterable initialization returned C null!");
-                }
-
-                skip_ws(s);
-                uint64_t body_start_pos = s->pos;
-                skip_block(s);
-                uint64_t body_end_pos = s->pos;
-                Value *bod = NULL;
-
-                while (1)
-                {
-                    Value *v = ((unary_method)iter_obj->method_table[UMethodStepIter])(iter_state);
-                    if (!v)
-                    {
-                        s->pos = body_end_pos;
-                        mila_free(id);
-                        ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
-                        val_release(iter_obj);
-                        return vnull();
-                    }
-                    // reset the position to the start of the body for execution
-                    s->pos = body_start_pos;
-                    Env *frame = env_new(env);
-                    env_set_local_raw(frame, id, v);
-                    bod = eval_block_raw(s, frame);
-                    val_release(v);
-                    env_remove(frame, id);
-
-                    env_free(frame);
-                    // --- Handle body result ---
-                    switch (GET_TYPE(bod))
-                    {
-                    case T_BREAK:
-                    {
-                        s->pos = body_end_pos;
-                        val_release(bod);
-                        mila_free(value);
-                        mila_free(id);
-                        ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
-                        val_release(iter_obj);
-                        return vnull();
-                    }
-                    case T_CONTINUE:
-                    {
-                        s->pos = body_start_pos;
-                        if (bod)
-                        {
-                            for (unsigned long steps = GET_UINTEGER(bod) - 1; steps > 0; steps--)
-                            {
-                                Value *v = ((unary_method)iter_obj->method_table[UMethodStepIter])(iter_state);
-                                if (!v)
-                                {
-                                    s->pos = body_end_pos;
-                                    mila_free(id);
-                                    ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
-                                    val_release(iter_obj);
-                                    return vnull();
-                                }
-                            }
-                            val_release(bod);
-                        }
-                        continue;
-                    }
-                    case T_RETURN:
-                    {
-                        s->pos = body_end_pos;
-                        mila_free(value);
-                        mila_free(id);
-                        ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
-                        val_release(iter_obj);
-                        return bod;
-                    }
-                    case T_TAGGED_ERROR:
-                    case T_ERROR:
-                    {
-                        s->pos = body_end_pos;
-                        mila_free(value);
-                        mila_free(id);
-                        ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
-                        val_release(iter_obj);
-                        return bod;
-                    }
-                    default:;
-                    }
-
-                    val_release(bod);
-                }
-                s->pos = body_end_pos;
-                mila_free(id);
-                mila_free(value);
-            }
-            else if (iter_obj->method_table && iter_obj->method_table[UMethodToIter])
-            {
-                Value *iter_instance =
-                    ((unary_method)iter_obj->method_table[UMethodToIter])(iter_obj);
-                if (IS_ERROR(iter_instance))
-                {
-                    mila_free(id);
-                    return iter_instance;
-                }
-                if (!iter_instance)
-                {
-                    mila_free(id);
-                    return verror("Iterable is cnull!");
-                }
-                value = (Value **)iter_instance->v;
-                if (!value)
-                {
-                    mila_free(id);
-                    return verror("Value returned null!");
-                }
-                val_kill(iter_instance);
-
-                skip_ws(s);
-                val_release(iter_obj);
-
-                uint64_t body_start_pos = s->pos;
-                skip_block(s);
-                uint64_t body_end_pos = s->pos;
-                Value *bod = NULL;
-
-                // we execute the loop until the condition is false or a control-flow
-                // statement is hit
-                unsigned long max = GET_UINTEGER(value[0]);
-                size_t i = 1;
-                Value *v = value[i];
-                for (; i < max; v = value[++i])
-                {
-                    // reset the position to the start of the body for execution
-                    s->pos = body_start_pos;
-                    Env *frame = env_new(env);
-                    env_set_local_raw(frame, id, v);
-                    bod = eval_block_raw(s, frame);
-                    val_release(v);
-                    env_remove(frame, id);
-
-                    env_free(frame);
-                    // --- Handle body result ---
-                    switch (GET_TYPE(bod))
-                    {
-                    case T_BREAK:
-                    {
-                        s->pos = body_end_pos;
-                        for (; value[i]; ++i)
-                            val_release(value[i]);
-                        val_release(bod);
-                        mila_free(value);
-                        mila_free(id);
-                        val_release(value[0]);
-                        return vnull();
-                    }
-                    case T_CONTINUE:
-                    {
-                        s->pos = body_start_pos;
-                        if (bod)
-                        {
-                            if (bod->v)
-                                i += GET_UINTEGER(bod) - 1;
-                            val_release(bod);
-                        }
-                        continue;
-                    }
-                    case T_RETURN:
-                    {
-                        s->pos = body_end_pos;
-                        for (; value[i]; ++i)
-                            val_release(value[i]);
-                        mila_free(value);
-                        mila_free(id);
-                        val_release(value[0]);
-                        return bod;
-                    }
-                    case T_TAGGED_ERROR:
-                    case T_ERROR:
-                    {
-                        s->pos = body_end_pos;
-                        for (; value[i]; ++i)
-                            val_release(value[i]);
-                        mila_free(value);
-                        mila_free(id);
-                        val_release(value[0]);
-                        return bod;
-                    }
-                    default:;
-                    }
-                    val_release(bod);
-                }
-                s->pos = body_end_pos;
-                mila_free(id);
-                mila_free(value);
-                val_release(value[0]);
-            }
-            else
-            {
-                mila_free(id);
-                Value *err = verror("Type %s does not implement UMethodToIter",
-                                    GET_TYPENAME(iter_obj));
-                val_release(iter_obj);
-                return err;
-            }
-            return vnull();
+            mila_free(id);
+            Value *err = verror("Type %s does not implement UMethodToIter",
+                                GET_TYPENAME(iter_obj));
+            val_release(iter_obj);
+            return err;
         }
+        return vnull();
     }
     if (is_keyword_at(s, "block"))
     {
@@ -8058,7 +7999,7 @@ int run_file(char *name, Env *env)
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
-    path_list_add(search_path, loc_dir);
+    path_list_add_top(mila_search_path, loc_dir);
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -8080,7 +8021,7 @@ int run_file(char *name, Env *env)
     src_free(S);
     mila_free(src_text);
 #ifndef SAFE_BUILD
-    path_list_remove(search_path, loc_dir);
+    path_list_remove(mila_search_path, loc_dir);
     free(loc_dir);
 #endif
     return 0;
@@ -8093,7 +8034,7 @@ Value *run_file_keep_res(char *name, Env *env)
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
-    path_list_add(search_path, loc_dir);
+    path_list_add_top(mila_search_path, loc_dir);
 #endif
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
@@ -8113,7 +8054,7 @@ Value *run_file_keep_res(char *name, Env *env)
     src_free(S);
     mila_free(src_text);
 #ifndef SAFE_BUILD
-    path_list_remove(search_path, loc_dir);
+    path_list_remove(mila_search_path, loc_dir);
     free(loc_dir);
 #endif
     return res;
@@ -8130,9 +8071,9 @@ int invoke_file(char *name, Env *env)
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
-    path_list_add(search_path, loc_dir);
+    path_list_add_top(mila_search_path, loc_dir);
 
-    char *setup_name = path_list_find(search_path, "init.setup-mila");
+    char *setup_name = path_list_find(mila_search_path, "init.setup-mila");
     if (setup_name)
     {
         Env *setup_env = env_new(env);
@@ -8147,7 +8088,7 @@ int invoke_file(char *name, Env *env)
             free(setup_name);
             print_error(err);
             val_release(setup_res);
-            path_list_remove(search_path, loc_dir);
+            path_list_remove(mila_search_path, loc_dir);
             free(loc_dir);
             return 1;
         }
@@ -8175,7 +8116,7 @@ int invoke_file(char *name, Env *env)
     src_free(S);
     mila_free(src_text);
 #ifndef SAFE_BUILD
-    path_list_remove(search_path, loc_dir);
+    path_list_remove(mila_search_path, loc_dir);
     free(loc_dir);
 #endif
     return 0;
@@ -8192,9 +8133,9 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
-    path_list_add(search_path, loc_dir);
+    path_list_add_top(mila_search_path, loc_dir);
 
-    char *setup_name = path_list_find(search_path, "init.setup-mila");
+    char *setup_name = path_list_find(mila_search_path, "init.setup-mila");
     if (setup_name)
     {
         Env *setup_env = env_new(env);
@@ -8206,7 +8147,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
         free(setup_name);
         if (IS_ERROR(setup_res))
         {
-            path_list_remove(search_path, loc_dir);
+            path_list_remove(mila_search_path, loc_dir);
             free(loc_dir);
             return setup_res;
         }
@@ -8305,7 +8246,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
                     src_free(S);
                     mila_free(src_text);
 #ifndef SAFE_BUILD
-                    path_list_remove(search_path, loc_dir);
+                    path_list_remove(mila_search_path, loc_dir);
                     free(loc_dir);
 #endif
                     return verror("Expected string annotation!");
@@ -8320,7 +8261,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
     src_free(S);
     mila_free(src_text);
 #ifndef SAFE_BUILD
-    path_list_remove(search_path, loc_dir);
+    path_list_remove(mila_search_path, loc_dir);
     free(loc_dir);
 #endif
     return res;
@@ -8337,9 +8278,9 @@ Value *invoke_file_keep_res(char *name, Env *env)
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
-    path_list_add(search_path, loc_dir);
+    path_list_add_top(mila_search_path, loc_dir);
 
-    char *setup_name = path_list_find(search_path, "init.setup-mila");
+    char *setup_name = path_list_find(mila_search_path, "init.setup-mila");
     if (setup_name)
     {
         Env *setup_env = env_new(env);
@@ -8351,7 +8292,7 @@ Value *invoke_file_keep_res(char *name, Env *env)
         free(setup_name);
         if (IS_ERROR(setup_res))
         {
-            path_list_remove(search_path, loc_dir);
+            path_list_remove(mila_search_path, loc_dir);
             free(loc_dir);
             return setup_res;
         }
@@ -8376,7 +8317,7 @@ Value *invoke_file_keep_res(char *name, Env *env)
     src_free(S);
     mila_free(src_text);
 #ifndef SAFE_BUILD
-    path_list_remove(search_path, loc_dir);
+    path_list_remove(mila_search_path, loc_dir);
     free(loc_dir);
 #endif
     return res;
@@ -8423,6 +8364,29 @@ Env *mila_global_init(void)
     }
     Env *g = env_new(NULL);
     env_register_builtins(g);
+#ifndef ML_NO_THREADING
+        pthread_mutex_init(&mila_search_path_lock, NULL);
+        pthread_mutex_init(&mila_search_path_lock_read, NULL);
+#endif
+#ifndef ML_NO_CACHED_MODS
+    if (!mila_cached_modules)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_init(&mila_cached_modules_lock, NULL);
+        pthread_mutex_init(&mila_cached_modules_lock_read, NULL);
+#endif
+        mila_cached_modules = make_dict(NULL);
+        val_set_table(mila_cached_modules, dict_meta);
+    }
+    else
+    {
+        fprintf(stderr, "mila_global_init called more than once.\n");
+        abort();
+    }
+#endif
+
+    env_set(g, "__modules", mila_cached_modules);
+
     return g;
 }
 
@@ -8430,6 +8394,7 @@ Env *mila_init(void)
 {
     Env *g = env_new(NULL);
     env_register_builtins(g);
+    env_set(g, "__modules", mila_cached_modules);
     return g;
 }
 
@@ -8449,6 +8414,20 @@ void mila_global_deinit(Env *g)
         }
         free_cleanup_registry(cleanup_registry);
         cleanup_registry = NULL;
+#ifndef ML_NO_THREADING
+        pthread_mutex_destroy(&mila_search_path_lock);
+        pthread_mutex_destroy(&mila_search_path_lock_read);
+#endif
+#ifndef ML_NO_CACHED_MODS
+        if (mila_cached_modules)
+        {
+#ifndef ML_NO_THREADING
+            pthread_mutex_destroy(&mila_cached_modules_lock);
+            pthread_mutex_destroy(&mila_cached_modules_lock_read);
+#endif
+            val_release(mila_cached_modules);
+        }
+#endif
     }
     else
     {
@@ -8460,7 +8439,7 @@ void mila_global_deinit(Env *g)
     mila_threads_cleanup();
 #endif
     env_free_builtins();
-    path_list_free(search_path);
+    path_list_free(mila_search_path);
 }
 
 void print_primitive(char *text)
@@ -8478,7 +8457,7 @@ void handle_signal(int signal)
     _exit(signal);
 }
 
-#if !(defined(SAFE_BUILD) || defined(ML_LIB))
+#ifndef ML_LIB
 int main(int argc, char **argv)
 {
     char *src_text = NULL;
@@ -8487,8 +8466,7 @@ int main(int argc, char **argv)
     {
         if (strcmp(argv[1], "--info") == 0)
         {
-            printf("MiLa - Info\n"
-                   "Version: %ld.%ld.%ld\n\n"
+            printf("MiLa %ld.%ld.%ld - Info\n\n"
                    "C type sizes in bytes (type, size, alignment):\n"
                    "         char %2lu %2lu\n"
                    "        short %2lu %2lu\n"
@@ -8499,14 +8477,9 @@ int main(int argc, char **argv)
                    "    ValueType %2lu %2lu\n"
                    "   ValueValue %2lu %2lu\n"
                    "\nVariable size (metadata):\n"
-                   "  %lu Bytes for primitive types\n "
-                   "   For types:\n"
-                   "     int, uint, float\n"
+                   "  %lu Bytes for primitive types\n"
                    "  %lu For shortcut types\n"
-                   "    Values: strings, bools, none, null, functions, natives, opaques\n"
                    "  %lu Bytes for types with Value Instance Operator Overloading\n"
-                   "    For types like:\n"
-                   "      arrays, lists, and dictionaries, and others\n"
                    "Estimated memory:\n"
                    "  t * %lu + n * 40 Bytes\n"
                    "  n = # of vars\n"
@@ -8546,14 +8519,14 @@ int main(int argc, char **argv)
             signal(SIGTERM, handle_signal);
             signal(SIGINT, handle_signal);
 
-            search_path = path_list_new();
+            mila_search_path = path_list_new();
             char *cwd = path_get_cwd();
             if (!cwd)
                 fprintf(stderr, "current working directory was not determined.");
             else
-                path_list_add(search_path, cwd);
+                path_list_add(mila_search_path, cwd);
 
-            path_list_add(search_path, "~/.local/mila");
+            path_list_add(mila_search_path, "~/.local/mila");
 
             val_release(eval_str("println(\"Hello, world!\");", g));
 
@@ -8562,13 +8535,14 @@ int main(int argc, char **argv)
         }
         else if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)
         {
-            printf("MiLa v1.0\n"
+            printf("MiLa %ld.%ld.%ld\n"
                    "  --info         = For internal info as well as version info\n"
                    "  --check [file] = Syntactically check the file\n"
                    "  -r [code]      = Run code then exit.\n"
                    "  --dry          = Dry run. Init, hello world, deinit, then exit.\n"
                    "  --version | -v = Prints version\n"
-                   "  --help    | -h = Prints this list\n");
+                   "  --help    | -h = Prints this list\n",
+                   MILA_EDITION, MILA_VERSION, MILA_PATCH);
             return 0;
         }
     }
@@ -8605,14 +8579,14 @@ int main(int argc, char **argv)
             signal(SIGSEGV, handle_signal);
             signal(SIGTERM, handle_signal);
 
-            search_path = path_list_new();
+            mila_search_path = path_list_new();
             char *cwd = path_get_cwd();
             if (!cwd)
                 fprintf(stderr, "current working directory was not determined.");
             else
-                path_list_add(search_path, cwd);
+                path_list_add(mila_search_path, cwd);
 
-            path_list_add(search_path, "~/.local/mila");
+            path_list_add(mila_search_path, "~/.local/mila");
 
             env_set_raw(g, "argc", vint(argc - 2));
             array = call_function_str(g, "array", vint(argc - 1), NULL);
@@ -8674,14 +8648,14 @@ int main(int argc, char **argv)
     signal(SIGSEGV, handle_signal);
     signal(SIGTERM, handle_signal);
 
-    search_path = path_list_new();
+    mila_search_path = path_list_new();
     char *cwd = path_get_cwd();
     if (!cwd)
         fprintf(stderr, "current working directory was not determined.");
     else
-        path_list_add(search_path, cwd);
+        path_list_add(mila_search_path, cwd);
 
-    path_list_add(search_path, "~/.local/mila");
+    path_list_add(mila_search_path, "~/.local/mila");
 
     if (argc >= 2 && strcmp(argv[1], "--") != 0)
     {
@@ -8815,9 +8789,10 @@ int main(int argc, char **argv)
                 buffer[0] = 0;
                 continue;
             }
+#ifndef SAFE_BUILD
             else if (strncmp(buffer, ".load", 5) == 0)
             {
-                char *file = path_list_find(search_path, buffer + 6);
+                char *file = path_list_find(mila_search_path, buffer + 6);
                 if (!file || load_library_noisy(g, file))
                     printf("Library loading went wrong!\n");
                 else
@@ -8826,6 +8801,7 @@ int main(int argc, char **argv)
                 buffer[0] = 0;
                 continue;
             }
+#endif
             else if (strncmp(buffer, ".mem", 4) == 0)
             {
                 print_memory_usage();
@@ -8842,11 +8818,20 @@ int main(int argc, char **argv)
             // check if expression is syntactically complete
             if (!needs_more(buffer))
             {
+                double start_time = get_unix_timestamp();
                 // evaluate accumulated buffer
                 Src *S = src_new(buffer);
                 Value *res = eval_source(S, g);
+                double end_time = get_unix_timestamp();
 
-                if (GET_TYPE(res) != T_NULL && !IS_ERROR(res))
+                if (is_truthy(env_get(g, "__check_time")))
+                {
+                    printf(" ?? took ");
+                    print_duration(end_time - start_time);
+                    puts("");
+                }
+
+                if (GET_TYPE(res) != T_NULL && !IS_ERROR(res) && buffer[strlen(buffer) - 1] != ';')
                 {
                     printf("  : ");
                     raw_print_value_repr(res);
@@ -8871,7 +8856,7 @@ int main(int argc, char **argv)
                         blr_history_free(&hist);
                         mila_threads_cleanup();
                         mila_deinit(g);
-                        path_list_free(search_path);
+                        path_list_free(mila_search_path);
                         return code;
                     }
                 }
@@ -8897,4 +8882,4 @@ int main(int argc, char **argv)
     }
     return 0;
 }
-#endif // SAFE_BUILD
+#endif

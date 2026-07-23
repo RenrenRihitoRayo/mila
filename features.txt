@@ -10,9 +10,10 @@ List of all MiLa features
 * Objects (kind of, more prototype-ish)
 * Overloading
 * Common string escapes (as well as hex and octal codes)
+We do supporr unicode escapes.
 * Anything as identifiers
 Example: var 'Das variable Name ist ein Stück Scheiße' = 90;
-* json parser (builtin)
-* globbing
-* Loading native libraried
+* json parser and serializer (builtin)
+* globbing (own flavor)
+* Loading native libraries
 * Threads

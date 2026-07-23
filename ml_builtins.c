@@ -62,7 +62,7 @@
 #include "ml_commons.h"
 
 #ifndef ML_NO_THREADING
-#include "ml_threading.c"
+#include "ml_threading.h"
 #endif
 
 Value *self_free(Value *self)
@@ -73,25 +73,6 @@ Value *self_free(Value *self)
 
 // ---------- Native functions ----------
 
-double get_unix_timestamp(void)
-{
-#ifdef _WIN32
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-
-    uint64_t t = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-
-    t -= 116444736000000000ULL; // FILETIME -> Unix epoch
-
-    return (double)t / 10000000.0;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-#endif
-}
-
 char *read_input(void)
 {
     size_t bufsize = 64; // initial buffer size
@@ -99,7 +80,7 @@ char *read_input(void)
     char *buffer = mila_malloc(bufsize);
     if (!buffer)
     {
-        fprintf(stderr, "read_input: Allocation failed.\n");
+        fprintf(stderr, "read_input: Allocation failed.");
         return NULL;
     }
 
@@ -116,7 +97,7 @@ char *read_input(void)
             if (!newbuf)
             {
                 mila_free(buffer);
-                fprintf(stderr, "Reallocation failed.\n");
+                fprintf(stderr, "Reallocation failed.");
                 return NULL;
             }
             buffer = newbuf;
@@ -210,7 +191,7 @@ Value *native_input(Env *env, int argc, Value **argv)
     else if (argc == 0)
         ;
     else
-        return verror("input(prompt): Expected 1 argument (prompt) string.\n");
+        return verror("input(prompt): Expected 1 argument (prompt) string.");
 
     char *res = read_input();
     return res ? vstring_take(res) : vnull();
@@ -229,7 +210,7 @@ Value *native_cast_int(Env *env, int argc, Value **argv)
         {
             char *buffer = NULL;
             malloc_sprintf(&buffer, "cast.int(str): Got bad part \"%s\"...", end);
-            Value *tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
+            Value *tmp = vtagged_error(E_TYPE_ERROR, "%s", buffer);
             mila_free(buffer);
             i = 0;
             return tmp;
@@ -237,7 +218,7 @@ Value *native_cast_int(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.int(str): Expected 1 argument (str) string.\n");
+        return verror("cast.int(str): Expected 1 argument (str) string.");
         i = 0;
     }
     return vint(i);
@@ -256,14 +237,14 @@ Value *native_cast_float(Env *env, int argc, Value **argv)
         {
             char *buffer = NULL;
             malloc_sprintf(&buffer, "cast.float(str): Got bad part \"%s\"...", end);
-            Value *tmp = vtagged_error(E_TYPE_ERROR, "%s\n", buffer);
+            Value *tmp = vtagged_error(E_TYPE_ERROR, "%s", buffer);
             mila_free(buffer);
             return tmp;
         }
     }
     else
     {
-        return verror("cast.float(str): Expected 1 argument (str) string.\n");
+        return verror("cast.float(str): Expected 1 argument (str) string.");
     }
     return vfloat(f);
 }
@@ -277,7 +258,7 @@ Value *native_cast_int_to_uint(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.i2u(int): Expected 1 argument (int) int. Got %s\n",
+        return verror("cast.i2u(int): Expected 1 argument (int) int. Got %s",
                       GET_TYPENAME(argv[0]));
     }
 }
@@ -291,7 +272,7 @@ Value *native_cast_uint_to_int(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.u2i(uint): Expected 1 argument (uint) uint. Got %s\n",
+        return verror("cast.u2i(uint): Expected 1 argument (uint) uint. Got %s",
                       GET_TYPENAME(argv[0]));
     }
 }
@@ -305,7 +286,7 @@ Value *native_cast_int_to_float(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.i2f(int): Expected 1 argument (int) int. Got %s\n",
+        return verror("cast.i2f(int): Expected 1 argument (int) int. Got %s",
                       GET_TYPENAME(argv[0]));
     }
 }
@@ -320,7 +301,7 @@ Value *native_cast_float_to_int(Env *env, int argc, Value **argv)
     else
     {
         return verror(
-            "cast.f2i(float): Expected 1 argument (float) float. Got %s\n",
+            "cast.f2i(float): Expected 1 argument (float) float. Got %s",
             GET_TYPENAME(argv[0]));
     }
 }
@@ -334,7 +315,7 @@ Value *native_cast_string(Env *env, int argc, Value **argv)
     }
     else
     {
-        return verror("cast.str(any): Expected 1 argument (any) any.\n");
+        return verror("cast.str(any): Expected 1 argument (any) any.");
     }
     return vnull();
 }
@@ -344,7 +325,7 @@ Value *native_type_of(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
     {
-        return verror("typeof(any): Expected 1 argument (any) any.\n");
+        return verror("typeof(any): Expected 1 argument (any) any.");
     }
     if (argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
@@ -356,7 +337,7 @@ Value *native_type_of_extra(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
     {
-        return verror("_typeof(any): Expected 1 argument (any) any.\n");
+        return verror("_typeof(any): Expected 1 argument (any) any.");
     }
     if (argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
@@ -368,7 +349,7 @@ Value *native_is_numeric(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
     {
-        return verror("is_numeric(any): Expected 1 argument (any) any.\n");
+        return verror("is_numeric(any): Expected 1 argument (any) any.");
     }
     if (argv[0]->type_name)
         return vstring_dup(argv[0]->type_name);
@@ -402,35 +383,111 @@ Value *native_open(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2 || argv[0]->type != T_STRING || argv[1]->type != T_STRING)
     {
-        return verror("= open(filename, mode) expects 2 string args.\n");
+        return verror("open(filename, mode) expects 2 string args.");
     }
     char *path = GET_STRING(argv[0]);
-    if (!search_path)
+    if (!mila_search_path)
     {
-        char *path = path_list_find(search_path, GET_STRING(argv[0]));
+        char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
         if (!path)
         {
-            return verror("= open(filename, mode) did not find the file.\n");
+            return verror("open(filename, mode) did not find the file.");
         }
     }
-    char *res = path_list_find(search_path, path);
-    if (!res)
-        return verror("File %s not found!", path);
+    char *res = NULL, *og_res = path_list_find(mila_search_path, path);
+    if (!og_res)
+        res = path_list_find_alternative(mila_search_path, path);
+    else
+        res = og_res;
 
     FILE *f = fopen(res, GET_STRING(argv[1]));
     if (!f)
     {
-        if (res)
-            mila_free(res);
+        mila_free(res);
         perror(NULL);
         return vnull();
     }
 
-    if (res)
-        mila_free(res);
+    mila_free(res);
     Value *v = vopaque(f);
     val_set_table(v, file_meta);
+    v->type_name = strdup(MILA_LPREFIX "file");
     return v;
+}
+
+Value *native_fdopen(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 2 || argv[0]->type != T_INT || argv[1]->type != T_STRING)
+    {
+        return verror("fdopen(filedescriptor, mode) expects 2 string args.");
+    }
+    char *path = GET_STRING(argv[0]);
+    if (!mila_search_path)
+    {
+        char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
+        if (!path)
+        {
+            return verror("fdopen(filedescriptor, mode) did not find the file.");
+        }
+    }
+
+    FILE *f = fdopen((int)GET_INTEGER(argv[0]), GET_STRING(argv[1]));
+    if (!f)
+    {
+        perror(NULL);
+        return vnull();
+    }
+
+    Value *v = vopaque(f);
+    val_set_table(v, file_meta);
+    v->type_name = strdup(MILA_LPREFIX "file");
+    return v;
+}
+
+Value *native_fileno(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0)
+    {
+        return verror("fileno(file) expects 1 string argument.");
+    }
+
+    return vint(fileno((FILE *)GET_OPAQUE(argv[0])));
+}
+
+Value *native_fdredirect(Env *env, int argc, Value **argv)
+{
+    if (argc != 2)
+        return verror("fredirect(oldfd, newfd): Expects two arguments.");
+    int oldfd = 0, newfd = 0;
+    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") == 0)
+    {
+        oldfd = fileno((FILE *)GET_OPAQUE(argv[0]));
+    }
+    else if (GET_TYPE(argv[0]) == T_INT)
+    {
+        oldfd = (int)GET_INTEGER(argv[0]);
+    }
+    else
+    {
+        return verror("fredirect(oldfd, newfd): Expected oldfd to be a file or a file descriptor, got %s", GET_TYPENAME(argv[0]));
+    }
+    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "file") == 0)
+    {
+        newfd = fileno((FILE *)GET_OPAQUE(argv[1]));
+    }
+    else if (GET_TYPE(argv[1]) == T_INT)
+    {
+        newfd = (int)GET_INTEGER(argv[1]);
+    }
+    else
+    {
+        return verror("fredirect(oldfd, newfd): Expected newfd to be a file or a file descriptor, got %s", GET_TYPENAME(argv[1]));
+    }
+    int og_fd = dup(oldfd);
+    int err = dup2(oldfd, newfd);
+    return vint(og_fd);
 }
 
 Value *native_fclose(Env *env, int argc, Value **argv)
@@ -438,14 +495,24 @@ Value *native_fclose(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
-        return verror("= fclose(file) expects 1 file handle arg.\n");
+        return verror("fclose(file) expects 1 file handle arg.");
     }
-    FILE *f = (FILE *)argv[0]->v;
+    FILE *f = (FILE *)GET_OPAQUE(argv[0]);
     if (f)
     {
         fclose(f);
-        argv[0]->v = NULL; // Prevent double close
     }
+    return vnull();
+}
+
+Value *native_close(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1 || argv[0]->type != T_INT)
+    {
+        return verror("close(file) expects 1 fd arg.");
+    }
+    close(GET_INTEGER(argv[0]));
     return vnull();
 }
 
@@ -454,22 +521,23 @@ Value *native_fflush(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
-        return verror("= fflush(file) expects 1 file handle arg.\n");
+        return verror("fflush(file) expects 1 file handle arg.");
     }
     FILE *f = (FILE *)argv[0]->v;
     if (f)
     {
         fflush(f);
-        argv[0]->v = NULL; // Prevent double close
     }
     return vnull();
 }
 
 Value *native_file_exists(Env *env, int argc, Value **argv)
 {
-    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) verror("file.exists(f: \"string\"): Expects a path!");
-    char* file = path_list_find(search_path, GET_STRING(argv[0]));
-    if (file && file_exists(file)) {
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING)
+        verror("file.exists(f: \"string\"): Expects a path!");
+    char *file = path_list_find(mila_search_path, GET_STRING(argv[0]));
+    if (file && file_exists(file))
+    {
         free(file);
         return vbool(1);
     }
@@ -479,9 +547,11 @@ Value *native_file_exists(Env *env, int argc, Value **argv)
 
 Value *native_file_is_file(Env *env, int argc, Value **argv)
 {
-    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) verror("file.is_file(f: \"string\"): Expects a path!");
-    char* file = path_list_find(search_path, GET_STRING(argv[0]));
-    if (file && is_file(file)) {
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING)
+        verror("file.is_file(f: \"string\"): Expects a path!");
+    char *file = path_list_find(mila_search_path, GET_STRING(argv[0]));
+    if (file && is_file(file))
+    {
         free(file);
         return vbool(1);
     }
@@ -491,9 +561,11 @@ Value *native_file_is_file(Env *env, int argc, Value **argv)
 
 Value *native_file_is_dir(Env *env, int argc, Value **argv)
 {
-    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) verror("file.is_dir(f: \"string\"): Expects a path!");
-    char* file = path_list_find(search_path, GET_STRING(argv[0]));
-    if (file && is_dir(file)) {
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING)
+        verror("file.is_dir(f: \"string\"): Expects a path!");
+    char *file = path_list_find(mila_search_path, GET_STRING(argv[0]));
+    if (file && is_dir(file))
+    {
         free(file);
         return vbool(1);
     }
@@ -501,48 +573,47 @@ Value *native_file_is_dir(Env *env, int argc, Value **argv)
     return vbool(0);
 }
 
-Value* native_file_list_dir(Env* e, int argc, Value** argv) {
-    Value* l = call_native_with(NULL, native_list_new, NULL);
+Value *native_file_list_dir(Env *e, int argc, Value **argv)
+{
+    Value *l = call_native_with(NULL, native_list_new, NULL);
     DIR *dir;
     struct dirent *entry;
     struct stat st;
 
-    char* dir_name = argc == 1 ? GET_STRING(argv[0]) : ".";
+    char *dir_name = argc == 1 ? GET_STRING(argv[0]) : ".";
     dir = opendir(dir_name);
-    if (dir == NULL) {
+    if (dir == NULL)
+    {
         return verror("opendir failed");
     }
 
-    while ((entry = readdir(dir)) != NULL) {
+    while ((entry = readdir(dir)) != NULL)
+    {
         // skip . and ..
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
-            
+
         char name[2048];
-        if (dir_name[strlen(dir_name)-1] != '/') sprintf(name, "%s/%s", dir_name, entry->d_name);
-        else sprintf(name, "%s%s", dir_name, entry->d_name);
+        if (dir_name[strlen(dir_name) - 1] != '/')
+            sprintf(name, "%s/%s", dir_name, entry->d_name);
+        else
+            sprintf(name, "%s%s", dir_name, entry->d_name);
 
         // optional: check if it's file or dir
-        if (stat(name, &st) == 0) {
-            if (S_ISDIR(st.st_mode)) {
-                val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(
-                    vstring_dup("name"), vstring_dup(entry->d_name),
-                    vstring_dup("type"), vstring_dup("d"),
-                    NULL
-                ), NULL));
-            } else {
-                val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(
-                    vstring_dup("name"), vstring_dup(entry->d_name),
-                    vstring_dup("type"), vstring_dup("f"),
-                    NULL
-                ), NULL));
+        if (stat(name, &st) == 0)
+        {
+            if (S_ISDIR(st.st_mode))
+            {
+                val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(vstring_dup("name"), vstring_dup(entry->d_name), vstring_dup("type"), vstring_dup("d"), NULL), NULL));
             }
-        } else {
-            val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(
-                vstring_dup("name"), vstring_dup(entry->d_name),
-                vstring_dup("type"), vstring_dup("?"),
-                NULL
-            ), NULL));
+            else
+            {
+                val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(vstring_dup("name"), vstring_dup(entry->d_name), vstring_dup("type"), vstring_dup("f"), NULL), NULL));
+            }
+        }
+        else
+        {
+            val_release(call_native_with(NULL, native_list_append, val_retain(l), make_dict(vstring_dup("name"), vstring_dup(entry->d_name), vstring_dup("type"), vstring_dup("?"), NULL), NULL));
         }
     }
 
@@ -555,16 +626,40 @@ Value *native_fprint(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_STRING)
     {
-        return verror("= fprint(file, string) expects (handle, string).\n");
+        return verror("fprint(file, string) expects (handle, string).");
     }
     FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
-        return verror("= fprint: file handle is closed or invalid.\n");
+        return verror("fprint: file handle is closed or invalid.");
     }
     const char *s = GET_STRING(argv[1]);
     size_t written = fwrite(s, 1, strlen(s), f);
     return vint(written);
+}
+
+Value *native_fprint_bytes(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 2 || argv[0]->type != T_OPAQUE || strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list") != 0)
+    {
+        return verror("fprint_bytes(file, bytes) expects (handle, list[int]).");
+    }
+    FILE *f = (FILE *)argv[0]->v;
+    if (!f)
+    {
+        return verror("fprint_bytes(file, bytes): file handle is closed or invalid.");
+    }
+    Value **list = ll_to_iter((LinkedList *)GET_OPAQUE(argv[1]));
+    long size = GET_INTEGER(list[0]);
+    for (long i = 1; i < size; i++)
+    {
+        char c = GET_INTEGER(list[i]);
+        size_t written = fwrite(&c, 1, 1, f);
+        val_release(list[i]);
+    }
+    val_release(list[0]);
+    return vint(size);
 }
 
 Value *native_fread(Env *env, int argc, Value **argv)
@@ -572,12 +667,12 @@ Value *native_fread(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT)
     {
-        return verror("= fread(file, num_bytes) expects (handle, int).\n");
+        return verror("fread(file, num_bytes) expects (handle, int).");
     }
     FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
-        return verror("= fread: file handle is closed or invalid.\n");
+        return verror("fread(file, num_bytes): file handle is closed or invalid.");
     }
     long n = argv[1]->v->i;
     if (n <= 0)
@@ -593,17 +688,49 @@ Value *native_fread(Env *env, int argc, Value **argv)
     return vstring_take(buf);
 }
 
+Value *native_fread_bytes(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT)
+    {
+        return verror("fread_bytes(file, num_bytes) expects (handle, int).");
+    }
+    FILE *f = (FILE *)argv[0]->v;
+    if (!f)
+    {
+        return verror("fread_bytes(file, num_bytes): file handle is closed or invalid.");
+    }
+    long n = argv[1]->v->i;
+    if (n <= 0)
+        return vstring_dup("");
+
+    char *buf = mila_malloc(n);
+    if (!buf)
+        return vnull();
+
+    Value *list = make_list(NULL);
+    size_t read_bytes = fread(buf, 1, n, f);
+    for (long i = 0; i < read_bytes; i++)
+    {
+        val_release(call_native_with(NULL, native_list_append, val_retain(list), vint(buf[i]), NULL));
+    }
+
+    mila_free(buf);
+
+    return list;
+}
+
 Value *native_fread_all(Env *env, int argc, Value **argv)
 {
     (void)env;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
-        return verror("= fread_all(file) expects handle.\n");
+        return verror("fread_all(file) expects handle.");
     }
     FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
-        return verror("= fread_all: file handle is closed or invalid.\n");
+        return verror("fread_all(file): file handle is closed or invalid.");
     }
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
@@ -619,6 +746,38 @@ Value *native_fread_all(Env *env, int argc, Value **argv)
     return vstring_take(buf);
 }
 
+Value *native_fread_all_bytes(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1 || argv[0]->type != T_OPAQUE)
+    {
+        return verror("fread_all(file) expects handle.");
+    }
+    FILE *f = (FILE *)argv[0]->v;
+    if (!f)
+    {
+        return verror("fread_all(file): file handle is closed or invalid.");
+    }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char *buf = mila_malloc(n + 1);
+    if (!buf)
+        return vnull();
+
+    Value *list = make_list(NULL);
+    size_t read_bytes = fread(buf, 1, n, f);
+    for (long i = 0; i < read_bytes; i++)
+    {
+        val_release(call_native_with(NULL, native_list_append, val_retain(list), vint(buf[i]), NULL));
+    }
+
+    mila_free(buf);
+
+    return list;
+}
+
 Value *native_fseek(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -626,12 +785,12 @@ Value *native_fseek(Env *env, int argc, Value **argv)
         argv[2]->type != T_INT)
     {
         return verror(
-            "= fseek(file, offset, whence) expects (handle, int, int).\n");
+            "fseek(file, offset, whence) expects (handle, int, int).");
     }
     FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
-        return verror("= fseek: file handle is closed or invalid.\n");
+        return verror("fseek(file, offset, whence): file handle is closed or invalid.");
     }
     long offset = argv[1]->v->i;
     int whence = (int)argv[2]->v->i;
@@ -645,8 +804,8 @@ Value *native_fseek(Env *env, int argc, Value **argv)
         c_whence = whence;
         break;
     default:
-        return verror("= fseek: invalid whence %d (must be 0-SEEK_SET, 1-SEEK_CUR, "
-                      "or 2-SEEK_END).\n",
+        return verror("fseek(file, offset, whence): invalid whence %d (must be 0-SEEK_SET, 1-SEEK_CUR, "
+                      "or 2-SEEK_END).",
                       whence);
     }
 
@@ -659,12 +818,12 @@ Value *native_ftell(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1 || argv[0]->type != T_OPAQUE)
     {
-        return verror("= ftell(file) expects 1 file handle arg.\n");
+        return verror("ftell(file) expects 1 file handle arg.");
     }
     FILE *f = (FILE *)argv[0]->v;
     if (!f)
     {
-        return verror("ftell: file handle is closed or invalid.\n");
+        return verror("ftell(file): file handle is closed or invalid.");
     }
     long pos = ftell(f);
     return vint(pos);
@@ -724,7 +883,7 @@ Value *native_get_time(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 0)
     {
-        return verror("get_time(): invalid number of arguments given.\n");
+        return verror("get_time(): invalid number of arguments given.");
     }
     return vfloat(get_unix_timestamp());
 }
@@ -736,7 +895,7 @@ Value *native_time_sleep(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
     {
-        return verror("time_sleep(time): invalid number of arguments given.\n");
+        return verror("time_sleep(time): invalid number of arguments given.");
     }
     if (GET_TYPE(argv[0]) == T_INT)
         sleep(GET_INTEGER(argv[0]));
@@ -760,7 +919,7 @@ Value *native_time_sleep_ms(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1)
     {
-        return verror("time_sleep_ms(time): invalid number of arguments given.\n");
+        return verror("time_sleep_ms(time): invalid number of arguments given.");
     }
     if (GET_TYPE(argv[0]) == T_INT)
         sleep_micros(GET_INTEGER(argv[0]) * 1000);
@@ -774,12 +933,12 @@ Value *native_run(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
     {
-        return verror("invalid number of arguments given or incorrect types.");
+        return verror("run(filename): invalid number of arguments given or incorrect types.");
     }
 
-    if (search_path)
+    if (mila_search_path)
     {
-        char *path = path_list_find(search_path, GET_STRING(argv[0]));
+        char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
         if (!path)
         {
             return verror("run(filename) did not find the file.");
@@ -788,11 +947,7 @@ Value *native_run(Env *env, int argc, Value **argv)
         Value *by = env_get(env, "__name__");
         Value *by_path = env_get(env, "__path__");
         Value *by_dir_path = env_get(env, "__dir_path__");
-        env_set_local_raw(frame, "__importer__", call_native_with(env, native_new_dict,
-            vstring_dup("name"), val_copy(by),
-            vstring_dup("path"), val_copy(by_path),
-            vstring_dup("dir_path"), val_copy(by_dir_path),
-        NULL));
+        env_set_local_raw(frame, "__importer__", call_native_with(env, native_new_dict, vstring_dup("name"), val_copy(by), vstring_dup("path"), val_copy(by_path), vstring_dup("dir_path"), val_copy(by_dir_path), NULL));
         Value *res = run_file_keep_res(path, frame);
         if (GET_TYPE(res) == T_ERROR)
         {
@@ -806,29 +961,89 @@ Value *native_run(Env *env, int argc, Value **argv)
     return vnull();
 }
 
+Value *native_require(Env *env, int argc, Value **argv)
+{
+#ifndef ML_NO_CACHED_MODS
+    if (!mila_cached_modules)
+    {
+        return vtagged_error(E_FATAL, "Interpreter was not initialized properly as 'mila_cached_modules' is not available.");
+    }
+    if (argc != 1 || argv[0]->type != T_STRING)
+    {
+        return verror("require(filename): invalid number of arguments given or incorrect types.");
+    }
+
+    if (mila_search_path)
+    {
+        char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
+        if (!path)
+        {
+            return verror("require(filename) did not find the file.");
+        }
+        // try full path
+        // yes this code wont run if the file doesnt exist.
+        // counter measure against people who think they can just
+        // mess with internals and call it "meta programming"
+#ifndef ML_NO_THREADING
+        pthread_mutex_lock(&mila_cached_modules_lock_read);
+#endif
+        Value *module = call_native_with(NULL, native_get_dict, val_retain(mila_cached_modules), vstring_dup(path), NULL);
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_cached_modules_lock_read);
+#endif
+        if (module && GET_TYPE(module) != T_NULL)
+        {
+            return module;
+        }
+        // open full path and run the file.
+        Env *frame = env_new(env);
+        Value *by = env_get(env, "__name__");
+        Value *by_path = env_get(env, "__path__");
+        Value *by_dir_path = env_get(env, "__dir_path__");
+        env_set_local_raw(frame, "__importer__", call_native_with(env, native_new_dict, vstring_dup("name"), val_copy(by), vstring_dup("path"), val_copy(by_path), vstring_dup("dir_path"), val_copy(by_dir_path), NULL));
+        Value *res = run_file_keep_res(path, frame);
+        if (GET_TYPE(res) == T_ERROR)
+        {
+            return res;
+        }
+        mila_free(path);
+        env_free(frame);
+#ifndef ML_NO_THREADING
+        pthread_mutex_lock(&mila_cached_modules_lock);
+#endif
+        val_release(call_native_with(NULL, native_set_dict, val_retain(mila_cached_modules), vstring_dup(path), val_retain(res), NULL));
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_cached_modules_lock);
+#endif
+        
+        return res;
+    }
+
+    return vnull();
+#else
+    return native_run(env, argc, argv);
+#endif // ML_NO_MOD_CACHE
+}
+
 Value *native_invoke(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
     {
-        return verror("invalid number of arguments given or incorrect types.");
+        return verror("invoke(filename): invalid number of arguments given or incorrect types.");
     }
 
-    if (search_path)
+    if (mila_search_path)
     {
-        char *path = path_list_find(search_path, GET_STRING(argv[0]));
+        char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
         if (!path)
         {
-            return verror("run(filename) did not find the file.");
+            return verror("invoke(filename) did not find the file.");
         }
         Env *frame = env_new(env);
         Value *by = env_get(env, "__name__");
         Value *by_path = env_get(env, "__path__");
         Value *by_dir_path = env_get(env, "__dir_path__");
-        env_set_local_raw(frame, "__importer__", call_native_with(env, native_new_dict,
-            vstring_dup("name"), val_copy(by),
-            vstring_dup("path"), val_copy(by_path),
-            vstring_dup("dir_path"), val_copy(by_dir_path),
-        NULL));
+        env_set_local_raw(frame, "__importer__", call_native_with(env, native_new_dict, vstring_dup("name"), val_copy(by), vstring_dup("path"), val_copy(by_path), vstring_dup("dir_path"), val_copy(by_dir_path), NULL));
         Value *res = invoke_file_keep_res(path, frame);
         if (GET_TYPE(res) == T_ERROR)
         {
@@ -847,16 +1062,16 @@ Value *native_load(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1 || (!argv[0]) || argv[0]->type != T_STRING)
     {
-        return verror("invalid number of arguments given or incorrect types.");
+        return verror("load(file): invalid number of arguments given or incorrect types.");
     }
 
-    char *new_path = path_list_find(search_path, GET_STRING(argv[0]));
+    char *new_path = path_list_find(mila_search_path, GET_STRING(argv[0]));
     if (!new_path)
-        return verror("problem loading file %s\n", GET_STRING(argv[0]));
+        return verror("load(file): problem loading file %s", GET_STRING(argv[0]));
     if (load_library(env, new_path))
     {
         mila_free(new_path);
-        return verror("problem loading file %s\n", GET_STRING(argv[0]));
+        return verror("load(file): problem loading file %s", GET_STRING(argv[0]));
     }
     mila_free(new_path);
     return vnull();
@@ -867,7 +1082,7 @@ Value *native_eval(Env *env, int argc, Value **argv)
     (void)env;
     if (argc != 1 || argv[0]->type != T_STRING)
     {
-        return verror("invalid number of arguments given or incorrect types.");
+        return verror("eval(code): invalid number of arguments given or incorrect types.");
     }
 
     return eval_str(GET_STRING(argv[0]), env);
@@ -981,37 +1196,10 @@ Value *native_abs(Env *e, int argc, Value **argv)
 }
 #endif // ML_NO_MATH
 
-Value* native_env_new(Env* env, int argc, Value** argv) {
-    Env* e = env_new(NULL);
+Value *native_env_new(Env *env, int argc, Value **argv)
+{
+    Env *e = env_new(NULL);
     return vopaque_extra(e, NULL, "environment");
-}
-
-Value *native_list_append(Env *env, int argc, Value **argv)
-{
-    ll_append(GET_OPAQUE(argv[0]), val_retain(argv[1]));
-    return vnull();
-}
-
-Value *native_list_contains(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    Value **list = ll_to_iter(GET_OPAQUE(argv[0]));
-    for (long i = 0; list[i]; ++i)
-    {
-        Value *value = binary_op(argv[1], BMethodEq, list[i]);
-        if (is_truthy(value))
-        {
-            val_release(value);
-            for (; list[i]; ++i)
-                val_release(list[i]);
-            mila_free(list);
-            return vbool(1);
-        }
-        val_release(value);
-        val_release(list[i]);
-    }
-    mila_free(list);
-    return vbool(0);
 }
 
 Value *native_repr(Env *env, int argc, Value **argv)
@@ -1093,9 +1281,9 @@ Value *istring_to_iter(Value *self)
     size_t slen = strlen(str);
     Value **iter = (Value **)mila_malloc(sizeof(Value *) * (slen + 2));
     size_t i = 1;
-    for (; i < slen+1; ++i)
+    for (; i < slen + 1; ++i)
     {
-        iter[i] = vstring_dup((char[]){str[i-1], 0});
+        iter[i] = vstring_dup((char[]){str[i - 1], 0});
     }
     iter[slen] = NULL;
     iter[0] = vuint((unsigned long)slen);
@@ -1196,17 +1384,19 @@ Value *native_random(Env *env, int argc, Value **argv)
 
 Value *native_noise(Env *env, int argc, Value **argv)
 {
-    if (argc > 5 || argc < 4) return verror("noise(start, count, max, min, magnitude?): Expected at least 4 or 5 arguments.");
+    if (argc > 5 || argc < 4)
+        return verror("noise(start, count, max, min, magnitude?): Expected at least 4 or 5 arguments.");
     long start = GET_INTEGER(argv[0]);
     long count = GET_INTEGER(argv[1]);
     long max = GET_INTEGER(argv[2]);
     long min = GET_INTEGER(argv[3]);
     long mag = argc == 5 ? GET_INTEGER(argv[4]) : 5L;
-    
-    long* nums = (long*)malloc(sizeof(long)*count);
-    Value* arr = call_function_str(env, "array", vint(count), NULL);
+
+    long *nums = (long *)malloc(sizeof(long) * count);
+    Value *arr = call_function_str(env, "array", vint(count), NULL);
     noise(start, count, max, min, mag, nums);
-    for (long i=0; i<count; ++i) {
+    for (long i = 0; i < count; ++i)
+    {
         val_release(call_function_str(env, "array.set", val_retain(arr), vint(i), vint(nums[i]), NULL));
     }
     free(nums);
@@ -1261,16 +1451,16 @@ Value *native_vars_bind(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-extern path_list *search_path;
+extern path_list *mila_search_path;
 Value *native_dump_search_list(Env *env, int argc, Value **argv)
 {
-    printf("Search Paths:\n");
-    for (int i = 0; i < search_path->count; i++)
+    printf("Search Paths:");
+    for (int i = 0; i < mila_search_path->count; i++)
     {
-        if (i != search_path->count - 1)
-            printf("  %s,\n", search_path->items[i]);
+        if (i != mila_search_path->count - 1)
+            printf("  %s,\n", mila_search_path->items[i]);
         else
-            printf("  %s\n", search_path->items[i]);
+            printf("  %s\n", mila_search_path->items[i]);
     }
     return vnull();
 }
@@ -1363,204 +1553,262 @@ Value *native_is(Env *env, int argc, Value **argv)
     return vbool(argv[0] == argv[1]);
 }
 
-Value *native_json_loads(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("json.loads(str): Expects one argument.");
-    Src* s = src_new(GET_STRING(argv[0]));
-    Value* res = parse_json(s);
+Value *native_json_loads(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("json.loads(str): Expects one argument.");
+    Src *s = src_new(GET_STRING(argv[0]));
+    Value *res = parse_json(s);
     src_free(s);
     return res;
 }
 
-Value *native_json_dumps(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("json.dumps(value): Expects one argument.");
+Value *native_json_dumps(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("json.dumps(value): Expects one argument.");
     return vstring_take(mila_to_json(argv[0]));
 }
 
-Value *native_mjson_loads(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("mjson.loads(str): Expects one argument.");
-    Src* s = src_new(GET_STRING(argv[0]));
-    Value* res = parse_mjson(s);
+Value *native_mjson_loads(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("mjson.loads(str): Expects one argument.");
+    Src *s = src_new(GET_STRING(argv[0]));
+    Value *res = parse_mjson(s);
     src_free(s);
     return res;
 }
 
-Value *native_mjson_dumps(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("mjson.dumps(value): Expects one argument.");
+Value *native_mjson_dumps(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("mjson.dumps(value): Expects one argument.");
     return vstring_take(mila_to_mjson(argv[0]));
 }
 
-Value *native_hash(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("hash(value): Expects one argument.");
+Value *native_hash(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("hash(value): Expects one argument.");
     return vuint(hash_value(argv[0]));
 }
 
-Value *native_hash_set_seed(Env* env, int argc, Value** argv) {
-    if (argc != 1) return verror("hash.set_seed(value): Expects one integer.");
-    if (GET_UINTEGER(argv[0]) == 0) return verror("hash.set_seed(value): Hash cannot be zero!");
+Value *native_hash_set_seed(Env *env, int argc, Value **argv)
+{
+    if (argc != 1)
+        return verror("hash.set_seed(value): Expects one integer.");
+    if (GET_UINTEGER(argv[0]) == 0)
+        return verror("hash.set_seed(value): Hash cannot be zero!");
     hash_set_seed(GET_UINTEGER(argv[0]));
     return vnull();
 }
 
-Value *native_hash_get_seed(Env* env, int argc, Value** argv) {
-    if (argc != 0) return verror("hash._get_seed(): Expects no arguments.");
+Value *native_hash_get_seed(Env *env, int argc, Value **argv)
+{
+    if (argc != 0)
+        return verror("hash._get_seed(): Expects no arguments.");
     return vuint(HASH_SEED);
 }
 
-Value *native_sys_get_pid(Env* env, int argc, Value** argv) {
-    if (argc != 0) return verror("sys.get_pid(): Expects no arguments.");
+Value *native_sys_get_pid(Env *env, int argc, Value **argv)
+{
+    if (argc != 0)
+        return verror("sys.get_pid(): Expects no arguments.");
     return vuint(get_process_id());
 }
 
-Value* native_list_deconstruct_v1(Env* env, int argc, Value** argv) {
-    if (argc != 2) return verror("ll_deconstruct(pattern, list): Expected 2 args!");
-    if (GET_TYPE(argv[0]) != T_STRING) return verror("Pattern must be string");
-    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX"list")) return verror("Must be list");
-    
-    char* pattern = GET_STRING(argv[0]);
-    LinkedList* list = (LinkedList*)GET_OPAQUE(argv[1]);
-    
-    char* pat_copy = mila_strdup(pattern);
-    char* p = pat_copy;
-    
-    if (*p == '[') p++;
-    char* bracket = strchr(p, ']');
-    if (bracket) *bracket = '\0';
-    
-    char* save_ptr = NULL;
-    char* token = strtok_r(p, ",", &save_ptr);
+Value *native_list_deconstruct_v1(Env *env, int argc, Value **argv)
+{
+    if (argc != 2)
+        return verror("ll_deconstruct(pattern, list): Expected 2 args!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("Pattern must be string");
+    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list"))
+        return verror("Must be list");
+
+    char *pattern = GET_STRING(argv[0]);
+    LinkedList *list = (LinkedList *)GET_OPAQUE(argv[1]);
+
+    char *pat_copy = mila_strdup(pattern);
+    char *p = pat_copy;
+
+    if (*p == '[')
+        p++;
+    char *bracket = strchr(p, ']');
+    if (bracket)
+        *bracket = '\0';
+
+    char *save_ptr = NULL;
+    char *token = strtok_r(p, ",", &save_ptr);
     size_t idx = 0;
-    char* spread_name = NULL;
-    Value* rest_list = NULL;
-    Value* result = call_native_with(env, native_new_dict, NULL);
-    
-    while (token) {
-        while (*token == ' ' || *token == '\t') token++;
-        char* tok_end = token + strlen(token) - 1;
-        while (tok_end > token && (*tok_end == ' ' || *tok_end == '\t')) {
+    char *spread_name = NULL;
+    Value *rest_list = NULL;
+    Value *result = call_native_with(env, native_new_dict, NULL);
+
+    while (token)
+    {
+        while (*token == ' ' || *token == '\t')
+            token++;
+        char *tok_end = token + strlen(token) - 1;
+        while (tok_end > token && (*tok_end == ' ' || *tok_end == '\t'))
+        {
             *tok_end = '\0';
             tok_end--;
         }
-        
-        if (strncmp(token, "...", 3) == 0) {
+
+        if (strncmp(token, "...", 3) == 0)
+        {
             spread_name = mila_strdup(token + 3);
             rest_list = call_native_with(env, native_list_new, NULL);
-        } else if (!spread_name && idx < list->size) {
-            Value* val = ll_get(list, idx);
-            val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(token), 
-                                       val ? val_retain(val) : vnull(), NULL));
+        }
+        else if (!spread_name && idx < list->size)
+        {
+            Value *val = ll_get(list, idx);
+            val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(token),
+                                         val ? val_retain(val) : vnull(), NULL));
             val_release(val);
             idx++;
         }
-        
+
         token = strtok_r(NULL, ",", &save_ptr);
     }
-    
-    if (spread_name) {
-        while (idx < list->size) {
-            Value* val = ll_get(list, idx++);
-            val_release(call_native_with(env, native_list_append, val_retain(rest_list), 
-                                        val ? val_retain(val) : vnull(), NULL));
+
+    if (spread_name)
+    {
+        while (idx < list->size)
+        {
+            Value *val = ll_get(list, idx++);
+            val_release(call_native_with(env, native_list_append, val_retain(rest_list),
+                                         val ? val_retain(val) : vnull(), NULL));
         }
-        val_release(call_native_with(env, native_set_dict, result, vstring_dup(spread_name), 
-                                rest_list, NULL));
+        val_release(call_native_with(env, native_set_dict, result, vstring_dup(spread_name),
+                                     rest_list, NULL));
     }
-    
+
     mila_free(pat_copy);
-    if (spread_name) mila_free(spread_name);
-    
+    if (spread_name)
+        mila_free(spread_name);
+
     return result;
 }
 
-Value* native_list_deconstruct(Env* env, int argc, Value** argv) {
-    if (argc != 2) return verror("list.deconstruct(pattern, list): Expected 2 args!");
-    if (GET_TYPE(argv[0]) != T_STRING) return verror("Pattern must be string");
-    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list")) return verror("Must be list");
-    
-    char* pattern = GET_STRING(argv[0]);
-    LinkedList* list = (LinkedList*)GET_OPAQUE(argv[1]);
-    
-    char* pat_copy = mila_strdup(pattern);
-    char* p = pat_copy;
-    
-    if (*p == '[') p++;
-    char* end = p + strlen(p) - 1;
-    while (end > p && (*end == ']' || *end == ' ' || *end == '\t')) end--;
+Value *native_list_deconstruct(Env *env, int argc, Value **argv)
+{
+    if (argc != 2)
+        return verror("list.deconstruct(pattern, list): Expected 2 args!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("Pattern must be string");
+    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list"))
+        return verror("Must be list");
+
+    char *pattern = GET_STRING(argv[0]);
+    LinkedList *list = (LinkedList *)GET_OPAQUE(argv[1]);
+
+    char *pat_copy = mila_strdup(pattern);
+    char *p = pat_copy;
+
+    if (*p == '[')
+        p++;
+    char *end = p + strlen(p) - 1;
+    while (end > p && (*end == ']' || *end == ' ' || *end == '\t'))
+        end--;
     end[1] = '\0';
-    
+
     size_t idx = 0;
-    char* spread_name = NULL;
-    Value* rest_list = NULL;
-    Value* result = call_native_with(env, native_new_dict, NULL);
-    
-    char* curr = p;
-    while (*curr) {
-        while (*curr == ' ' || *curr == '\t') curr++;
-        if (!*curr) break;
-        
-        char* tok_start = curr;
+    char *spread_name = NULL;
+    Value *rest_list = NULL;
+    Value *result = call_native_with(env, native_new_dict, NULL);
+
+    char *curr = p;
+    while (*curr)
+    {
+        while (*curr == ' ' || *curr == '\t')
+            curr++;
+        if (!*curr)
+            break;
+
+        char *tok_start = curr;
         int depth = 0;
-        
-        while (*curr && (depth > 0 || (*curr != ',' && *curr != '\0'))) {
-            if (*curr == '[') depth++;
-            else if (*curr == ']') depth--;
+
+        while (*curr && (depth > 0 || (*curr != ',' && *curr != '\0')))
+        {
+            if (*curr == '[')
+                depth++;
+            else if (*curr == ']')
+                depth--;
             curr++;
         }
-        
-        char* tok_end = curr - 1;
-        while (tok_end > tok_start && (*tok_end == ' ' || *tok_end == '\t')) tok_end--;
-        
+
+        char *tok_end = curr - 1;
+        while (tok_end > tok_start && (*tok_end == ' ' || *tok_end == '\t'))
+            tok_end--;
+
         char token_buf[512];
         int tok_len = tok_end - tok_start + 1;
-        if (tok_len > 0 && tok_len < 511) {
+        if (tok_len > 0 && tok_len < 511)
+        {
             memcpy(token_buf, tok_start, tok_len);
             token_buf[tok_len] = '\0';
-            
-            if (strncmp(token_buf, "...", 3) == 0) {
+
+            if (strncmp(token_buf, "...", 3) == 0)
+            {
                 spread_name = mila_strdup(token_buf + 3);
                 rest_list = call_native_with(env, native_list_new, NULL);
-            } else if (!spread_name && idx < list->size) {
-                Value* val = ll_get(list, idx);
-                
-                if (*token_buf == '[') {
-                    Value* nested = call_native_with(env, native_list_deconstruct, vstring_dup(token_buf), 
-                                                    val_retain(val), NULL);
-                    if (nested && nested->type == T_OPAQUE) {
-                        Dict* nested_dict = (Dict*)GET_OPAQUE(nested);
-                        Value** keys = dict_keys(nested_dict);
-                        for (size_t i = 0; keys[i]; i++) {
-                            Value* v = dict_get(nested_dict, keys[i]);
-                            val_release(call_native_with(env, native_set_dict, val_retain(result), keys[i], 
-                                                                   val_retain(v), NULL));
+            }
+            else if (!spread_name && idx < list->size)
+            {
+                Value *val = ll_get(list, idx);
+
+                if (*token_buf == '[')
+                {
+                    Value *nested = call_native_with(env, native_list_deconstruct, vstring_dup(token_buf),
+                                                     val_retain(val), NULL);
+                    if (nested && nested->type == T_OPAQUE)
+                    {
+                        Dict *nested_dict = (Dict *)GET_OPAQUE(nested);
+                        Value **keys = dict_keys(nested_dict);
+                        for (size_t i = 0; keys[i]; i++)
+                        {
+                            Value *v = dict_get(nested_dict, keys[i]);
+                            val_release(call_native_with(env, native_set_dict, val_retain(result), keys[i],
+                                                         val_retain(v), NULL));
                             val_release(v);
                         }
                         free(keys);
                         val_release(nested);
                     }
-                } else {
-                    val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(token_buf), 
-                                                   val ? val : vnull(), NULL));
+                }
+                else
+                {
+                    val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(token_buf),
+                                                 val ? val : vnull(), NULL));
                 }
                 idx++;
             }
         }
-        
-        if (*curr == ',') curr++;
+
+        if (*curr == ',')
+            curr++;
     }
-    
-    if (spread_name) {
-        while (idx < list->size) {
-            Value* val = ll_get(list, idx++);
-            val_release(call_native_with(env, native_list_append, val_retain(rest_list), 
-                                        val ? val_retain(val) : vnull(), NULL));
+
+    if (spread_name)
+    {
+        while (idx < list->size)
+        {
+            Value *val = ll_get(list, idx++);
+            val_release(call_native_with(env, native_list_append, val_retain(rest_list),
+                                         val ? val_retain(val) : vnull(), NULL));
         }
-        val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(spread_name), 
-                                rest_list, NULL));
+        val_release(call_native_with(env, native_set_dict, val_retain(result), vstring_dup(spread_name),
+                                     rest_list, NULL));
         val_release(rest_list);
     }
-    
+
     mila_free(pat_copy);
-    if (spread_name) mila_free(spread_name);
-    
+    if (spread_name)
+        mila_free(spread_name);
+
     return result;
 }
 
@@ -1611,7 +1859,6 @@ void env_register_builtins(Env *g)
     range_meta = val_make_table();
 
     val_set_method_table(range_meta, UMethodToIter, range_to_iter);
-    val_set_method_table(range_meta, UMethodToGen, range_to_gen);
     val_set_method_table(range_meta, UMethodToString, range_to_str);
     val_set_method_table(range_meta, UMethodFree, range_free);
 
@@ -1620,7 +1867,7 @@ void env_register_builtins(Env *g)
     val_set_method_table(istring_meta, UMethodToIter, istring_to_iter);
     val_set_method_table(istring_meta, BMethodGetItem, istring_get);
     val_set_method_table(istring_meta, UMethodToString, istring_to_str);
-    
+
     // canonical builtins reports version
     env_set_raw(g, "__mila_version", make_list(vint(MILA_EDITION), vint(MILA_VERSION), vint(MILA_PATCH), NULL));
 #ifdef SAFE_BUILD
@@ -1640,7 +1887,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "srandom", native_srandom);
     env_register_native(g, "noise", native_noise);
     env_register_native(g, "crandom", native_crandom);
-    env_register_native(g, "dump_search_paths", native_dump_search_list);
+    env_register_native(g, "dump_mila_search_paths", native_dump_search_list);
     env_register_native(g, "is", native_is);
     env_register_native(g, "hash", native_hash);
     env_register_native(g, "hash.set_seed", native_hash_set_seed);
@@ -1658,10 +1905,16 @@ void env_register_builtins(Env *g)
 #ifndef ML_NO_FILE_IO
     // === File IO
     env_register_native(g, "open", native_open);
+    env_register_native(g, "fdopen", native_fdopen);
+    env_register_native(g, "fdredirect", native_fdredirect);
     env_register_native(g, "fclose", native_fclose);
+    env_register_native(g, "close", native_close);
     env_register_native(g, "fprint", native_fprint);
+    env_register_native(g, "fprint_bytes", native_fprint_bytes);
     env_register_native(g, "fread", native_fread);
     env_register_native(g, "fread_all", native_fread_all);
+    env_register_native(g, "fread_bytes", native_fread_bytes);
+    env_register_native(g, "fread_all_bytes", native_fread_all_bytes);
     env_register_native(g, "fseek", native_fseek);
     env_register_native(g, "ftell", native_ftell);
     env_register_native(g, "fflush", native_fflush);
@@ -1677,33 +1930,31 @@ void env_register_builtins(Env *g)
 #else
     env_set_raw(g, "PATH_SEP", vstring_dup("/"));
 #endif
-    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr fd'"));
-    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout fd'"));
-    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin fd'"));
+    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr'"));
+    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout'"));
+    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin'"));
+    env_set_raw(g, "stderr_fd", vint(STDERR_FILENO));
+    env_set_raw(g, "stdout_fd", vint(STDOUT_FILENO));
+    env_set_raw(g, "stdin_fd", vint(STDIN_FILENO));
     file_meta = val_make_table();
     val_set_method_table(file_meta, UMethodToString, file_printer);
 #endif // ML_NO_FILE_IO
 
     // === Lists
     env_register_native(g, "list", native_list_new);
-    env_register_native(g, "list.set", native_list_set);
-    env_register_native(g, "list.get", native_list_get);
     env_register_native(g, "list.pop", native_list_pop);
     env_register_native(g, "list.len", native_list_len);
     env_register_native(g, "list.append", native_list_append);
     env_register_native(g, "list.contains", native_list_contains);
     env_register_native(g, "list.index", native_list_index);
+    env_register_native(g, "list.slice", native_list_slice);
     env_register_native(g, "list.deconstruct", native_list_deconstruct);
     // === Array
     env_register_native(g, "array", native_new_array);
     env_register_native(g, "array.from", native_from_array);
-    env_register_native(g, "array.set", native_set_array);
-    env_register_native(g, "array.get", native_get_array);
     env_register_native(g, "array.len", native_len_array);
     // === Dicts
     env_register_native(g, "dict", native_new_dict);
-    env_register_native(g, "dict.set", native_set_dict);
-    env_register_native(g, "dict.get", native_get_dict);
     env_register_native(g, "dict.rem", native_rem_dict);
     env_register_native(g, "dict.keys", native_keys_dict);
     // === Casting
@@ -1806,10 +2057,11 @@ void env_register_builtins(Env *g)
 #endif
     // === Modules and Libs
 #ifndef ML_NO_EXECUTABLES
-    env_register_native(g, "run", native_run);   // runs file
-    env_register_native(g, "invoke", native_run);   // invokes file
-    env_register_native(g, "load", native_load); // loads dlls or so file
-    env_register_native(g, "eval", native_eval); // runs string
+    env_register_native(g, "run", native_run);         // runs file
+    env_register_native(g, "require", native_require); // runs file if not cached
+    env_register_native(g, "invoke", native_run);      // invokes file
+    env_register_native(g, "load", native_load);       // loads dlls or so file
+    env_register_native(g, "eval", native_eval);       // runs string
 #endif
     // === Threading
 #ifndef ML_NO_THREADING
@@ -1823,8 +2075,6 @@ void env_register_builtins(Env *g)
     env_register_native(g, "thread.mutex", native_make_mutex);
     env_register_native(g, "thread.mutex_unlock", native_mutex_unlock);
     env_register_native(g, "thread.mutex_lock", native_mutex_lock);
-    env_register_native(g, "thread.yield", native_thread_yield);
-    env_register_native(g, "thread.next", native_thread_next);
     env_register_native(g, "thread.dump", native_thread_dump);
 #endif
 

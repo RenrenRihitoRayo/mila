@@ -1,0 +1,21 @@
+
+// Boast our string capabilities to Lua
+var file = open("test.csv", "r");
+var lines = str.split(fread_all(file), "\n");
+var header = str.split(lines[0], ",");
+var rest = list.slice(lines, 1, -1);
+var final_csv = [];
+foreach line : rest {
+    if (not(line)) continue;
+    var data = [@];
+    var items = str.split(line, ",");
+    foreach i : range(list.len(header)) {
+        set data[header[i]] = items[i];
+    }
+    list.append(final_csv, data);
+}
+var file_out = open("out.json", "w");
+// *Laughs in builtin json*
+fprint(file_out, json.dumps(final_csv));
+fclose(file_out);
+fclose(file);

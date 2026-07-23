@@ -1,5 +1,9 @@
 # Built-in Functions and Variables
 
+The MiLa builtin functions.<br>
+These collection of MiLa functions are always present
+and doesnt require you to run an external file.
+
 * [Text IO](#io-text)
 * [File IO](#io-file)
 * [File Operations](#file-ops)
@@ -15,6 +19,7 @@
 * [Running and Loading](#run)
 * [Error Handling](#error)
 * [JSON and MJSON](#json)
+* [Threading](#th)
 * [Others](#other)
 
 NOTE: Not all functions are monkey patch safe!!!
@@ -51,9 +56,21 @@ and thus may not be guaranteed as safe for monkey patching.
 
     Read the entire file.
 
-* `fprint(fd: "opaque:fd", value)`
+* `fread_bytes(fd: "opaque:fd", num: "int") -> "list[int]"`
 
-    Print the value into the file.
+    Read a certain amount of bytes.
+
+* `fread_all(fd: "opaque:fd") -> "list[int]"`
+
+    Read the entire file as bytes.
+
+* `fprint(fd: "opaque:fd", value: "string")`
+
+    Print the string into the file.
+
+* `fprint_bytes(fd: "opaque:fd", value: "list[int]")`
+
+    Print the bytes into the file.
 
 * `ftell(fd: "opaque:fd") -> "int"`
 
@@ -569,6 +586,66 @@ Theres no date object shenanigans if theres no date object.
     - Identifiers as keys
     
     Note every standard JSON is valid MJSON.
+
+## <a id="th"></a>Threading
+
+* `thread.make(func: "function", on_kill: "function") -> "int"`
+
+    Create a thread and run it immediately, returns a thread ID.
+    `on_kill` runs when the thread ends regardless of cause<br>
+    (on interpreter halt this still runs except for signal interupts)
+    <br><br>
+    `func` sigature: `fn(thread_id)`
+    `on_kill` signature: `fn(thread_id, cause)`
+
+* `thread.join(thread_id: "int")`
+
+* `thread.cancel(thread_id: "int")`
+
+* `thread.check_cancel(thread_id: "int")`
+
+    Must be called inside threads that might be cancelled.
+    This exists because MiLa threads are cooperative.
+    Even if we use pthreads underneath, we need to comply eith platforms
+    such as Android (google hates non cooperstive threading on mobile)
+
+* `thread.set_daemon(thread_id: "int")`
+
+* `thread.get_pthread_id(thread_id: "int")`
+
+    Useful for debugging.
+    Returns pthread id rather than MiLa handled thread IDs.
+
+* `thread.status(thread_id: "int")`
+
+    Returns these values:
+    
+    * 0: pending
+    * 1: running
+    * 2: done
+
+* `thread.mutex()`
+
+    Create a mutex.
+
+* `thread.mutex_lock(mutex: "opaque:mutex")`
+
+* `thread.mutex_unlock(mutex: "opaque:mutex")`
+
+* `thread.dump(thread_id: "int")`
+
+    Dump thread info.
+
+* `thread.yield(value)`
+
+    Called from inside a thread.
+    Turns the thread into a generator once called the first time.
+    Blocks execution of the thread until the value is retrieved by calling `thread.next`
+
+* `thread.next(thread_id: "int")`
+
+    Retrieves a value from a thread that yielded.
+    If a value is not yet available it blocks execution.
 
 ## <a id="other"></a>Miscellaneous
 

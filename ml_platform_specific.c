@@ -5,7 +5,6 @@
 
 Value* native_sys_get_platform(Env* env, int argc, Value** argv) {
 // Supported and managed platforms
-
 #ifdef __ANDROID__
     return vstring_dup("android");
 #elif defined(__linux__)

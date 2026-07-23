@@ -10,7 +10,8 @@ cflags_debug = $(libraries) -Wextra -Wall -Wno-nonnull\
          $(eflags) -Iheaders -Wno-overflow -fno-omit-frame-pointer
 cflags = $(libraries) -march=native -Wextra -Wall -Wno-nonnull\
          -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
-         $(eflags) -Iheaders -Wno-overflow -flto
+         $(eflags) -Iheaders -Wno-overflow -flto -ffunction-sections -fdata-sections -Wl,-s\
+         -Wl,--gc-sections -fno-stack-protector
 
 .PHONY: web
 

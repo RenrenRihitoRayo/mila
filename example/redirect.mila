@@ -1,0 +1,9 @@
+
+// it works!
+var file = open("test.txt", "w");
+
+var file_fd = fredirect(file, stdout_fd);
+
+println("Hello, world!");
+
+fclose(file);

@@ -23,381 +23,471 @@
 #define PATH_GETCWD getcwd
 #endif
 
-int file_exists(const char *p) {
-  struct stat st;
-  return stat(p, &st) == 0;
+int file_exists(const char *p)
+{
+    struct stat st;
+    return stat(p, &st) == 0;
 }
 
-int is_file(const char *p) {
+int is_file(const char *p)
+{
     struct stat st;
-    if (stat(p, &st) != 0) {
+    if (stat(p, &st) != 0)
+    {
         return 0;
     }
     return S_ISREG(st.st_mode);
 }
 
-int is_dir(const char *p) {
+int is_dir(const char *p)
+{
     struct stat st;
-    if (stat(p, &st) != 0) {
+    if (stat(p, &st) != 0)
+    {
         return 0;
     }
     return S_ISDIR(st.st_mode);
 }
 
-void normalize_slashes(char *buf) {
+void normalize_slashes(char *buf)
+{
 #ifdef _WIN32
-  const char from = '/', to = '\\';
+    const char from = '/', to = '\\';
 #else
-  const char from = '\\', to = '/';
+    const char from = '\\', to = '/';
 #endif
 
-  char *src = buf, *dst = buf;
-  int last_sep = 0;
+    char *src = buf, *dst = buf;
+    int last_sep = 0;
 
-  while (*src) {
-    char c = *src++;
+    while (*src)
+    {
+        char c = *src++;
 
-    if (c == from)
-      c = to;
+        if (c == from)
+            c = to;
 
-    // collapse duplicate separators
-    if (c == to) {
-      if (last_sep)
-        continue;
-      last_sep = 1;
-    } else {
-      last_sep = 0;
-    }
-
-    *dst++ = c;
-  }
-  *dst = '\0';
-}
-
-const char *get_env(const char *name, size_t len) {
-  char var[1024];
-  if (len >= sizeof(var))
-    return NULL;
-  memcpy(var, name, len);
-  var[len] = '\0';
-  return getenv(var);
-}
-
-// Expand $VAR and ${VAR}
-void expand_env(char **bufptr) {
-  char *in = *bufptr;
-  size_t outcap = strlen(in) * 2 + 64; // generous
-  char *out = mila_malloc(outcap);
-  size_t o = 0;
-
-  for (size_t i = 0; in[i];) {
-    if (in[i] == '$') {
-      if (in[i + 1] == '{') {
-        size_t j = i + 2;
-        while (in[j] && in[j] != '}')
-          j++;
-        if (in[j] == '}') {
-          const char *val = get_env(in + i + 2, j - (i + 2));
-          if (val) {
-            size_t vl = strlen(val);
-            memcpy(out + o, val, vl);
-            o += vl;
-          }
-          i = j + 1;
-          continue;
+        // collapse duplicate separators
+        if (c == to)
+        {
+            if (last_sep)
+                continue;
+            last_sep = 1;
         }
-      } else {
-        size_t j = i + 1;
-        while (isalnum(in[j]) || in[j] == '_')
-          j++;
-        if (j > i + 1) {
-          const char *val = get_env(in + i + 1, j - (i + 1));
-          if (val) {
-            size_t vl = strlen(val);
-            memcpy(out + o, val, vl);
-            o += vl;
-          }
-          i = j;
-          continue;
+        else
+        {
+            last_sep = 0;
         }
-      }
+
+        *dst++ = c;
     }
-
-    out[o++] = in[i++];
-  }
-  out[o] = '\0';
-
-  free(in);
-  *bufptr = out;
+    *dst = '\0';
 }
 
-void path_join(char *out, size_t outsize, int count, ...) {
-  if (!out || outsize == 0)
-    return;
-
-  out[0] = '\0'; // start empty
-
-  va_list args;
-  va_start(args, count);
-
-  for (int i = 0; i < count; i++) {
-    const char *part = va_arg(args, const char *);
-    if (!part || !*part)
-      continue;
-
-    // Remove trailing slash from out
-    size_t len = strlen(out);
-    while (len > 0 && (out[len - 1] == '/' || out[len - 1] == '\\')) {
-      out[len - 1] = '\0';
-      len--;
-    }
-
-    // Remove leading slash from part (except for first segment)
-    const char *start = part;
-    if (len > 0 && (*start == '/' || *start == '\\'))
-      start++;
-
-    // Append slash if needed
-    if (len > 0 && (out[len - 1] != '/' && out[len - 1] != '\\')) {
-#ifdef _WIN32
-      strncat(out, "\\", outsize - strlen(out) - 1);
-#else
-      strncat(out, "/", outsize - strlen(out) - 1);
-#endif
-    }
-
-    // Append the segment
-    strncat(out, start, outsize - strlen(out) - 1);
-  }
-
-  va_end(args);
-
-  normalize_slashes(out);
+const char *get_env(const char *name, size_t len)
+{
+    char var[1024];
+    if (len >= sizeof(var))
+        return NULL;
+    memcpy(var, name, len);
+    var[len] = '\0';
+    return getenv(var);
 }
 
-char* path_join_alloc(char* path, ...) {
-  va_list args;
-  va_start(args, path);
-  char* out = mila_strdup(path);
-  while (1) {
-    const char *part = va_arg(args, const char *);
-    if (!part) break;
+// Expand ${VAR} and ${VAR:default}
+void expand_env(char **bufptr)
+{
+    char *in = *bufptr;
+    size_t outcap = strlen(in) + 64;
+    char *out = mila_malloc(outcap);
+    size_t o = 0;
+
+#define ENSURE(n)                            \
+    do                                       \
+    {                                        \
+        while (o + (n) + 1 > outcap)         \
+        {                                    \
+            outcap *= 2;                     \
+            out = mila_realloc(out, outcap); \
+        }                                    \
+    } while (0)
+
+    for (size_t i = 0; in[i];)
+    {
+        if (in[i] == '$' && in[i + 1] == '{')
+        {
+            size_t j = i + 2;
+            while (in[j] && in[j] != '}')
+                j++;
+
+            if (in[j] == '}')
+            {
+                size_t colon = j;
+                for (size_t k = i + 2; k < j; k++)
+                {
+                    if (in[k] == ':')
+                    {
+                        colon = k;
+                        break;
+                    }
+                }
+
+                const char *val = NULL;
+
+                if (colon == j)
+                {
+                    // ${VAR}
+                    val = get_env(in + i + 2, j - (i + 2));
+                }
+                else
+                {
+                    // ${VAR:default}
+                    val = get_env(in + i + 2, colon - (i + 2));
+
+                    if (!val || !*val)
+                        val = in + colon + 1;
+                }
+
+                if (val)
+                {
+                    size_t len;
+
+                    if (colon == j)
+                    {
+                        len = strlen(val);
+                    }
+                    else if (!get_env(in + i + 2, colon - (i + 2)) || !*get_env(in + i + 2, colon - (i + 2)))
+                    {
+                        len = j - (colon + 1);
+                    }
+                    else
+                    {
+                        len = strlen(val);
+                    }
+
+                    ENSURE(len);
+                    memcpy(out + o, val, len);
+                    o += len;
+                }
+
+                i = j + 1;
+                continue;
+            }
+        }
+
+        ENSURE(1);
+        out[o++] = in[i++];
+    }
+
+    out[o] = '\0';
+
+    free(in);
+    *bufptr = out;
+}
+
+void path_join(char *out, size_t outsize, int count, ...)
+{
+    if (!out || outsize == 0)
+        return;
+
+    out[0] = '\0'; // start empty
+
+    va_list args;
+    va_start(args, count);
+
+    for (int i = 0; i < count; i++)
+    {
+        const char *part = va_arg(args, const char *);
+        if (!part || !*part)
+            continue;
+
+        // Remove trailing slash from out
+        size_t len = strlen(out);
+        while (len > 0 && (out[len - 1] == '/' || out[len - 1] == '\\'))
+        {
+            out[len - 1] = '\0';
+            len--;
+        }
+
+        // Remove leading slash from part (except for first segment)
+        const char *start = part;
+        if (len > 0 && (*start == '/' || *start == '\\'))
+            start++;
+
+        // Append slash if needed
+        if (len > 0 && (out[len - 1] != '/' && out[len - 1] != '\\'))
+        {
 #ifdef _WIN32
-    malloc_sprintf(&out, "\\%s", part);
+            strncat(out, "\\", outsize - strlen(out) - 1);
 #else
-    malloc_sprintf(&out, "/%s", part);
+            strncat(out, "/", outsize - strlen(out) - 1);
 #endif
-  }
-  va_end(args);
-  normalize_slashes(out);
-  return out;
+        }
+
+        // Append the segment
+        strncat(out, start, outsize - strlen(out) - 1);
+    }
+
+    va_end(args);
+
+    normalize_slashes(out);
+}
+
+char *path_join_alloc(char *path, ...)
+{
+    va_list args;
+    va_start(args, path);
+    char *out = mila_strdup(path);
+    while (1)
+    {
+        const char *part = va_arg(args, const char *);
+        if (!part)
+            break;
+#ifdef _WIN32
+        malloc_sprintf(&out, "\\%s", part);
+#else
+        malloc_sprintf(&out, "/%s", part);
+#endif
+    }
+    va_end(args);
+    normalize_slashes(out);
+    return out;
 }
 
 // Expand `~` → HOME or USERPROFILE
-void expand_home(char **bufptr) {
-  char *in = *bufptr;
+void expand_home(char **bufptr)
+{
+    char *in = *bufptr;
 
-  if (in[0] != '~')
-    return;
+    if (in[0] != '~')
+        return;
 
-  const char *home =
+    const char *home =
 #ifdef _WIN32
-      getenv("USERPROFILE");
+        getenv("USERPROFILE");
 #else
-      getenv("HOME");
+        getenv("HOME");
 #endif
 
-  if (!home)
-    return;
+    if (!home)
+        return;
 
-  size_t hl = strlen(home);
-  size_t rl = strlen(in);
+    size_t hl = strlen(home);
+    size_t rl = strlen(in);
 
-  char *out = mila_malloc(hl + rl + 1);
-  strcpy(out, home);
-  strcat(out, in + 1);
+    char *out = mila_malloc(hl + rl + 1);
+    strcpy(out, home);
+    strcat(out, in + 1);
 
-  free(in);
-  *bufptr = out;
+    free(in);
+    *bufptr = out;
 }
 
 // full transform
-char *transform_path(const char *input) {
-  if (!input)
-    return NULL;
+char *transform_path(const char *input)
+{
+    if (!input)
+        return NULL;
 
-  char *buf = mila_strdup(input);
+    char *buf = mila_strdup(input);
 
-  expand_home(&buf);
-  expand_env(&buf);
-  normalize_slashes(buf);
+    expand_home(&buf);
+    expand_env(&buf);
+    normalize_slashes(buf);
 
-  return buf;
+    return buf;
 }
 
-path_list *path_list_new(void) {
-  path_list *p = mila_malloc(sizeof(path_list));
-  if (!p)
-    return NULL;
-  p->count = 0;
-  p->capacity = 4;
-  p->items = mila_malloc(sizeof(char *) * p->capacity);
-  if (!p->items) {
-    free(p);
-    return NULL;
-  }
-  return p;
+path_list *path_list_new(void)
+{
+    path_list *p = mila_malloc(sizeof(path_list));
+    if (!p)
+        return NULL;
+    p->count = 0;
+    p->capacity = 4;
+    p->items = mila_malloc(sizeof(char *) * p->capacity);
+    if (!p->items)
+    {
+        free(p);
+        return NULL;
+    }
+    return p;
 }
 
 // Get the directory part of a path
-void path_dirname(const char *path, char *out, size_t outsize) {
-  if (!path || !*path) {
-    strncpy(out, ".", outsize);
-    out[outsize - 1] = '\0';
-    return;
-  }
+void path_dirname(const char *path, char *out, size_t outsize)
+{
+    if (!path || !*path)
+    {
+        strncpy(out, ".", outsize);
+        out[outsize - 1] = '\0';
+        return;
+    }
 
-  char tmp[1024];
-  strncpy(tmp, path, sizeof(tmp));
-  tmp[sizeof(tmp) - 1] = '\0';
+    char tmp[1024];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp) - 1] = '\0';
 
-  normalize_slashes(tmp);
+    normalize_slashes(tmp);
 
-  // remove trailing slashes
-  size_t len = strlen(tmp);
-  while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
-    tmp[len - 1] = '\0';
-    len--;
-  }
+    // remove trailing slashes
+    size_t len = strlen(tmp);
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
+    {
+        tmp[len - 1] = '\0';
+        len--;
+    }
 
-  // find last slash
-  char *slash = strrchr(tmp, '/');
+    // find last slash
+    char *slash = strrchr(tmp, '/');
 #ifdef _WIN32
-  if (!slash)
-    slash = strrchr(tmp, '\\');
+    if (!slash)
+        slash = strrchr(tmp, '\\');
 #endif
 
-  if (!slash) {
-    // no slash found
-    strncpy(out, ".", outsize);
-  } else if (slash == tmp) {
-    // path like "/foo"
-    strncpy(out, tmp, outsize);
-  } else {
-    *slash = '\0';
-    strncpy(out, tmp, outsize);
-  }
+    if (!slash)
+    {
+        // no slash found
+        strncpy(out, ".", outsize);
+    }
+    else if (slash == tmp)
+    {
+        // path like "/foo"
+        strncpy(out, tmp, outsize);
+    }
+    else
+    {
+        *slash = '\0';
+        strncpy(out, tmp, outsize);
+    }
 
-  out[outsize - 1] = '\0';
+    out[outsize - 1] = '\0';
 }
 
 // Get the file/base name part of a path
-void path_basename(const char *path, char *out, size_t outsize) {
-  if (!path || !*path) {
-    strncpy(out, ".", outsize);
-    out[outsize - 1] = '\0';
-    return;
-  }
+void path_basename(const char *path, char *out, size_t outsize)
+{
+    if (!path || !*path)
+    {
+        strncpy(out, ".", outsize);
+        out[outsize - 1] = '\0';
+        return;
+    }
 
-  char tmp[1024];
-  strncpy(tmp, path, sizeof(tmp));
-  tmp[sizeof(tmp) - 1] = '\0';
+    char tmp[1024];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp) - 1] = '\0';
 
-  normalize_slashes(tmp);
+    normalize_slashes(tmp);
 
-  // remove trailing slashes
-  size_t len = strlen(tmp);
-  while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
-    tmp[len - 1] = '\0';
-    len--;
-  }
+    // remove trailing slashes
+    size_t len = strlen(tmp);
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
+    {
+        tmp[len - 1] = '\0';
+        len--;
+    }
 
-  // find last slash
-  char *slash = strrchr(tmp, '/');
+    // find last slash
+    char *slash = strrchr(tmp, '/');
 #ifdef _WIN32
-  if (!slash)
-    slash = strrchr(tmp, '\\');
+    if (!slash)
+        slash = strrchr(tmp, '\\');
 #endif
 
-  if (!slash)
-    strncpy(out, tmp, outsize);
-  else
-    strncpy(out, slash + 1, outsize);
+    if (!slash)
+        strncpy(out, tmp, outsize);
+    else
+        strncpy(out, slash + 1, outsize);
 
-  out[outsize - 1] = '\0';
+    out[outsize - 1] = '\0';
 }
 
 // Get the directory part of a path. Returns mila_malloc'd string, caller must free.
-char *path_dirname_alloc(const char *path) {
-  if (!path || !*path) {
-    return mila_strdup(".");
-  }
+char *path_dirname_alloc(const char *path)
+{
+    if (!path || !*path)
+    {
+        return mila_strdup(".");
+    }
 
-  char tmp[1024];
-  strncpy(tmp, path, sizeof(tmp));
-  tmp[sizeof(tmp) - 1] = '\0';
+    char tmp[1024];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp) - 1] = '\0';
 
-  normalize_slashes(tmp);
+    normalize_slashes(tmp);
 
-  // remove trailing slashes
-  size_t len = strlen(tmp);
-  while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
-    tmp[len - 1] = '\0';
-    len--;
-  }
+    // remove trailing slashes
+    size_t len = strlen(tmp);
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
+    {
+        tmp[len - 1] = '\0';
+        len--;
+    }
 
-  // find last slash
-  char *slash = strrchr(tmp, '/');
+    // find last slash
+    char *slash = strrchr(tmp, '/');
 #ifdef _WIN32
-  if (!slash)
-    slash = strrchr(tmp, '\\');
+    if (!slash)
+        slash = strrchr(tmp, '\\');
 #endif
 
-  if (!slash) {
-    // no slash found
-    return mila_strdup(".");
-  } else if (slash == tmp) {
-    // path like "/foo"
-    return mila_strdup(tmp);
-  } else {
-    *slash = '\0';
-    return mila_strdup(tmp);
-  }
+    if (!slash)
+    {
+        // no slash found
+        return mila_strdup(".");
+    }
+    else if (slash == tmp)
+    {
+        // path like "/foo"
+        return mila_strdup(tmp);
+    }
+    else
+    {
+        *slash = '\0';
+        return mila_strdup(tmp);
+    }
 }
 
-char *path_basename_alloc(const char *path) {
-  if (!path || !*path) {
-    return mila_strdup(".");
-  }
+char *path_basename_alloc(const char *path)
+{
+    if (!path || !*path)
+    {
+        return mila_strdup(".");
+    }
 
-  char tmp[1024];
-  strncpy(tmp, path, sizeof(tmp));
-  tmp[sizeof(tmp) - 1] = '\0';
+    char tmp[1024];
+    strncpy(tmp, path, sizeof(tmp));
+    tmp[sizeof(tmp) - 1] = '\0';
 
-  normalize_slashes(tmp);
+    normalize_slashes(tmp);
 
-  size_t len = strlen(tmp);
-  while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
-    tmp[len - 1] = '\0';
-    len--;
-  }
+    size_t len = strlen(tmp);
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
+    {
+        tmp[len - 1] = '\0';
+        len--;
+    }
 
-  char *slash = strrchr(tmp, '/');
+    char *slash = strrchr(tmp, '/');
 #ifdef _WIN32
-  if (!slash)
-    slash = strrchr(tmp, '\\');
+    if (!slash)
+        slash = strrchr(tmp, '\\');
 #endif
 
-  if (!slash)
-    return mila_strdup(tmp);
-  else
-    return mila_strdup(slash + 1);
+    if (!slash)
+        return mila_strdup(tmp);
+    else
+        return mila_strdup(slash + 1);
 }
 
-char *path_basename_id_alloc(const char *path) {
+char *path_basename_id_alloc(const char *path)
+{
     char *base = path_basename_alloc(path);
-    for (char *p = base; *p; p++) {
-        if (!isalpha((unsigned char)*p)) {
+    for (char *p = base; *p; p++)
+    {
+        if (!isalpha((unsigned char)*p))
+        {
             *p = '\0';
             break;
         }
@@ -405,108 +495,288 @@ char *path_basename_id_alloc(const char *path) {
     return base;
 }
 
-void path_list_free(path_list *pl) {
-  if (!pl)
-    return;
-  for (int i = 0; i < pl->count; i++)
-    free(pl->items[i]);
-  free(pl->items);
-  free(pl);
+void path_list_free(path_list *pl)
+{
+    if (!pl)
+        return;
+    for (int i = 0; i < pl->count; i++)
+        free(pl->items[i]);
+    free(pl->items);
+    free(pl);
 }
 
-int path_list_add(path_list *pl, const char *path) {
-  if (!pl || !path)
-    return 0;
-
-  if (pl->count == pl->capacity) {
-    pl->capacity *= 2;
-    char **ni = realloc(pl->items, sizeof(char *) * pl->capacity);
-    if (!ni)
-      return 0;
-    pl->items = ni;
-  }
-
-  char *t = transform_path(path);
-  if (!t)
-    return 0;
-
-  pl->items[pl->count++] = t;
-  return 1;
-}
-
-int path_list_add_top(path_list *pl, const char *path) {
-  if (!pl || !path)
-    return 0;
- 
-  if (pl->count == pl->capacity) {
-    pl->capacity *= 2;
-    char **ni = realloc(pl->items, sizeof(char *) * pl->capacity);
-    if (!ni)
-      return 0;
-    pl->items = ni;
-  }
- 
-  char *t = transform_path(path);
-  if (!t)
-    return 0;
-
-  for (int i = pl->count; i > 0; i--)
-    pl->items[i] = pl->items[i - 1];
- 
-  pl->items[0] = t;
-  pl->count++;
-  return 1;
-}
-
-int path_list_remove(path_list *pl, const char *path) {
-  if (!pl || !path)
-    return 0;
-
-  char *t = transform_path(path);
-  if (!t)
-    return 0;
-
-  for (int i = 0; i < pl->count; i++) {
-    if (strcmp(pl->items[i], t) == 0) {
-      free(pl->items[i]);
-      for (int j = i; j < pl->count - 1; j++)
-        pl->items[j] = pl->items[j + 1];
-      pl->count--;
-      free(t);
-      return 1;
+int path_list_add(path_list *pl, const char *path)
+{
+#ifndef ML_NO_THREADING
+    pthread_mutex_lock(&mila_search_path_lock);
+#endif
+    if (!pl || !path)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+        return 0;
     }
-  }
 
-  free(t);
-  return 0;
+    if (pl->count == pl->capacity)
+    {
+        pl->capacity *= 2;
+        char **ni = realloc(pl->items, sizeof(char *) * pl->capacity);
+        if (!ni)
+        {
+#ifndef ML_NO_THREADING
+            pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+            return 0;
+        }
+        pl->items = ni;
+    }
+
+    char *t = transform_path(path);
+    if (!t)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+        return 0;
+    }
+
+    pl->items[pl->count++] = t;
+#ifndef ML_NO_THREADING
+    pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+    return 1;
 }
 
-char *path_list_find(path_list *pl, const char *file) {
-  if (!pl || !file)
-    return NULL;
+int path_list_add_top(path_list *pl, const char *path)
+{
+#ifndef ML_NO_THREADING
+    pthread_mutex_lock(&mila_search_path_lock);
+#endif
+    if (!pl || !path)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+        return 0;
+    }
 
-  char *tfile = transform_path(file);
-  if (!tfile)
-    return NULL;
+    if (pl->count == pl->capacity)
+    {
+        pl->capacity *= 2;
+        char **ni = realloc(pl->items, sizeof(char *) * pl->capacity);
+        if (!ni)
+        {
+#ifndef ML_NO_THREADING
+            pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+            return 0;
+        }
+        pl->items = ni;
+    }
 
-  int is_absolute = (tfile[0] == '/' || tfile[0] == '\\');
+    char *t = transform_path(path);
+    if (!t)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+        return 0;
+    }
+
+    for (int i = pl->count; i > 0; i--)
+        pl->items[i] = pl->items[i - 1];
+
+    pl->items[0] = t;
+    pl->count++;
+#ifndef ML_NO_THREADING
+    pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+    return 1;
+}
+
+int path_list_remove(path_list *pl, const char *path)
+{
+#ifndef ML_NO_THREADING
+    pthread_mutex_lock(&mila_search_path_lock);
+#endif
+    if (!pl || !path)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+        return 0;
+    }
+
+    char *t = transform_path(path);
+    if (!t)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+        return 0;
+    }
+
+    for (int i = 0; i < pl->count; i++)
+    {
+        if (strcmp(pl->items[i], t) == 0)
+        {
+            free(pl->items[i]);
+            for (int j = i; j < pl->count - 1; j++)
+                pl->items[j] = pl->items[j + 1];
+            pl->count--;
+            free(t);
+#ifndef ML_NO_THREADING
+            pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+            return 1;
+        }
+    }
+
+    free(t);
+#ifndef ML_NO_THREADING
+    pthread_mutex_unlock(&mila_search_path_lock);
+#endif
+    return 0;
+}
+
+char *path_list_find(path_list *pl, const char *file)
+{
+#ifndef ML_NO_THREADING
+    pthread_mutex_lock(&mila_search_path_lock_read);
+#endif
+    if (!pl || !file)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+        return NULL;
+    }
+
+    char *tfile = transform_path(file);
+    if (!tfile)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+        return NULL;
+    }
+
+    int is_absolute = (tfile[0] == '/' || tfile[0] == '\\');
 #ifdef _WIN32
-  if (!is_absolute && tfile[1] == ':') is_absolute = 1;
+    if (!is_absolute && tfile[1] == ':')
+        is_absolute = 1;
 #endif
 
-  if (is_absolute) {
-    if (file_exists(tfile)) return tfile;
-    free(tfile);
-    return NULL;
-  }
+    if (is_absolute)
+    {
+        if (file_exists(tfile))
+        {
+#ifndef ML_NO_THREADING
+            pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+            return tfile;
+        }
+        free(tfile);
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+        return NULL;
+    }
 
-  for (int i = 0; i < pl->count ; ++i) {
-    const char *root = pl->items[i];
+    for (int i = 0; i < pl->count; ++i)
+    {
+        const char *root = pl->items[i];
+        size_t rl = strlen(root);
+        size_t fl = strlen(tfile);
+        size_t need = rl + 1 + fl + 1;
+        char *full = mila_malloc(need);
+        if (!full)
+            continue;
+        strcpy(full, root);
+        char sep =
+#ifdef _WIN32
+            '\\';
+#else
+            '/';
+#endif
+        if (rl > 0 && root[rl - 1] != sep)
+            full[rl] = sep, full[rl + 1] = '\0';
+        strcat(full, tfile);
+        if (file_exists(full))
+        {
+            free(tfile);
+#ifndef ML_NO_THREADING
+            pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+            return full;
+        }
+        free(full);
+    }
+    free(tfile);
+#ifndef ML_NO_THREADING
+    pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+    return NULL;
+}
+
+// just return the highest path (this case the first one)
+char *path_list_find_alternative(path_list *pl, const char *file)
+{
+#ifndef ML_NO_THREADING
+    pthread_mutex_lock(&mila_search_path_lock_read);
+#endif
+    if (!pl || !file)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+        return NULL;
+    }
+
+    char *tfile = transform_path(file);
+    if (!tfile)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+        return NULL;
+    }
+
+    int is_absolute = (tfile[0] == '/' || tfile[0] == '\\');
+#ifdef _WIN32
+    if (!is_absolute && tfile[1] == ':')
+        is_absolute = 1;
+#endif
+
+    if (is_absolute)
+    {
+        if (file_exists(tfile))
+        {
+#ifndef ML_NO_THREADING
+            pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+            return tfile;
+        }
+        free(tfile);
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+        return strdup(file);
+    }
+
+    const char *root = pl->items[0];
     size_t rl = strlen(root);
     size_t fl = strlen(tfile);
     size_t need = rl + 1 + fl + 1;
     char *full = mila_malloc(need);
-    if (!full) continue;
+    if (!full)
+    {
+#ifndef ML_NO_THREADING
+        pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+        return NULL;
+    }
     strcpy(full, root);
     char sep =
 #ifdef _WIN32
@@ -515,22 +785,20 @@ char *path_list_find(path_list *pl, const char *file) {
         '/';
 #endif
     if (rl > 0 && root[rl - 1] != sep)
-      full[rl] = sep, full[rl + 1] = '\0';
+        full[rl] = sep, full[rl + 1] = '\0';
     strcat(full, tfile);
-    if (file_exists(full)) {
-      free(tfile);
-      return full;
-    }
-    free(full);
-  }
-  free(tfile);
-  return NULL;
+
+#ifndef ML_NO_THREADING
+    pthread_mutex_unlock(&mila_search_path_lock_read);
+#endif
+    return full;
 }
 
-char *path_get_cwd(void) {
-  char *cwd = PATH_GETCWD(NULL, 0);
-  if (!cwd)
-    return NULL;
-  normalize_slashes(cwd);
-  return cwd;
+char *path_get_cwd(void)
+{
+    char *cwd = PATH_GETCWD(NULL, 0);
+    if (!cwd)
+        return NULL;
+    normalize_slashes(cwd);
+    return cwd;
 }

@@ -283,6 +283,17 @@ struct Env
     Var *contextual_vars;
     Env *parent;
 };
+#ifndef ML_NO_CACHED_MODS
+extern Value* mila_cached_modules;
+#endif
+
+#ifndef ML_NO_THREADING
+#include <pthread.h>
+extern pthread_mutex_t mila_cached_modules_lock;
+extern pthread_mutex_t mila_cached_modules_lock_read;
+extern pthread_mutex_t mila_search_path_lock;
+extern pthread_mutex_t mila_search_path_lock_read;
+#endif
 
 // Make an environment
 Env *env_new(Env *parent);
@@ -324,92 +335,92 @@ void env_register_builtins(Env *g);
 // == Value Related
 
 // Return an int if a MiLa value is truthy
-int is_truthy(Value *value);
+static inline int is_truthy(Value *value);
 // Make a new value with a type
-Value *val_new(ValueType t);
+static inline Value *val_new(ValueType t);
 // Make a new value with a type
-Value *val_new_raw(ValueType t);
+static inline Value *val_new_raw(ValueType t);
 // Copy a value
-Value* val_copy(Value *src);
+static inline Value* val_copy(Value *src);
 // Copy a value shallowly
-Value* val_copy_shallow(Value *src);
+static inline Value* val_copy_shallow(Value *src);
 // Allocate a method table for a value
-void val_allocate_table(Value *v);
+static inline void val_allocate_table(Value *v);
 // Make a standalone method table
-MethodTable *val_make_table(void);
+static inline MethodTable *val_make_table(void);
 // Set a values method table
-void val_set_table(Value *v, MethodTable *t);
+static inline void val_set_table(Value *v, MethodTable *t);
 // Set the method of a value
-void val_set_method(Value *v, MethodType t, void* func);
+static inline void val_set_method(Value *v, MethodType t, void* func);
 // Set the method of a method table
-void val_set_method_table(MethodTable *v, MethodType t, void* func);
+static inline void val_set_method_table(MethodTable *v, MethodType t, void* func);
 //  Unset the method of a method table
-void val_unset_method_table(MethodTable *v, MethodType t);
+static inline void val_unset_method_table(MethodTable *v, MethodType t);
 // Unset the method of a value
-void val_unset_method(Value *v, MethodType t);
+static inline void val_unset_method(Value *v, MethodType t);
 // Own a value
-extern Value *val_retain(Value *v);
+static inline Value *val_retain(Value *v);
 // Disown a value
-extern void val_release(Value *v);
+static inline void val_release(Value *v);
 // Free a value regardless of refcount
-void val_kill(Value *v);
+static inline void val_kill(Value *v);
 // Integer contructor
-extern Value *vint(long i);
+static inline Value *vint(long i);
 // Pointer Inlined Integer Constructor
-extern Value *vptr_int(long x);
+static inline Value *vptr_int(long x);
 // Uint constructor
-extern Value *vuint(unsigned long i);
+static inline Value *vuint(unsigned long i);
 // Float constructor
-extern Value *vfloat(double f);
+static inline Value *vfloat(double f);
 // Bool constructor
-extern Value *vbool(int b);
+static inline Value *vbool(int b);
 // Duplicate a string
-extern Value *vstring_dup(const char *s);
+static inline Value *vstring_dup(const char *s);
 // Take a string (assuming MiLa can free it)
-extern Value *vstring_take(char *s);
+static inline Value *vstring_take(char *s);
 // Generates a string from an fmt
 __attribute__((format(printf, 1, 2)))
-extern Value *vstring_fmt(char *fmt, ...);
+static inline Value *vstring_fmt(char *fmt, ...);
 // Slice a string
-extern Value *vstring_slice(const char *src, size_t start, size_t len);
+static inline Value *vstring_slice(const char *src, size_t start, size_t len);
 // Index a string
-extern Value *vstring_index(const char *src, size_t index);
+static inline Value *vstring_index(const char *src, size_t index);
 // Replace some path of a string (used string.patch)
-extern Value *vstring_replace(const char *src,
+static inline Value *vstring_replace(const char *src,
                        const char *needle,
                        const char *repl);
 // Opaque pointer constructor
-extern Value *vopaque(void *p);
+static inline Value *vopaque(void *p);
 // Owned opaque pointer constructor (MiLa takes ownership)
-extern Value *vowned_opaque(void *p);
+static inline Value *vowned_opaque(void *p);
 // Create a native function
-extern Value *vnative(NativeFn fn, const char *name);
+static inline Value *vnative(NativeFn fn, const char *name);
 // Create a bool if a value is truthy
-extern Value *vtruthy(Value *value);
-extern Value *vbreak();
-extern Value *vcontinue();
-extern Value *vbreak_step(unsigned long step);
-extern Value *vcontinue_step(unsigned long step);
+static inline Value *vtruthy(Value *value);
+static inline Value *vbreak();
+static inline Value *vcontinue();
+static inline Value *vbreak_step(unsigned long step);
+static inline Value *vcontinue_step(unsigned long step);
 // Null
-extern Value *vnull();
+static inline Value *vnull();
 // None
-extern Value *vnone();
+static inline Value *vnone();
 // Error
 __attribute__((format(printf, 1, 2)))
-Value *verror(char *message, ...);
+static inline Value *verror(char *message, ...);
 // Tagged error
 __attribute__((format(printf, 2, 3)))
-Value *vtagged_error(ErrorType type, char *message, ...);
+static inline Value *vtagged_error(ErrorType type, char *message, ...);
 // Tagged error with a return code
 __attribute__((format(printf, 3, 4)))
-Value *vtagged_coded_error(ErrorType type, int ret_code, char *message, ...);
+static inline Value *vtagged_coded_error(ErrorType type, int ret_code, char *message, ...);
 // Create a function
-Value *vfunction(char **params, char** defaults, char** contextuals, Env* closure, char *body_src);
+static inline Value *vfunction(char **params, char** defaults, char** contextuals, Env* closure, char *body_src);
 // Check if a value is any numeric type
-extern int is_number(Value *v);
+static inline int is_number(Value *v);
 // Turn any numeric type to a double
-extern double to_double(Value *v);
-extern unsigned long to_uint(Value *v);
+static inline double to_double(Value *v);
+static inline unsigned long to_uint(Value *v);
 // Turn a value into its string equivalent
 Value *to_string(Value *v);
 // Turn a value into its c string equivalent
@@ -431,11 +442,11 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 // Call a function from within an environment using its name representation
 Value *call_function_str(Env *env, const char *fnname, Value *first, ...);
 // Create an opaque
-Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+static inline Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Create an owned opaque
-Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+static inline Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Short hand to create a dict
-Value *make_dict(Value *first, ...);
+static inline Value *make_dict(Value *first, ...);
 // Short hand to create a list
 Value *make_list(Value *first, ...);
 #ifndef EXT_WEB
@@ -464,6 +475,8 @@ typedef struct
     char *name;
     NativeFn func;
 } NativeEntry;
+
+double get_unix_timestamp(void);
 
 // ================= NOT SO PUBLIC APIS (or spicy api stuff, depends on your mood)
 
@@ -535,7 +548,7 @@ const int MILA_TYPE_COUNT = T_ARG_END;
 
 const int MILA_ERROR_COUNT = E_THREAD_HALT;
 
-path_list *search_path;
+extern path_list *mila_search_path;
 
 #else
 extern path_list *search_path;
@@ -649,31 +662,31 @@ typedef struct Src
 
 Src *src_new(const char *s);
 void src_free(Src *s);
-extern void skip_ws(Src *s);
-extern char src_peek(Src *s);
-extern void skip_expr(Src *s);
-extern void skip_block(Src *s);
-extern char src_get(Src *s);
-extern int src_eof(Src *s);
+static inline void skip_ws(Src *s);
+static inline char src_peek(Src *s);
+static inline void skip_expr(Src *s);
+static inline void skip_block(Src *s);
+static inline char src_get(Src *s);
+static inline int src_eof(Src *s);
 void src_advance_by(Src* s, size_t amount);
 int is_ident_start(char c);
 uint64_t get_line_pos(Src *src);
 int report(Src *src, FILE *fp, const char *fmt, ...);
 int match_char(Src *s, char c);
-extern char *parse_ident_string(Src *s);
-extern char *parse_ident(Src *s);
-extern Value *parse_number(Src *s);
-extern Value *parse_string(Src *s);
-extern int is_keyword_at(Src *s, const char *kw);
+static inline char *parse_ident_string(Src *s);
+static inline char *parse_ident(Src *s);
+static inline Value *parse_number(Src *s);
+static inline Value *parse_string(Src *s);
+static inline int is_keyword_at(Src *s, const char *kw);
 char *dup_substr(Src *s, int a, int b);
 FunctionParameters *parse_param_list(Src *s);
 char** parse_context_list(Src *s);
 Value *eval_block(Src *s, Env *env);
 extern Value *eval_primary(Src *s, Env *env);
-Value *binary_op(Value *a, MethodType op, Value *b);
+static inline Value *binary_op(Value *a, MethodType op, Value *b);
 Value *binary_op_objects(Env* env, char right, Value* a, MethodType op, Value* b);
-int precedence_of(MethodType op);
-MethodType parse_op(Src *s);
+static inline int precedence_of(MethodType op);
+static inline MethodType parse_op(Src *s);
 Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
@@ -713,9 +726,9 @@ void mila_global_deinit(Env* env);
 Env* mila_init(void);
 void mila_deinit(Env* env);
 
-extern void* mila_malloc(size_t size);
-extern void* mila_realloc(void* ptr, size_t size);
-extern void mila_free(void* ptr);
+static inline void* mila_malloc(size_t size);
+static inline void* mila_realloc(void* ptr, size_t size);
+static inline void mila_free(void* ptr);
 
 // Misc
 unsigned long get_process_id(void);

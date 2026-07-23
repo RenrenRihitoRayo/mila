@@ -24,12 +24,6 @@ MethodTable *array_meta = NULL;
 MethodTable *range_meta = NULL;
 MethodTable *istring_meta = NULL;
 
-Value *list_to_iter(Value *self)
-{
-    Value **iter = ll_to_iter((LinkedList*)self->v);
-    return vopaque(iter);
-}
-
 Value *list_repr(Value *self)
 {
     LinkedList *lst = (LinkedList *)self->v;
@@ -156,6 +150,43 @@ Value *list_free(Value *self)
     self->type = T_NULL;
     self->v = NULL;
     return NULL;
+}
+
+Value *native_list_append(Env *env, int argc, Value **argv)
+{
+    ll_append(GET_OPAQUE(argv[0]), val_retain(argv[1]));
+    return vnull();
+}
+
+Value *native_list_contains(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    Value **list = ll_to_iter(GET_OPAQUE(argv[0]));
+    for (long i = 0; list[i]; ++i)
+    {
+        Value *value = binary_op(argv[1], BMethodEq, list[i]);
+        if (is_truthy(value))
+        {
+            val_release(value);
+            for (; list[i]; ++i)
+                val_release(list[i]);
+            mila_free(list);
+            return vbool(1);
+        }
+        val_release(value);
+        val_release(list[i]);
+    }
+    mila_free(list);
+    return vbool(0);
+}
+
+Value *native_list_slice(Env *env, int argc, Value** argv) {
+    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0 || !is_number(argv[1]) || !is_number(argv[2]))
+    {
+        return verror("list.slice(list, start, len): Expects three arguments mila:list, num, num (list, start, len)");
+    }
+    
+    return ll_slice_ll((LinkedList*)GET_OPAQUE(argv[0]), to_uint(argv[1]), to_uint(argv[2]));
 }
 
 Value *native_new_dict(Env *env, int argc, Value **argv)
@@ -335,35 +366,6 @@ Value *array_to_repr(Value *self)
     return vstring_take(buffer);
 }
 
-Value *array_to_iter(Value *self)
-{
-    Value *arrv = self;
-    if (arrv->type != T_OPAQUE)
-    {
-        return verror("array<UMethodToIter>: first arg must be an array (opaque)");
-    }
-
-    Array *arr = (Array *)arrv->v;
-    if (!arr)
-    {
-        return verror("array<UMethodToIter>: null array data");
-    }
-
-    Value **values = (Value **)mila_malloc(sizeof(Value *) * (arr->size + 1));
-    values[arr->size] = NULL;
-
-    int i = 1;
-    for (int t = 0; t < arr->size; ++t)
-    {
-        if (arr->array[t] == NULL)
-            continue;
-        values[i++] = val_retain(arr->array[t]);
-    }
-    values[0] = vuint((unsigned long)arr->size);
-
-    return vopaque(values);
-}
-
 ArrayIterState* array_iter_init(Value* self) {
   ArrayIterState* state = (ArrayIterState*)mila_malloc(sizeof(ArrayIterState));
   Array* arr = (Array*)GET_OPAQUE(self);
@@ -414,23 +416,6 @@ Value *range_to_iter(Value *self)
     v[index] = NULL;
     v[0] = vuint(index);
     return vopaque(v);
-}
-
-Value* range_genth_worker(CGenData* cgen_data)
-{
-    ThreadContext* ctx = cgen_data->ctx;
-    Range* data = GET_OPAQUE(cgen_data->data);
-    for (long i = data->start; i < data->end; i += data->step)
-    {
-        thread_yield(ctx, vint(i));
-    }
-    return NULL;
-}
-
-Value *range_to_gen(Value *self)
-{
-    int th_id = make_cgen(range_genth_worker, self);
-    return vint(th_id);
 }
 
 Value *range_to_str(Value *self)

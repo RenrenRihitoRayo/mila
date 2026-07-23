@@ -39,6 +39,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <limits.h>
+#include <ctype.h>
 
 #define MILA_LPREFIX "mila:"
 #define ML(x) MILA_LPREFIX x
@@ -691,7 +692,8 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);
-extern double to_double(Value *v);
+static inline double to_double(Value *v);
+static inline long to_int(Value *v);
 
 // == Helpers
 void sleep_ms(uint64_t ms);

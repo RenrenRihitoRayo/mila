@@ -778,7 +778,7 @@ Value *native_str_copy(Env *env, int argc, Value **argv)
 {
     (void)env;
     (void)argc;
-    if (!match_types(argv, T_STRING))
+    if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
     return vstring_dup(GET_STRING(argv[0]));
 }
@@ -915,4 +915,26 @@ Value* native_str_caseless_find(Env* env, int argc, Value** argv) {
     if (!v) return vint(-1);
     long index = v - haystack;
     return vint(index);
+}
+
+Value* native_str_toupper(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("str.toupper(str): Expected 1 argument!");
+    char* str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    char* upper = mila_malloc(sizeof(char)*len+1);
+    upper[len-1] = 0;
+    for (size_t i = 0; i < len; ++i)
+        upper[i] = toupper(str[i]);
+    return vstring_take(upper);
+}
+
+Value* native_str_tolower(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("str.tolower(str): Expected 1 argument!");
+    char* str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    char* upper = mila_malloc(sizeof(char)*len+1);
+    upper[len-1] = 0;
+    for (size_t i = 0; i < len; ++i)
+        upper[i] = tolower(str[i]);
+    return vstring_take(upper);
 }

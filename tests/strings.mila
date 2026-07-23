@@ -1,0 +1,24 @@
+// Strings test suite
+var str = "Hello, World!";
+println(str, "=>", str.toupper(str));
+println(str, "=>", str.tolower(str));
+println(str, "=>", str.slice(str, 7));
+println(str, "=>", str.slice(str, 7, 3));
+println(str, "=>", str.len(str));
+println(str, "=>", str.find(",", str));
+println(str, "=>", str.caseless_find("w", str));
+println(str, "=>", str.contains("W", str));
+println(str, "=>", str.caseless_contains("w", str));
+println(str, "=>", str.startswith(str, "Hello"));
+println(str, "=>", str.endswith(str, "World!"));
+println(str, "=>", str.match_find(str, "*,*")); // matches entire string thus 0
+println(str, "=>", str.match_replace(str, "[aeiou]", "*"));
+println(str, "=>", str.split(str, ","));
+println(str, "=>", str.join("|", str.split(str, ",")));
+println(str, "=>", str.patch(str, "World", "User"));
+println(str, "=>", str.copy(str));
+// Test concat
+println(str, "=>", str + " concat: " + none + null + 90 + 0.1 + true + fn{} + stdout + str.copy);
+// Mutates
+println(str, "=>", str.pop_f(str));
+println(str, "=>", str.pop_b(str));

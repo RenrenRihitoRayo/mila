@@ -197,6 +197,38 @@ Value *native_input(Env *env, int argc, Value **argv)
     return res ? vstring_take(res) : vnull();
 }
 
+static _Thread_local Value *_mila_qsort_fn = NULL;
+
+int item_qsort_compare(void *a, void *b)
+{
+    Value *av = *(Value **)a;
+    Value *bv = *(Value **)b;
+    Value *res = call_function_with(NULL, _mila_qsort_fn, val_retain(av), val_retain(bv), NULL);
+    int final = (int)GET_INTEGER(res);
+    val_release(res);
+    return final;
+}
+
+Value *native_qsort(Env *env, int argc, Value **argv)
+{
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0 || GET_TYPE(argv[1]) != T_FUNCTION)
+    {
+        return verror("qsort(items, func): Invalid arguments.");
+    }
+    Value **list = ll_to_iter((LinkedList *)GET_OPAQUE(argv[0]));
+    _mila_qsort_fn = argv[1];
+    qsort(list + 1, GET_UINTEGER(list[0])-1, sizeof(Value *), (void*)item_qsort_compare);
+    Value* res = make_list(NULL);
+    for (unsigned long i = 1; i < GET_UINTEGER(list[0]); i++)
+    {
+        val_release(call_native_with(NULL, native_list_append, val_retain(res), val_retain(list[i]), NULL));
+        val_release(list[i]);
+    }
+    val_release(list[0]);
+    free(list);
+    return res;
+}
+
 Value *native_cast_int(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -378,6 +410,11 @@ Value *file_printer(Value *self)
     return vstring_take(buffer);
 }
 
+Value *native_isatty(Env* env, int argc, Value **argv) {
+    if (argc != 1 || !is_number(argv[0])) return verror("istty(fd): Invalid arguments.");
+    return vbool(isatty((int)to_int(argv[0])));
+}
+
 Value *native_open(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -422,7 +459,6 @@ Value *native_fdopen(Env *env, int argc, Value **argv)
     {
         return verror("fdopen(filedescriptor, mode) expects 2 string args.");
     }
-    char *path = GET_STRING(argv[0]);
     if (!mila_search_path)
     {
         char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
@@ -486,7 +522,7 @@ Value *native_fdredirect(Env *env, int argc, Value **argv)
         return verror("fredirect(oldfd, newfd): Expected newfd to be a file or a file descriptor, got %s", GET_TYPENAME(argv[1]));
     }
     int og_fd = dup(oldfd);
-    int err = dup2(oldfd, newfd);
+    dup2(oldfd, newfd);
     return vint(og_fd);
 }
 
@@ -651,15 +687,14 @@ Value *native_fprint_bytes(Env *env, int argc, Value **argv)
         return verror("fprint_bytes(file, bytes): file handle is closed or invalid.");
     }
     Value **list = ll_to_iter((LinkedList *)GET_OPAQUE(argv[1]));
-    long size = GET_INTEGER(list[0]);
-    for (long i = 1; i < size; i++)
+    for (unsigned long i = 1; i < GET_UINTEGER(list[0]); i++)
     {
         char c = GET_INTEGER(list[i]);
         size_t written = fwrite(&c, 1, 1, f);
         val_release(list[i]);
     }
-    val_release(list[0]);
-    return vint(size);
+    free(list);
+    return vuint(GET_UINTEGER(list[0])-1);
 }
 
 Value *native_fread(Env *env, int argc, Value **argv)
@@ -1015,7 +1050,7 @@ Value *native_require(Env *env, int argc, Value **argv)
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_cached_modules_lock);
 #endif
-        
+
         return res;
     }
 
@@ -1892,6 +1927,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "hash", native_hash);
     env_register_native(g, "hash.set_seed", native_hash_set_seed);
     env_register_native(g, "hash._get_seed", native_hash_get_seed);
+    // Organize
+    env_register_native(g, "qsort", native_qsort);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
@@ -1922,6 +1959,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "file.is_file", native_file_is_file);
     env_register_native(g, "file.is_dir", native_file_is_dir);
     env_register_native(g, "file.list_dir", native_file_list_dir);
+    env_register_native(g, "isatty", native_isatty);
     env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
     env_set_raw(g, "SEEK_END", vint(SEEK_END));
     env_set_raw(g, "SEEK_CUR", vint(SEEK_CUR));
@@ -1999,6 +2037,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.caseless_find", native_str_caseless_find);
     env_register_native(g, "str.match_replace", native_str_match_replace);
     env_register_native(g, "str.match_find", native_str_match_find);
+    env_register_native(g, "str.toupper", native_str_toupper);
+    env_register_native(g, "str.tolower", native_str_tolower);
 
     env_register_native(g, "istring", native_istring);
     // === ASCII
@@ -2054,6 +2094,8 @@ void env_register_builtins(Env *g)
     env_register_native(g, "sys.get_platform", native_sys_get_platform);
     env_register_native(g, "sys.get_arch", native_sys_get_arch);
     env_register_native(g, "sys.get_pid", native_sys_get_pid);
+    env_register_native(g, "sys.setenv", native_sys_setenv);
+    env_register_native(g, "sys.getenv", native_sys_getenv);
 #endif
     // === Modules and Libs
 #ifndef ML_NO_EXECUTABLES

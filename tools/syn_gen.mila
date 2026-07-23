@@ -1,44 +1,76 @@
 
-!fn (argc, _, for="vim")
+!fn (argc, _, for="vim", bsize="10")
 // Generate syntax for vim or sublime files
+
+var batch_size = cast.int(bsize);
 
 var names = [];
 
-print("Parsing");
+var file;
+if (isatty(stdin_fd)) {
+    set file = open("ml_builtins.c", "r");
+} else {
+    set file = stdin;
+}
 
-var file = open("ml_builtins.c", "r");
+fprint(stderr, "Parsing");
+
 var text = fread_all(file);
 var start = str.find("env_register_builtins", text);
 var final_text = str.slice(text, start);
 var lines = str.split(final_text, "\n");
 
-foreach line : lines {
-    if (str.startswith(line, "    env_register_native")) {
-        set line = str.slice(line, 28);
+foreach line : lines
+{
+    if (line => "*env_register_native*")
+    {
+        set line = str.slice(line, str.find("\"", line)+1);
         var end = str.find("\"", line);
         list.append(names, str.slice(line, 0, end));
     }
 }
 
-println(": Done.");
+fprint(stderr, ": Done.\n");
 
-println("For:", for);
+fprint(stderr, "For: " + for + "\n");
 
-fclose(file);
+if (isatty(stdin_fd)) fclose(file);
 
-if (for == "vim") {
-    println("syntax match milaBuiltins \"" + str.join("\\|", names) + "\"");
-} elif (for == "sublime") {
+if (for != "json") set names = qsort(names, fn(a,b):[str.len] {return str.len(b) - str.len(a);});
+
+if (for == "vim")
+{
+    var i = 0;
+    while (i < list.len(names)) {
+        println("syntax match milaBuiltins \"\\<" + str.join("\\>\\|\\<", list.slice(names, i, batch_size)) + "\\>\"");
+        set i += batch_size;
+    }
+}
+elif (for == "sublime")
+{
     // Esxape dots because sublime regex
-    foreach i : range(list.len(names)) {
+    foreach i : range(list.len(names))
+    {
         var name = names[i];
-        if (str.find(".", name) != -1) {
+        if (str.find(".", name) != -1)
+        {
             var name = str.join("\\.", str.split(name, "."));
             set names[i] = name;
         }
     }
-    println("  - match: '\\b(" + str.join("|", names) + ")\\b'")
-    println("    scope: support.function.mila")
-} else {
-    println("Invalid target:", for);
+    println("  builtins:")
+    var i = 0;
+    while (i < list.len(names)) {
+        println("    - match: '\\b(" + str.join("|", list.slice(names, i, batch_size)) + ")\\b'");
+        println("      scope: support.function.mila");
+        set i += batch_size;
+    }
+}
+elif (for == "json")
+{
+    println(json.dumps([@ "names" = names, "version" = __mila_version, "count" = list.len(names)]));
+}
+else
+{
+    fprint(stderr, "Invalid target: " + for);
 }

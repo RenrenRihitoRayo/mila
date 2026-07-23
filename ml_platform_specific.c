@@ -60,3 +60,24 @@ Value* native_sys_get_arch(Env* env, int argc, Value** argv) {
     return vstring_dup("unknown");
 #endif
 }
+
+Value* native_sys_getenv(Env* env, int argc, Value** argv)
+{
+    if (argc != 1 && GET_TYPE(argv[0]) != T_STRING)
+    {
+        return verror("sys.getenv(name): Invalid arguments.");
+    }
+    char* value = getenv(GET_STRING(argv[0]));
+    if (!value) return vnull();
+    return vstring_dup(value);
+}
+
+Value* native_sys_setenv(Env* env, int argc, Value** argv)
+{
+    if (argc != 2 && GET_TYPE(argv[0]) != T_STRING && GET_TYPE(argv[1]) != T_STRING)
+    {
+        return verror("sys.setenv(name, value): Invalid arguments.");
+    }
+    int err = setenv(GET_STRING(argv[0]), GET_STRING(argv[1]), 1);
+    return vint(err);
+}

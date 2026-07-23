@@ -2,13 +2,39 @@
 " Save as ~/.vim/syntax/mila.vim
 
 " Keywords
-syntax keyword milaKeyword if elif else while fn set var export return break continue contextual forget
+syntax keyword milaKeyword if elif else while fn set var export return break continue contextual forget foreach
 
 syntax keyword keyword_indent "{"
 syntax keyword keyword_dedent "}"
 
 " Builtins
-syntax match milaBuiltins "range\|own\|unown\|copy\|repr\|repr_raw\|random\|srandom\|noise\|crandom\|dump_mila_search_paths\|is\|hash\|hash.set_seed\|hash._get_seed\|print\|printr\|println\|input\|and\|or\|xor\|not\|open\|fdopen\|fdredirect\|fclose\|close\|fprint\|fprint_bytes\|fread\|fread_all\|fread_bytes\|fread_all_bytes\|fseek\|ftell\|fflush\|file.exists\|file.is_file\|file.is_dir\|file.list_dir\|list\|list.pop\|list.len\|list.append\|list.contains\|list.index\|list.slice\|list.deconstruct\|array\|array.from\|array.len\|dict\|dict.rem\|dict.keys\|cast.int\|cast.float\|cast.str\|cast.i2f\|cast.i2u\|cast.u2i\|cast.f2i\|typeof\|_typeof\|is_numeric\|as_opaque\|from_opaque\|mjson.loads\|mjson.dumps\|json.loads\|json.dumps\|str.slice\|str.index\|str.patch\|str.copy\|str.len\|str.pop_f\|str.pop_b\|str.split\|str.join\|str.startswith\|str.endswith\|str.contains\|str.caseless_contains\|str.find\|str.caseless_find\|str.match_replace\|str.match_find\|istring\|ascii.from_int\|ascii.from_string\|floor\|ceil\|sqrt\|sqrtf\|sin\|cos\|tan\|atan2\|pow\|rand\|fabs\|abs\|report\|report_tagged\|assert\|exit\|abort\|get_time\|time_sleep\|time_sleep_ms\|strftime\|get_tm_gmt\|get_tm_local\|_breakpoint\|system\|sys.get_platform\|sys.get_arch\|sys.get_pid\|run\|require\|invoke\|load\|eval\|thread.make\|thread.join\|thread.cancel\|thread.check_cancel\|thread.set_daemon\|thread.get_pthread_id\|thread.status\|thread.mutex\|thread.mutex_unlock\|thread.mutex_lock\|thread.dump"
+syntax match milaBuiltins "\<or\>\|\<is\>\|\<own\>\|\<abs\>\|\<sin\>"
+syntax match milaBuiltins "\<pow\>\|\<and\>\|\<xor\>\|\<not\>\|\<tan\>"
+syntax match milaBuiltins "\<cos\>\|\<run\>\|\<dict\>\|\<open\>\|\<copy\>"
+syntax match milaBuiltins "\<list\>\|\<exit\>\|\<rand\>\|\<eval\>\|\<hash\>"
+syntax match milaBuiltins "\<load\>\|\<fabs\>\|\<sqrt\>\|\<ceil\>\|\<repr\>"
+syntax match milaBuiltins "\<range\>\|\<sqrtf\>\|\<floor\>\|\<noise\>\|\<qsort\>"
+syntax match milaBuiltins "\<print\>\|\<input\>\|\<close\>\|\<fread\>\|\<fseek\>"
+syntax match milaBuiltins "\<ftell\>\|\<abort\>\|\<unown\>\|\<array\>\|\<atan2\>"
+syntax match milaBuiltins "\<printr\>\|\<fprint\>\|\<fclose\>\|\<typeof\>\|\<system\>"
+syntax match milaBuiltins "\<invoke\>\|\<random\>\|\<assert\>\|\<report\>\|\<fflush\>"
+syntax match milaBuiltins "\<fdopen\>\|\<_typeof\>\|\<crandom\>\|\<istring\>\|\<require\>"
+syntax match milaBuiltins "\<str.len\>\|\<srandom\>\|\<println\>\|\<get_time\>\|\<list.pop\>"
+syntax match milaBuiltins "\<list.len\>\|\<str.join\>\|\<str.find\>\|\<dict.rem\>\|\<cast.int\>"
+syntax match milaBuiltins "\<cast.str\>\|\<cast.i2f\>\|\<cast.i2u\>\|\<cast.u2i\>\|\<cast.f2i\>"
+syntax match milaBuiltins "\<repr_raw\>\|\<str.copy\>\|\<strftime\>\|\<str.slice\>\|\<str.patch\>"
+syntax match milaBuiltins "\<str.split\>\|\<dict.keys\>\|\<array.len\>\|\<str.pop_f\>\|\<str.pop_b\>"
+syntax match milaBuiltins "\<fread_all\>\|\<as_opaque\>\|\<str.index\>\|\<array.from\>\|\<fdredirect\>"
+syntax match milaBuiltins "\<list.index\>\|\<list.slice\>\|\<cast.float\>\|\<is_numeric\>\|\<json.loads\>"
+syntax match milaBuiltins "\<json.dumps\>\|\<time_sleep\>\|\<get_tm_gmt\>\|\<sys.get_pid\>\|\<fread_bytes\>"
+syntax match milaBuiltins "\<mjson.dumps\>\|\<mjson.loads\>\|\<from_opaque\>\|\<thread.join\>\|\<list.append\>"
+syntax match milaBuiltins "\<file.is_dir\>\|\<thread.make\>\|\<file.exists\>\|\<thread.dump\>\|\<_breakpoint\>"
+syntax match milaBuiltins "\<sys.get_arch\>\|\<thread.mutex\>\|\<file.is_file\>\|\<str.endswith\>\|\<fprint_bytes\>"
+syntax match milaBuiltins "\<get_tm_local\>\|\<str.contains\>\|\<list.contains\>\|\<file.list_dir\>\|\<thread.status\>"
+syntax match milaBuiltins "\<thread.cancel\>\|\<time_sleep_ms\>\|\<hash.set_seed\>\|\<report_tagged\>\|\<ascii.from_int\>"
+syntax match milaBuiltins "\<str.startswith\>\|\<hash._get_seed\>\|\<str.match_find\>\|\<fread_all_bytes\>\|\<list.deconstruct\>"
+syntax match milaBuiltins "\<sys.get_platform\>\|\<ascii.from_string\>\|\<thread.mutex_lock\>\|\<thread.set_daemon\>\|\<str.caseless_find\>"
+syntax match milaBuiltins "\<str.match_replace\>\|\<thread.check_cancel\>\|\<thread.mutex_unlock\>\|\<str.caseless_contains\>\|\<thread.get_pthread_id\>"syntax match milaBuiltins "\<dump_mila_search_paths\>"
 
 " Constants
 syntax keyword milaConstant true false null none

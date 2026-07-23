@@ -643,11 +643,11 @@ void val_set_method_table(MethodTable *v, MethodType t, void *func)
     v[t] = func;
 }
 
-void val_unset_method_table(MethodTable *v, MethodType t) { v[t] = NULL; }
+FN_UNUSED void val_unset_method_table(MethodTable *v, MethodType t) { v[t] = NULL; }
 
 // Helpers to create typed values or check their truthiness
 
-static inline int is_truthy(Value *value)
+FN_UNUSED static inline int is_truthy(Value *value)
 {
     switch (GET_TYPE(value))
     {
@@ -3288,6 +3288,22 @@ const char *skip_primary(Src *s)
         src_get(s);
         return skip_parse_block(s);
     }
+    
+    // String block
+    if (c == '!' && s->pos + 2 < s->len && s->src[s->pos + 1] == '{' && s->src[s->pos + 2] == '{')
+    {
+        src_get(s); // consume '!'
+        src_get(s); // consume '{'
+        src_get(s); // consume '{'
+        size_t start = s->pos;
+        while (s->pos + 1 < s->len && !(s->src[s->pos] == '}' && s->src[s->pos + 1] == '}'))
+        {
+            src_get(s);
+        }
+        src_get(s);
+        src_get(s);
+        return ERR_SUCCESS;
+    }
 
     // Function literals - validate body recursively
     if (is_keyword_at(s, "fn"))
@@ -5562,6 +5578,24 @@ Value *eval_primary(Src *s, Env *env)
         match_char(s, '}');
         HANDLE_RETURN(v);
         return v;
+    }
+    if (c == '!' && s->pos + 2 < s->len && s->src[s->pos + 1] == '{' && s->src[s->pos + 2] == '{')
+    {
+        src_get(s); // consume '!'
+        src_get(s); // consume '{'
+        src_get(s); // consume '{'
+        size_t start = s->pos;
+        while (s->pos + 1 < s->len && !(s->src[s->pos] == '}' && s->src[s->pos + 1] == '}'))
+        {
+            src_get(s);
+        }
+        src_get(s);
+        src_get(s);
+        size_t end = s->pos - 2; // avoid the closing }
+        char *buffer = (char *)mila_malloc(sizeof(char) * (end - start) + 1);
+        memcpy(buffer, s->src + start, end - start);
+        Value *res = vstring_take(buffer);
+        return res;
     }
     if (c == '!' && s->src[s->pos + 1] == '{')
     {
@@ -8365,8 +8399,8 @@ Env *mila_global_init(void)
     Env *g = env_new(NULL);
     env_register_builtins(g);
 #ifndef ML_NO_THREADING
-        pthread_mutex_init(&mila_search_path_lock, NULL);
-        pthread_mutex_init(&mila_search_path_lock_read, NULL);
+    pthread_mutex_init(&mila_search_path_lock, NULL);
+    pthread_mutex_init(&mila_search_path_lock_read, NULL);
 #endif
 #ifndef ML_NO_CACHED_MODS
     if (!mila_cached_modules)

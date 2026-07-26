@@ -48,7 +48,7 @@ if (for == "vim")
 }
 elif (for == "sublime")
 {
-    // Esxape dots because sublime regex
+    // Escape dots because sublime regex
     foreach i : range(list.len(names))
     {
         var name = names[i];

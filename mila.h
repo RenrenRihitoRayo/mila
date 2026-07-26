@@ -241,14 +241,14 @@ typedef enum
 {
     E_NO_ERROR = -1,     // Default
     E_SYNTAX_ERROR = 1,  // Self explanatory
-    E_PRE_RUNTIME,       // Must always be fatal!
-    E_RUNTIME,           // Errors such as undefined variables
+    E_PRE_RUNTIME,       // Must always be fatal! (setup code fails)
+    E_RUNTIME,           // Errors such as undefined variables or just runtime stuff (mostly in interpreter)
     E_TYPE_ERROR,        // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
     E_FATAL,             // Errors that should be fatal, like syntax errors
     E_GENERIC,           // Errors that cannot be classified as ones above
-    E_ASSERT,            // Errors triggered by a faulty assert
-    E_THREAD_HALT,       // Signal threads to halt (propagates like an error)
-    E_EXIT,              // When user calls exit
+    E_ASSERT,            // Errors triggered by a failed assert
+    E_THREAD_HALT,       // Signal threads to halt (propagates like a fatal error but only in that thread)
+    E_EXIT,              // When user calls exit (user has a chance to catch and clean up)
 } ErrorType;
 
 #ifndef MILA_PROTO
@@ -634,17 +634,37 @@ typedef union {
     } tagged_error;
 } ValueValue;
 
-// Primitives are boxed, minimum size 32 bytes.
+typedef struct {
+    Value** items;
+    size_t size, count;
+} Wrefs;
+
+// Primitives are boxed, minimum size 48 bytes.
 // worst case is 100+ Bytes (especially if VIOO)
 struct Value
 {
+#ifndef ML_USE_REF_UINT
     unsigned short refcount;    // simple refcount (2 bytes)
-    char owns_table;            // check if table can be freed or not (1 bytes)
+#else
+    unsigned int refcount;
+#endif
+    Wrefs* wrefs;       // for weak references
+    char owns_table;            // check if table can be freed or not (1 byte)
     ValueType type;             // 4 bytes
     char *type_name;            // 8 bytes ptr
     MethodTable *method_table;  // 8 bytes ptr
     ValueValue *v;              // around 8 bytes
 };
+
+#ifndef ML_USE_REF_UINT
+#define ML_WEAK_REF_TRIGGER (unsigned short)-1
+#define ML_MAX_REFS (unsigned short)-2
+#else
+#define ML_WEAK_REF_TRIGGER (unsigned int)-1
+#define ML_MAX_REFS (unsigned int)-2
+#endif
+
+#define MAKE_WEAK(res) res->refcount = ML_WEAK_REF_TRIGGER;
 
 // == Parsing
 

@@ -7,7 +7,7 @@ libraries ?= -lm
 eflags ?=
 cflags_debug = $(libraries) -Wextra -Wall -Wno-nonnull\
          -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
-         $(eflags) -Iheaders -Wno-overflow -fno-omit-frame-pointer
+         $(eflags) -Iheaders
 cflags = $(libraries) -march=native -Wextra -Wall -Wno-nonnull\
          -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
          $(eflags) -Iheaders -Wno-overflow -flto -ffunction-sections -fdata-sections -Wl,-s\
@@ -16,14 +16,14 @@ cflags = $(libraries) -march=native -Wextra -Wall -Wno-nonnull\
 .PHONY: web
 
 all: $(files)
-	$(cc) $(libraries) $(eflags) -O0 -o mila mila.c -fsanitize=address -g -Iheaders
+	$(cc) $(libraries) $(eflags) $(cflags_debug) -O0 -o mila mila.c -fsanitize=address -g -Iheaders
 
 # dont include asan, compile with debug logging
 debug: $(files)
-	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_DEBUG
+	$(cc)  $(libraries) $(cflags_debug) -O0 -o mila mila.c -g -D MILA_DEBUG
 
 debug-asan: $(files)
-	$(cc)  $(libraries) -O0 -o mila mila.c -g -D MILA_DEBUG -fsanitize=address -Iheaders
+	$(cc)  $(libraries) $(cflags_debug) -O0 -o mila mila.c -g -D MILA_DEBUG -fsanitize=address
 
 test:
 	$(cc) -o test.o0.mila -O0 mila.c $(libraries)

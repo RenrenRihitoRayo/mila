@@ -1605,6 +1605,13 @@ Value *native_json_dumps(Env *env, int argc, Value **argv)
     return vstring_take(mila_to_json(argv[0]));
 }
 
+Value *native_json_dumps_io(Env *env, int argc, Value **argv)
+{
+    if (argc != 2)
+        return verror("json.dumps_io(file, value): Expects two arguments.");
+    return vint(mila_to_json_io((FILE*)GET_OPAQUE(argv[0]), argv[1]));
+}
+
 Value *native_mjson_loads(Env *env, int argc, Value **argv)
 {
     if (argc != 1)
@@ -1620,6 +1627,13 @@ Value *native_mjson_dumps(Env *env, int argc, Value **argv)
     if (argc != 1)
         return verror("mjson.dumps(value): Expects one argument.");
     return vstring_take(mila_to_mjson(argv[0]));
+}
+
+Value *native_mjson_dumps_io(Env *env, int argc, Value **argv)
+{
+    if (argc != 2)
+        return verror("mjson.dumps_io(file, value): Expects two arguments.");
+    return vint(mila_to_mjson_io((FILE*)GET_OPAQUE(argv[0]), argv[1]));
 }
 
 Value *native_hash(Env *env, int argc, Value **argv)
@@ -1847,6 +1861,41 @@ Value *native_list_deconstruct(Env *env, int argc, Value **argv)
     return result;
 }
 
+Value* native_vkill(Env* env, int argc, Value** argv)
+{
+    if (argc != 1) return verror("vkill(value): Expected one value.");
+    argv[0]->v = NULL;
+    val_kill(argv[0]);
+    argv[0] = NULL; // so mila doesnt double free
+    return vnull();
+}
+
+#ifdef MILA_RT_DEBUG
+double get_mem_usage();
+char* get_mem_usage_unit(double);
+double get_mem_usage_per_unit(double);
+Value* _nd_get_mem(Env* env, int argc, Value** argv)
+{
+    double mem = get_mem_usage();
+    char* unit = get_mem_usage_unit(mem);
+    double mem_u = get_mem_usage_per_unit(mem);
+    // mem, unit, bytes
+    return make_list(vfloat(mem_u), vstring_dup(unit), vfloat(mem), NULL);
+}
+
+Value* _nd_get_weakrefs(Env* env, int argc, Value** argv)
+{
+    if (argc != 1) return verror("_debug.get_weakrefs(value): Extpected to have at least one value!");
+    Value* l = make_list(NULL);
+    if (!argv[0]->wrefs) return l;
+    for (size_t i=0; i<argv[0]->wrefs->count; ++i)
+    {
+        val_release(call_native_with(NULL, native_list_append, val_retain(l), argv[0]->wrefs->items[i], NULL));
+    }
+    return l;
+}
+#endif
+
 #ifdef EXT_SOCK
 #include "addon/ml_socket.c"
 #endif
@@ -1912,6 +1961,7 @@ void env_register_builtins(Env *g)
 #endif
 
     // === Misc
+    env_register_native(g, "vkill", native_vkill);
     env_register_native(g, "range", native_range);
     env_register_native(g, "own", native_own);
     env_register_native(g, "unown", native_unown);
@@ -2017,8 +2067,10 @@ void env_register_builtins(Env *g)
     // === JSON
     env_register_native(g, "mjson.loads", native_mjson_loads);
     env_register_native(g, "mjson.dumps", native_mjson_dumps);
+    env_register_native(g, "mjson.dumps_io", native_mjson_dumps_io);
     env_register_native(g, "json.loads", native_json_loads);
     env_register_native(g, "json.dumps", native_json_dumps);
+    env_register_native(g, "json.dumps_io", native_json_dumps_io);
     // === String
     env_register_native(g, "str.slice", native_str_slice);
     env_register_native(g, "str.index", native_str_index);
@@ -2119,7 +2171,12 @@ void env_register_builtins(Env *g)
     env_register_native(g, "thread.mutex_lock", native_mutex_lock);
     env_register_native(g, "thread.dump", native_thread_dump);
 #endif
-
+// MiLa Runtime Debug hooks
+#ifdef MILA_RT_DEBUG
+    env_set_raw(g, "_has_debug", vbool(1));
+    env_register_native(g, "_debug.get_mem", _nd_get_mem);
+    env_register_native(g, "_debug.get_weakrefs", _nd_get_weakrefs);
+#endif
     // ==== EXTENSIONS (not meant for prod) ====
     // _has_ext standardizes what to check to ensure ext exists
     // this makes sure users dont check function for this
@@ -2127,19 +2184,13 @@ void env_register_builtins(Env *g)
 #include "addon/ml_web.h"
     env_set_local_raw(g, "_has_ext.web", vbool(1));
     env_register_web_ext(g);
-#else
-    env_set_local_raw(g, "_has_ext.web", vbool(0));
 #endif
 #ifdef EXT_SOCK
     env_set_local_raw(g, "_has_ext.socket", vbool(1));
     env_register_socket_ext(g);
-#else
-    env_set_local_raw(g, "_has_ext.socket", vbool(0));
 #endif
 #ifdef EXT_HTTP
     env_set_local_raw(g, "_has_ext.http", vbool(1));
     env_register_http_ext(g);
-#else
-    env_set_local_raw(g, "_has_ext.http", vbool(0));
 #endif
 }

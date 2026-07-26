@@ -43,6 +43,7 @@ Value *list_repr(Value *self)
         mila_free(repr);
     }
     malloc_sprintf(&buffer, "]");
+    val_release(iter[0]);
     mila_free(iter);
     return vstring_take(buffer);
 }
@@ -65,6 +66,7 @@ Value *list_str(Value *self)
     }
     malloc_sprintf(&buffer, "]");
     mila_free(iter);
+    val_release(iter[0]);
     return vstring_take(buffer);
 }
 

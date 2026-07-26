@@ -367,11 +367,7 @@ Most of them are self explanatory.
 
 * `GET_UINTEGER(ui)`
 
-* `GET_BINTEGER(bi)`
-
 * `GET_FLOAT(f)`
-
-* `GET_BFLOAT(bf)`
 
 * `GET_BOOL(b)`
 
@@ -412,9 +408,7 @@ MiLa has different enums for different kinds of types.
 |------------------|----------------|--------------------------|
 | `T_INT`          | `int`          | `long`                   |
 | `T_UINT`         | `uint`         | `unsigned long`          |
-| `T_BINT`         | `bint`         | `__int128`               |
 | `T_FLOAT`        | `float`        | `double`                 |
-| `T_BFLOAT`       | `bfloat`       | `mila_float128_internal` |
 | `T_STRING`       | `string`       | `char*`                  |
 | `T_OPAQUE`       | `opaque`       | `const void*`            |
 | `T_WEAK_OPAQUE`  | `weak_opaque`  | `const void*`            |

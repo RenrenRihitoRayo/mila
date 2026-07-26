@@ -1,0 +1,24 @@
+// At least a or b must be stored as weak ref
+// original values MUST have one variable
+// holding its reference (leak if not done so)
+var a = [@ "value" = 80];
+var b = [@ "a" = ?a];
+set a["b"] = b;
+
+println(a, b);
+// Weak refs were made for cycles hence why
+// its printed as '<weakref ptr>' regardless of type
+// this prevents MiLa from spewing out the string
+// representation forever (the print function
+// uses direct printf calls and doesnt alloc memory)
+
+// Trigger free
+// wrefs get walked and turned into none
+// which then can be safely freed
+forget a;
+// Must be freed last
+// so any wrefs can be turned into none
+// and freed
+forget b;
+
+println("If you see this MiLa did not double free. HOORAY!!!");

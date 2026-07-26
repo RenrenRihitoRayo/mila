@@ -1,3 +1,4 @@
+
 // Strings test suite
 var str = "Hello, World!";
 println(str, "=>", str.toupper(str));

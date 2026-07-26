@@ -32,6 +32,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <assert.h>
+#include <ucontext.h>
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <direct.h>
@@ -72,6 +73,53 @@ pthread_mutex_t mila_cached_modules_lock_read = {0};
 pthread_mutex_t mila_search_path_lock = {0};
 pthread_mutex_t mila_search_path_lock_read = {0};
 #endif
+
+static void hex(uintptr_t v)
+{
+    char b[19] = "0x0000000000000000\n";
+    for (int i = 17; i >= 2; i--)
+    {
+        b[i] = "0123456789abcdef"[v & 15];
+        v >>= 4;
+    }
+    write(2, b, 18);
+}
+
+void mila_fatal_sig_handler(int sig, siginfo_t *si, void *ctx)
+{
+    switch (sig)
+    {
+    case SIGINT:
+        write(2, "\n[interupt]\n", 13);
+        _exit(sig);
+    case SIGTERM:
+        write(2, "\n[terminated]\n", 14);
+        _exit(sig);
+    case SIGPIPE:
+        write(2, "\n[broken pipe]\n", 15);
+        _exit(sig);
+    }
+    ucontext_t *uc = ctx;
+
+#if __aarch64__
+    uintptr_t mila_crash_pc = uc->uc_mcontext.pc;
+#elif __x86_64__
+    uintptr_t mila_crash_pc = uc->uc_mcontext.gregs[REG_RIP];
+#endif
+
+    const char s[] = "\n[MiLa FATAL] ";
+    write(2, s, sizeof(s));
+    write(2, strsignal(sig), strlen(strsignal(sig)));
+    write(2, "\nPC: ", 5);
+    hex(mila_crash_pc);
+    if (sig == SIGSEGV)
+    {
+        write(2, "\nFault: ", 8);
+        hex((uintptr_t)si->si_addr);
+    }
+    write(2, "\n", 1);
+    _exit(sig);
+}
 
 double get_unix_timestamp(void)
 {
@@ -118,6 +166,54 @@ void print_memory_usage()
 
     printf("Memory usage: %.2f %s\n", memory_usage_d, units[unit_index]);
 }
+
+#ifdef MILA_RT_DEBUG
+double get_mem_usage()
+{
+    size_t memory_usage = 0;
+
+#if defined(_WIN32) || defined(_WIN64)
+    PROCESS_MEMORY_COUNTERS pmc;
+    GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
+    memory_usage = pmc.WorkingSetSize;
+#else
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    memory_usage = usage.ru_maxrss * 1024;
+#endif
+
+    // Convert to appropriate unit
+    double memory_usage_d = (double)memory_usage;
+
+    return memory_usage_d;
+}
+
+char* get_mem_usage_unit(double bytes)
+{
+    const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+    int unit_index = 0;
+    while (bytes >= 1024 && unit_index < 4)
+    {
+        bytes /= 1024;
+        unit_index++;
+    }
+    return units[unit_index];
+}
+
+double get_mem_usage_per_unit(double bytes)
+{
+    const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+    int unit_index = 0;
+    while (bytes >= 1024 && unit_index < 4)
+    {
+        bytes /= 1024;
+        unit_index++;
+    }
+    return bytes;
+}
+
+
+#endif
 
 static inline void print_duration(double s)
 {
@@ -192,16 +288,17 @@ void free_cleanup_registry(CleanupRegistry *registry)
 static inline void *mila_malloc(size_t size)
 {
     void *ptr = malloc(size);
+    if (!ptr) return NULL;
     memset(ptr, 0, size);
     return ptr;
+}
+static inline void mila_free(void *ptr_in)
+{
+    free(ptr_in);
 }
 static inline void *mila_realloc(void *ptr, size_t size)
 {
     return realloc(ptr, size);
-}
-static inline void mila_free(void *ptr)
-{
-    free(ptr);
 }
 
 void float_to_string(float f, char *buf, size_t bufsize)
@@ -232,7 +329,7 @@ FunctionV *functionv_copy(const FunctionV *src)
     if (!src)
         return NULL;
 
-    FunctionV *dst = malloc(sizeof(FunctionV));
+    FunctionV *dst = mila_malloc(sizeof(FunctionV));
     if (!dst)
         return NULL;
 
@@ -248,10 +345,10 @@ FunctionV *functionv_copy(const FunctionV *src)
         while (src->params[n])
             n++;
 
-        dst->params = malloc((n + 1) * sizeof(char *));
+        dst->params = mila_malloc((n + 1) * sizeof(char *));
         if (!dst->params)
         {
-            free(dst);
+            mila_free(dst);
             return NULL;
         }
 
@@ -261,9 +358,9 @@ FunctionV *functionv_copy(const FunctionV *src)
             if (!dst->params[i])
             {
                 for (size_t j = 0; j < i; j++)
-                    free(dst->params[j]);
-                free(dst->params);
-                free(dst);
+                    mila_free(dst->params[j]);
+                mila_free(dst->params);
+                mila_free(dst);
                 return NULL;
             }
         }
@@ -276,16 +373,16 @@ FunctionV *functionv_copy(const FunctionV *src)
         while (src->contextuals[n])
             n++;
 
-        dst->contextuals = malloc((n + 1) * sizeof(char *));
+        dst->contextuals = mila_malloc((n + 1) * sizeof(char *));
         if (!dst->contextuals)
         {
             if (dst->params)
             {
                 for (size_t i = 0; dst->params[i]; i++)
-                    free(dst->params[i]);
-                free(dst->params);
+                    mila_free(dst->params[i]);
+                mila_free(dst->params);
             }
-            free(dst);
+            mila_free(dst);
             return NULL;
         }
 
@@ -295,15 +392,15 @@ FunctionV *functionv_copy(const FunctionV *src)
             if (!dst->contextuals[i])
             {
                 for (size_t j = 0; j < i; j++)
-                    free(dst->contextuals[j]);
-                free(dst->contextuals);
+                    mila_free(dst->contextuals[j]);
+                mila_free(dst->contextuals);
                 if (dst->params)
                 {
                     for (size_t k = 0; dst->params[k]; k++)
-                        free(dst->params[k]);
-                    free(dst->params);
+                        mila_free(dst->params[k]);
+                    mila_free(dst->params);
                 }
-                free(dst);
+                mila_free(dst);
                 return NULL;
             }
         }
@@ -318,16 +415,16 @@ FunctionV *functionv_copy(const FunctionV *src)
             if (dst->contextuals)
             {
                 for (size_t i = 0; dst->contextuals[i]; i++)
-                    free(dst->contextuals[i]);
-                free(dst->contextuals);
+                    mila_free(dst->contextuals[i]);
+                mila_free(dst->contextuals);
             }
             if (dst->params)
             {
                 for (size_t i = 0; dst->params[i]; i++)
-                    free(dst->params[i]);
-                free(dst->params);
+                    mila_free(dst->params[i]);
+                mila_free(dst->params);
             }
-            free(dst);
+            mila_free(dst);
             return NULL;
         }
     }
@@ -338,20 +435,20 @@ FunctionV *functionv_copy(const FunctionV *src)
         if (!dst->name)
         {
             if (dst->body_src)
-                free(dst->body_src);
+                mila_free(dst->body_src);
             if (dst->contextuals)
             {
                 for (size_t i = 0; dst->contextuals[i]; i++)
-                    free(dst->contextuals[i]);
-                free(dst->contextuals);
+                    mila_free(dst->contextuals[i]);
+                mila_free(dst->contextuals);
             }
             if (dst->params)
             {
                 for (size_t i = 0; dst->params[i]; i++)
-                    free(dst->params[i]);
-                free(dst->params);
+                    mila_free(dst->params[i]);
+                mila_free(dst->params);
             }
-            free(dst);
+            mila_free(dst);
             return NULL;
         }
     }
@@ -364,7 +461,7 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
     if (!src)
         return NULL;
 
-    NativeFunctionV *dst = malloc(sizeof(NativeFunctionV));
+    NativeFunctionV *dst = mila_malloc(sizeof(NativeFunctionV));
     if (!dst)
         return NULL;
 
@@ -377,7 +474,7 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
         dst->name = mila_strdup(src->name);
         if (!dst->name)
         {
-            free(dst);
+            mila_free(dst);
             return NULL;
         }
     }
@@ -414,20 +511,16 @@ Value *val_copy(Value *src)
         /* Strings: duplicate the string buffer */
         copy->v = (void *)mila_strdup(GET_STRING(src));
         break;
-
     case T_BOOL:
         /* Primitives: direct copy */
         copy->v = (void *)src->v;
         break;
-
     case T_INT:
         copy->v->i = GET_INTEGER(src);
         break;
-
     case T_UINT:
         copy->v->ui = src->v->ui;
         break;
-
     case T_FLOAT:
         copy->v->f = src->v->f;
         break;
@@ -438,7 +531,6 @@ Value *val_copy(Value *src)
             copy->v = (void *)mila_strdup(GET_STRING(src));
         }
         break;
-
     case T_TAGGED_ERROR:
         /* Tagged errors: duplicate message and copy type */
         copy->v->tagged_error.type = src->v->tagged_error.type;
@@ -447,7 +539,6 @@ Value *val_copy(Value *src)
             copy->v->tagged_error.message = mila_strdup(src->v->tagged_error.message);
         }
         break;
-
     case T_FUNCTION:
         /* Functions: retain reference (shared ownership) */
         copy->v = (void *)functionv_copy(GET_FUNCTION(src));
@@ -456,7 +547,6 @@ Value *val_copy(Value *src)
         /* Native functions: retain reference */
         copy->v = (void *)nativefn_copy(GET_NATIVE(src));
         break;
-
     case T_OPAQUE:
     {
         /* Opaques: share the pointer but increment if refcounted */
@@ -506,20 +596,16 @@ Value *val_copy_shallow(Value *src)
         /* Strings: duplicate the string buffer */
         copy->v = (void *)mila_strdup(GET_STRING(src));
         break;
-
     case T_BOOL:
         /* Primitives: direct copy */
         copy->v = src->v;
         break;
-
     case T_INT:
         copy->v->i = GET_INTEGER(src);
         break;
-
     case T_UINT:
         copy->v->ui = src->v->ui;
         break;
-
     case T_FLOAT:
         copy->v->f = src->v->f;
         break;
@@ -580,6 +666,7 @@ Value *val_new(ValueType t)
     p->type_name = NULL;
     p->method_table = NULL;
     p->owns_table = 1;
+    p->wrefs = NULL;
     p->v = (ValueValue *)malloc(sizeof(ValueValue));
 #ifdef MILA_DEBUG
     printf("  ++ %s type allocated!\n     pointer: %p\n", GET_TYPENAME(p),
@@ -596,6 +683,7 @@ Value *val_new_raw(ValueType t)
     p->type_name = NULL;
     p->method_table = NULL;
     p->owns_table = 1;
+    p->wrefs = NULL;
     p->v = NULL;
 #ifdef MILA_DEBUG
     printf("  ++ %s raw type allocated!\n     pointer: %p\n", GET_TYPENAME(p),
@@ -949,7 +1037,7 @@ typedef struct
 static void sb_init(strbuf *b)
 {
     b->cap = 16;
-    b->buf = malloc(b->cap);
+    b->buf = mila_malloc(b->cap);
     b->len = 0;
     b->buf[0] = '\0';
 }
@@ -965,6 +1053,39 @@ static void sb_append(strbuf *b, const char *data, size_t n)
     memcpy(b->buf + b->len, data, n);
     b->len += n;
     b->buf[b->len] = '\0';
+}
+
+char* replace_dollar(const char *rep, const char *input) {
+    if (!input || !rep) return NULL;
+    char *out = NULL;
+    size_t rep_len = strlen(rep);
+    const char *p = input;
+    while (1) {
+        const char *dollar = strchr(p, '$');
+        if (dollar) {
+            size_t chunk_len = dollar - p;
+            if (chunk_len > 0) {
+                malloc_sprintf(&out, "%.*s", (int)chunk_len, p);
+            }
+        } else {
+            malloc_sprintf(&out, "%s", p);
+            break;
+        }
+        size_t bs = 0;
+        const char *j = dollar;
+        while (j > input && *(j - 1) == '\\') {
+            bs++;
+            j--;
+        }
+        if (bs % 2 == 0) {
+            malloc_sprintf(&out, "%s", rep);
+        } else {
+            malloc_sprintf(&out, "%c", '$');
+        }
+        p = dollar + 1;
+    }
+    if (!out) malloc_sprintf(&out, "");
+    return out;
 }
 
 char *mapped_replace_match(const char *pattern, const char *str, const char *replacement, int count)
@@ -1141,7 +1262,12 @@ char *replace_match(const char *pattern, const char *str, const char *replacemen
         m_end = m_start + m_len;
 
         sb_append(&out, cursor, (size_t)(m_start - cursor));
-        sb_append(&out, replacement, rep_len);
+        char* cursor_tmp = NULL;
+        malloc_sprintf(&cursor_tmp, "%.*s", m_len, m_start);
+        char* tmp = replace_dollar(cursor_tmp, replacement);
+        sb_append(&out, tmp, strlen(tmp));
+        mila_free(tmp);
+        mila_free(cursor_tmp);
 
         if (m_len == 0)
         {
@@ -1574,7 +1700,11 @@ char *as_c_string(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        return mila_strdup("cnull");
+        return mila_strdup("?null?");
+    }
+    if (v->refcount == ML_WEAK_REF_TRIGGER) {
+        malloc_sprintf(&buffer, "<weakref %p>", v->v);
+        return buffer;
     }
     if (v->method_table && v->method_table[UMethodToString])
     {
@@ -1639,7 +1769,7 @@ char *as_c_string(Value *v)
         }
         malloc_sprintf(&buffer, "<function:%s(%s) at %p>",
                        GET_FUNCTION(v)->name ? GET_FUNCTION(v)->name : "[lambda]", args, GET_FUNCTION(v));
-        free(args);
+        mila_free(args);
     }
     break;
     case T_NATIVE:
@@ -1687,6 +1817,10 @@ char *as_c_string_repr(Value *v)
     if (!v)
     {
         return mila_strdup("cnull");
+    }
+    if (v->refcount == ML_WEAK_REF_TRIGGER) {
+        malloc_sprintf(&buffer, "<weakref %p>", v->v);
+        return buffer;
     }
     if (v->method_table && v->method_table[UMethodToRepr])
     {
@@ -1758,8 +1892,10 @@ int raw_print_value(Value *v)
 {
     if (!v)
     {
-        return printf("cnull");
+        return printf("?null?");
     }
+    if (v->refcount == ML_WEAK_REF_TRIGGER)
+        return printf("<weakref %p>", v->v);
     if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0)
     {
         Value *fn = dict_get_str((Dict *)v->v, ":display");
@@ -1776,7 +1912,7 @@ int raw_print_value(Value *v)
         char *res = mila_strdup(GET_STRING(str));
         val_kill(str);
         int i = printf("%s", res);
-        free(res);
+        mila_free(res);
         return i;
     }
     if (v->method_table && v->method_table[UMethodToRepr])
@@ -1785,7 +1921,7 @@ int raw_print_value(Value *v)
         char *res = mila_strdup(GET_STRING(str));
         val_kill(str);
         int i = printf("%s", res);
-        free(res);
+        mila_free(res);
         return i;
     }
     switch (v->type)
@@ -1829,7 +1965,7 @@ int raw_print_value(Value *v)
         }
         int i = printf("<function:%s(%s) at %p>",
                        GET_FUNCTION(v)->name ? GET_FUNCTION(v)->name : "[lambda]", args, GET_FUNCTION(v));
-        free(args);
+        mila_free(args);
         return i;
     }
     case T_NATIVE:
@@ -1868,9 +2004,11 @@ int raw_print_value_repr(Value *v)
 {
     if (!v)
     {
-        return printf("cnull");
+        return printf("?null?");
     }
 
+    if (v->refcount == ML_WEAK_REF_TRIGGER)
+        return printf("<weakref %p>", v->v);
     if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0)
     {
         Value *fn = dict_get_str((Dict *)v->v, ":display");
@@ -1883,7 +2021,7 @@ int raw_print_value_repr(Value *v)
         char *res = mila_strdup(GET_STRING(str));
         val_kill(str);
         int i = printf("%s", res);
-        free(res);
+        mila_free(res);
         return i;
     }
     if (v->method_table && v->method_table[UMethodToString])
@@ -1892,7 +2030,7 @@ int raw_print_value_repr(Value *v)
         char *res = mila_strdup(GET_STRING(str));
         val_kill(str);
         int i = printf("%s", res);
-        free(res);
+        mila_free(res);
         return i;
     }
     switch (v->type)
@@ -1947,7 +2085,11 @@ char *as_c_string_raw(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        return mila_strdup("cnull");
+        return mila_strdup("?null?");
+    }
+    if (v->refcount == ML_WEAK_REF_TRIGGER) {
+        malloc_sprintf(&buffer, "<weakref %p>", v->v);
+        return buffer;
     }
     switch (v->type)
     {
@@ -2020,7 +2162,7 @@ char *as_c_string_repr_raw(Value *v)
     char *buffer = NULL;
     if (!v)
     {
-        return mila_strdup("cnull");
+        return mila_strdup("?null?");
     }
     switch (v->type)
     {
@@ -2077,7 +2219,7 @@ int print_value(Value *v)
 {
     if (!v)
     {
-        return printf("cnull");
+        return printf("?null?");
     }
     return raw_print_value(v);
 }
@@ -2086,7 +2228,7 @@ int print_value_repr(Value *v)
 {
     if (!v)
     {
-        return printf("cnull");
+        return printf("?null?");
     }
     return raw_print_value_repr(v);
 }
@@ -2095,7 +2237,7 @@ int print_value_debug(Value *v)
 {
     if (!v)
     {
-        return printf("cnull");
+        return printf("?null?");
     }
     char *txt = as_c_string_repr_raw(v);
     int i = printf("%s", txt);
@@ -2107,42 +2249,57 @@ int print_value_debug(Value *v)
 static inline Value *val_retain(Value *v)
 {
 #ifdef MILA_DEBUG
-    if (v)
-    {
-        printf("  ?? val_retain:\n     type: %s\n     refcount ++%i -> %i\n     "
+    if (v->refcount != ML_WEAK_REF_TRIGGER)
+        printf("  ?? val_retain: %p\n     type: %s\n     refcount ++%i -> %i\n     "
                "value: ",
+               v,
                GET_TYPENAME(v), v->refcount, v->refcount + 1);
-        print_value_repr(v);
-        puts("");
-    }
     else
-    {
-        printf("  !! val_release:\n     JUST ATTEMPTED TO FREE A NULL VALUE!\n");
-    }
+        printf("  ?? val_retain: %p\n     type: %s\n     ignored (weak ref)\n     "
+               "value: ",
+               v,
+               GET_TYPENAME(v));
+    print_value_repr(v);
+    puts("");
 #endif
     if (!v)
         return NULL;
-    if (GET_TYPE(v) == T_WEAK_OPAQUE)
+    if (v->refcount == ML_WEAK_REF_TRIGGER)
         return v;
     v->refcount++;
+    if (v->refcount >= ML_MAX_REFS)
+    {
+        fprintf(stderr, "MAXIMUM REF COUNTS REACHED FOR VALUE: ");
+        print_value_debug(v);
+        abort();
+    }
     return v;
 }
+
+void val_kill_incomplete(Value *v);
 
 // release
 static inline void val_release(Value *v)
 {
     if (!v)
         return;
-    if (GET_TYPE(v) == T_WEAK_OPAQUE)
-        return;
 #ifdef MILA_DEBUG
-    printf("  -- val_release:\n     type: %s\n     refcount --%i -> %i\n     "
-           "%s\n     value: ",
-           GET_TYPENAME(v), v->refcount, v->refcount - 1,
-           v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    if (v->refcount != ML_WEAK_REF_TRIGGER)
+        printf("  -- val_release: %p\n     type: %s\n     refcount --%i -> %i\n     "
+               "%s\n     value: ",
+               v,
+               GET_TYPENAME(v), v->refcount, v->refcount - 1,
+               v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
+    else
+        printf("  -- val_release: %p\n     type: %s\n     refcount none (weak ref)\n     "
+               "will survive as long as strong ref exists\n     value: ",
+               v,
+               GET_TYPENAME(v));
     print_value_repr(v);
     puts("");
 #endif
+    if (v->refcount == ML_WEAK_REF_TRIGGER)
+        return;
     v->refcount--;
     if (v->refcount <= 0)
     {
@@ -2226,6 +2383,28 @@ static inline void val_release(Value *v)
             if (v->v)
                 mila_free(v->v);
         }
+#ifdef MILA_DEBUG
+        printf("  ?? %p %s wrefs\n", v, v->wrefs ? "has" : "doesnt have");
+#endif
+        if (v->wrefs)
+        {
+            for (size_t i = 0; i < v->wrefs->count; ++i)
+            {
+                Value *wr = v->wrefs->items[i];
+                wr->type = T_NONE;
+                wr->v = NULL;
+                wr->type_name = NULL;
+                wr->method_table = NULL;
+                wr->refcount = 1;
+                wr->owns_table = 0;
+                wr->wrefs = NULL;
+            }
+            mila_free(v->wrefs->items);
+            mila_free(v->wrefs);
+#ifdef MILA_DEBUG
+            printf("  ?? wrefs for %p freed\n", v);
+#endif
+        }
         mila_free(v);
     }
 }
@@ -2235,8 +2414,9 @@ void val_kill(Value *v)
     if (!v)
         return;
 #ifdef MILA_DEBUG
-    printf("  -- val_kill:\n     type: %s\n     refcount %i -> 0 (forced)\n     "
+    printf("  -- val_kill: %p\n     type: %s\n     refcount %i -> 0 (forced)\n     "
            "%s\n     value: ",
+           v,
            GET_TYPENAME(v), v->refcount,
            v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v);
@@ -2316,6 +2496,28 @@ cleanup:;
         if (v->v)
             mila_free(v->v);
     }
+#ifdef MILA_DEBUG
+    printf("  ?? %p %s wrefs\n", v, v->wrefs ? "has" : "doesnt have");
+#endif
+    if (v->wrefs)
+    {
+        for (size_t i = 0; i < v->wrefs->count; ++i)
+        {
+            Value *wr = v->wrefs->items[i];
+            wr->type = T_NONE;
+            wr->v = NULL;
+            wr->type_name = NULL;
+            wr->method_table = NULL;
+            wr->refcount = 1;
+            wr->owns_table = 0;
+            wr->wrefs = NULL;
+        }
+        mila_free(v->wrefs->items);
+        mila_free(v->wrefs);
+#ifdef MILA_DEBUG
+        printf("  ?? wrefs for %p freed\n", v);
+#endif
+    }
     mila_free(v);
 }
 
@@ -2324,8 +2526,9 @@ void val_kill_incomplete(Value *v)
     if (!v)
         return;
 #ifdef MILA_DEBUG
-    printf("  -- val_kill_incomplete:\n     type: %s\n     refcount %i -> 0 "
+    printf("  -- val_kill_incomplete: %p\n     type: %s\n     refcount %i -> 0 "
            "(forced)\n     %s\n     value: ",
+           v,
            GET_TYPENAME(v), v->refcount,
            v->refcount - 1 <= 0 ? "will be freed after" : "will survive");
     print_value_repr(v);
@@ -2348,7 +2551,7 @@ void val_kill_incomplete(Value *v)
         mila_free(GET_ERROR_MESSAGE(v));
     if (v->type == T_TAGGED_ERROR && v->v->tagged_error.message)
         mila_free(v->v->tagged_error.message);
-    if (v->type == T_FUNCTION && GET_FUNCTION(v))
+    if (v->type == T_FUNCTION)
     {
         if (GET_FUNCTION(v)->params)
         {
@@ -2383,8 +2586,35 @@ void val_kill_incomplete(Value *v)
     }
 cleanup:;
     mila_free(v->type_name);
+    v->type_name = NULL;
     if (v->method_table && v->owns_table)
+    {
         mila_free(v->method_table);
+        v->method_table = NULL;
+    }
+#ifdef MILA_DEBUG
+    printf("  ?? %p %s wrefs\n", v, v->wrefs ? "has" : "doesnt have");
+#endif
+    if (v->wrefs)
+    {
+        for (size_t i = 0; i < v->wrefs->count; ++i)
+        {
+            Value *wr = v->wrefs->items[i];
+            wr->type = T_NONE;
+            wr->v = NULL;
+            wr->type_name = NULL;
+            wr->method_table = NULL;
+            wr->refcount = 1;
+            wr->owns_table = 0;
+            wr->wrefs = NULL;
+        }
+        mila_free(v->wrefs->items);
+        mila_free(v->wrefs);
+#ifdef MILA_DEBUG
+        printf("  ?? wrefs for %p freed\n", v);
+#endif
+    }
+    v->v = NULL;
 }
 
 // Environment (simple linked list of frames + variables)
@@ -2772,7 +3002,7 @@ int load_library(Env *env, const char *libpath)
         malloc_sprintf(&name, "%s:_mila_lib_deinit", libpath);
         CleanupRegistryEntry *entry = make_cleanup_entry(name, deinit_func);
         da_append(cleanup_registry, entry);
-        free(name);
+        mila_free(name);
     }
 
     const NativeEntry *entries =
@@ -2841,7 +3071,7 @@ int load_library_noisy(Env *env, const char *libpath)
         char *name = NULL;
         malloc_sprintf(&name, "%s:_mila_lib_init", libpath);
         printf("Loaded init: %s\n", name);
-        free(name);
+        mila_free(name);
         init_func(env);
     }
     void (*deinit_func)(Env *) = dlsym(lib, "_mila_lib_deinit");
@@ -2854,7 +3084,7 @@ int load_library_noisy(Env *env, const char *libpath)
         printf("Loaded cleanup: %s\n", name);
         CleanupRegistryEntry *entry = make_cleanup_entry(name, deinit_func);
         da_append(cleanup_registry, entry);
-        free(name);
+        mila_free(name);
     }
 
     const NativeEntry *entries =
@@ -3177,8 +3407,6 @@ const char *skip_primary(Src *s)
             src_get(s);
         if (src_peek(s) == 'u' || src_peek(s) == 'U')
             src_get(s);
-        if (src_peek(s) == '%')
-            src_get(s);
         return ERR_SUCCESS;
     }
 
@@ -3288,7 +3516,7 @@ const char *skip_primary(Src *s)
         src_get(s);
         return skip_parse_block(s);
     }
-    
+
     // String block
     if (c == '!' && s->pos + 2 < s->len && s->src[s->pos + 1] == '{' && s->src[s->pos + 2] == '{')
     {
@@ -4030,7 +4258,7 @@ char *i128toa(__int128 value)
         tmp[i++] = '-';
 
     // Allocate string
-    char *str = malloc(i + 1);
+    char *str = mila_malloc(i + 1);
     if (!str)
         return NULL;
 
@@ -4077,11 +4305,9 @@ __int128 atoi128(char *s)
 // parse number (int or float)
 static inline Value *parse_number(Src *s)
 {
-    skip_ws(s);
     int st = s->pos;
     _Bool seen_dot = 0;
     _Bool is_unsigned = 0;
-    _Bool is_percent = 0;
     char base = 10;
     if (src_peek(s) == '-')
     {
@@ -4117,11 +4343,6 @@ static inline Value *parse_number(Src *s)
         is_unsigned = 1;
         src_get(s);
     }
-    if (src_peek(s) == '%')
-    {
-        is_percent = 1;
-        src_get(s);
-    }
 
     int en = s->pos;
     char tmp[MAX_NUMBER_DIGITS];
@@ -4136,15 +4357,11 @@ static inline Value *parse_number(Src *s)
         if (seen_dot)
         {
             double f = atof(tmp);
-            if (is_percent)
-                f /= 100.0;
             return vfloat(f);
         }
         else
         {
             long i = strtol(tmp, NULL, base);
-            if (is_percent)
-                return vfloat((double)i / 100.0);
             return is_unsigned ? vuint(i > 0 ? i : -i) : vint(i);
         }
     }
@@ -4180,7 +4397,7 @@ char *dedent(char *str)
     size_t len = strlen(str);
     if (len == 0)
     {
-        return calloc(1, sizeof(char)); // Return empty string
+        return mila_malloc(1 * sizeof(char)); // Return empty string
     }
     // Find the minimum indentation (leading spaces/tabs on non-empty lines)
     size_t min_indent = SIZE_MAX;
@@ -4213,7 +4430,7 @@ char *dedent(char *str)
     {
         min_indent = 0;
     }
-    char *result = malloc(len + 1);
+    char *result = mila_malloc(len + 1);
     if (result == NULL)
     {
         return NULL;
@@ -4245,9 +4462,6 @@ char *dedent(char *str)
 // parse string literal (double quotes)
 static inline Value *parse_string(Src *s)
 {
-    skip_ws(s);
-    if (src_peek(s) != '"')
-        return verror("String unterminated!");
     src_get(s); // consume opening "
     char do_dedent = 0;
     size_t cap = 256;
@@ -4557,7 +4771,7 @@ static inline Value *parse_string(Src *s)
     res[len] = '\0';
     Value *str = vstring_take(!do_dedent ? res : dedent(res));
     if (do_dedent)
-        free(res);
+        mila_free(res);
     return str;
 }
 
@@ -4836,7 +5050,7 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...)
     {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
-        free(args);
+        mila_free(args);
         return verror("Function is NULL!");
     }
 
@@ -4879,7 +5093,7 @@ Value *call_native_with(Env *env, NativeFn fnval, Value *first, ...)
     {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
-        free(args);
+        mila_free(args);
         return verror("Function is NULL!");
     }
 
@@ -4923,7 +5137,7 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...)
     {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
-        free(args);
+        mila_free(args);
         return verror("Function %s does not exist!", fnname);
     }
 
@@ -5100,9 +5314,9 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
             {
                 a = vopaque_extra(env, NULL, ML("environment"));
                 char *new_name = mila_strdup(name + 5);
-                free(name);
+                mila_free(name);
                 env_set_local_raw(frame, new_name, a);
-                free(new_name);
+                mila_free(new_name);
                 continue;
             }
             else
@@ -5159,10 +5373,44 @@ Value *eval_primary(Src *s, Env *env)
     {
         return parse_number(s);
     }
-    // string
     if (c == '"')
     {
         return parse_string(s);
+    }
+    if (c == '?')
+    {
+        src_get(s);
+        Value *res = eval_expr(s, env);
+        if (res->refcount == 1)
+        {
+            val_release(res);
+            return vnull();
+        }
+        else if (res->refcount == ML_WEAK_REF_TRIGGER)
+            return res;
+        if (res->wrefs == NULL)
+        {
+            res->wrefs = (Wrefs *)mila_malloc(sizeof(Wrefs));
+            res->wrefs->items = NULL;
+            res->wrefs->count = 0;
+            res->wrefs->size = 0;
+#ifdef MILA_DEBUG
+            printf("  ?? %p weakref'd, allocated wrefs\n", res);
+#endif
+        }
+        Value *cop = val_new_raw(GET_TYPE(res));
+        MAKE_WEAK(cop);
+        cop->v = res->v;
+        cop->method_table = res->method_table;
+        cop->owns_table = 0; // we only inherit from strong ref
+        cop->type_name = res->type_name;
+        cop->wrefs = NULL;
+        da_append(res->wrefs, cop);
+#ifdef MILA_DEBUG
+        printf("  ?? added %p as observable of %p\n", cop, res);
+#endif
+        val_release(res);
+        return cop;
     }
     if (c == '[')
     {
@@ -5238,10 +5486,10 @@ Value *eval_primary(Src *s, Env *env)
         {
             Value *dict = native_new_dict(env, argc, args);
             val_release(list);
-            free(args);
+            mila_free(args);
             return dict;
         }
-        free(args);
+        mila_free(args);
         return list;
     }
     // parentheses
@@ -5606,7 +5854,7 @@ Value *eval_primary(Src *s, Env *env)
         char *buffer = (char *)mila_malloc(sizeof(char) * (end - start) + 1);
         memcpy(buffer, s->src + start, end - start);
         Value *res = vstring_take(dedent(buffer));
-        free(buffer);
+        mila_free(buffer);
         return res;
     }
     // function literal
@@ -5710,7 +5958,7 @@ Value *eval_primary(Src *s, Env *env)
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
-        free(params);
+        mila_free(params);
         GET_FUNCTION(fn)->name = mila_strdup("[lambda]");
         return fn;
     }
@@ -6094,7 +6342,7 @@ Value *eval_primary(Src *s, Env *env)
             // variable lookup
             Value *vv = env_get(env, id);
 #ifdef MILA_DEBUG
-            printf("    ?? read %s\n", id);
+            printf("  ?? read %s\n", id);
 #endif
             mila_free(id);
             if (!vv)
@@ -6356,14 +6604,14 @@ static inline Value *binary_op(Value *a, MethodType op, Value *b)
                 {
                     char *item_repr = as_c_string_repr(!is_number(list_a[index]) ? list_a[index] : list_b[index]);
                     Value *msg = verror("Item %s is not numeric but was used in list numerical comparison!", item_repr);
-                    free(item_repr);
+                    mila_free(item_repr);
                     // Clean up
                     for (size_t i_a = 0; list_a[i_a]; ++i_a)
                         val_release(list_a[i_a]);
                     for (size_t i_b = 0; list_b[i_b]; ++i_b)
                         val_release(list_b[i_b]);
-                    free(list_a);
-                    free(list_b);
+                    mila_free(list_a);
+                    mila_free(list_b);
                     return msg;
                 }
                 double d_a = to_double(list_a[index]);
@@ -6388,8 +6636,8 @@ static inline Value *binary_op(Value *a, MethodType op, Value *b)
             val_release(list_a[i_a]);
         for (size_t i_b = 0; list_b[i_b]; ++i_b)
             val_release(list_b[i_b]);
-        free(list_a);
-        free(list_b);
+        mila_free(list_a);
+        mila_free(list_b);
 
         switch (op)
         {
@@ -6494,7 +6742,7 @@ Value *binary_op_objects(Env *env, char right, Value *a, MethodType op, Value *b
     {
         char *repr = as_c_string_repr(a);
         Value *err = verror("%s\n of type %s does not support runtime overloading!", repr, GET_TYPENAME(a));
-        free(repr);
+        mila_free(repr);
         return err;
     }
     const char *method = NULL;
@@ -6730,7 +6978,9 @@ Value *eval_statement(Src *s, Env *env)
         Value *v = NULL;
         MethodType mt = MethodNone;
         skip_ws(s);
-
+#ifdef MILA_DEBUG
+        printf("  ?? Setting %s\n", id);
+#endif
         // Check if this is a subscripted assignment
         if (src_peek(s) == '[')
         {
@@ -6749,13 +6999,27 @@ Value *eval_statement(Src *s, Env *env)
             // Collect all subscript indices
             Value **indices = NULL;
             int num_indices = 0;
-
+#ifdef MILA_DEBUG
+            char *_debug_buffer = NULL;
+            malloc_sprintf(&_debug_buffer, "  ?? Specifically: %s", id);
+#endif
             while (src_peek(s) == '[')
             {
                 Value *index = parse_subscript(s, env);
                 indices = mila_realloc(indices, sizeof(Value *) * (num_indices + 1));
                 indices[num_indices++] = index;
+#ifdef MILA_DEBUG
+                malloc_sprintf(&_debug_buffer, "[");
+                char *_tmp = as_c_string_repr(index);
+                malloc_sprintf(&_debug_buffer, "%s", _tmp);
+                mila_free(_tmp);
+                malloc_sprintf(&_debug_buffer, "]");
+#endif
             }
+#ifdef MILA_DEBUG
+            printf("%s\n", _debug_buffer);
+            mila_free(_debug_buffer);
+#endif
 
             skip_ws(s);
 
@@ -6780,9 +7044,11 @@ Value *eval_statement(Src *s, Env *env)
             }
             if (mt != MethodNone)
                 s->pos++;
+
             if (__builtin_expect(!!match_char(s, '='), 1))
             {
                 v = eval_expr(s, env);
+
                 if (mt != MethodNone)
                 {
                     // Traverse to the parent object (all but the last index)
@@ -7020,6 +7286,7 @@ Value *eval_statement(Src *s, Env *env)
         {
             GET_FUNCTION(v)->name = mila_strdup(id);
         }
+
         env_set(env, id, v);
         mila_free(id);
         return v;
@@ -7036,10 +7303,14 @@ Value *eval_statement(Src *s, Env *env)
         }
         if (!id)
             return verror("Invalid var statement.");
+#ifdef MILA_DEBUG
+        printf("  ?? Assigning %s\n", id);
+#endif
         if (match_char(s, ';'))
         {
             // declare none
-            env_set_raw(env, id, vnone());
+            Value *r = vnone();
+            env_set_raw(env, id, r);
             mila_free(id);
             return vnull();
         }
@@ -7055,7 +7326,7 @@ Value *eval_statement(Src *s, Env *env)
         }
         else
         {
-            free(id);
+            mila_free(id);
             return verror("Expected a proper var statement!");
         }
 
@@ -7069,6 +7340,7 @@ Value *eval_statement(Src *s, Env *env)
         {
             GET_FUNCTION(v)->name = mila_strdup(id);
         }
+
         env_set_local(env, id, v);
         mila_free(id);
         return v;
@@ -7095,7 +7367,7 @@ Value *eval_statement(Src *s, Env *env)
             {
                 Value *res = vtagged_error(E_SYNTAX_ERROR,
                                            "Aliased contextual `%s` is incomplete", id);
-                free(id);
+                mila_free(id);
                 return res;
             }
             mila_free(id);
@@ -7168,9 +7440,9 @@ Value *eval_statement(Src *s, Env *env)
             {
                 // env_set_local_raw_contextual(env, names[i], NULL);
                 env_remove_contextual(env, names[i]);
-                free(names[i]);
+                mila_free(names[i]);
             }
-            free(names);
+            mila_free(names);
             return vnull();
         }
         char *id = parse_ident(s);
@@ -7410,7 +7682,6 @@ Value *eval_statement(Src *s, Env *env)
         }
         Value **value = NULL;
 
-        // check new improved Iter method first
         if (iter_obj->method_table && iter_obj->method_table[UMethodStepIterInit] && iter_obj->method_table[UMethodStepIter] && iter_obj->method_table[UMethodStepIterClean])
         {
             void *iter_state =
@@ -7441,6 +7712,7 @@ Value *eval_statement(Src *s, Env *env)
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
                 Env *frame = env_new(env);
+
                 env_set_local_raw(frame, id, v);
                 bod = eval_block_raw(s, frame);
                 val_release(v);
@@ -7549,6 +7821,7 @@ Value *eval_statement(Src *s, Env *env)
                 // reset the position to the start of the body for execution
                 s->pos = body_start_pos;
                 Env *frame = env_new(env);
+
                 env_set_local_raw(frame, id, v);
                 bod = eval_block_raw(s, frame);
                 val_release(v);
@@ -7686,20 +7959,26 @@ Value *eval_statement(Src *s, Env *env)
                 {
                     Value *msg = vstring_dup(res->v->tagged_error.message);
                     Value *type = vstring_dup(GET_TAGGED_ERROR_TYPENAME(res));
-                    Value *dict = call_native_with(env, native_new_dict, vstring_dup("error"), type, vstring_dup("message"), msg, NULL);
+                    Value *dict = call_native_with(env, native_new_dict,
+                                                   vstring_dup("error"), type,
+                                                   vstring_dup("error_id"), vint(GET_ERROR_TYPE(res)),
+                                                   vstring_dup("message"), msg, NULL);
                     val_release(res);
                     env_set_local(env, id, dict);
-                    free(id);
+                    mila_free(id);
                     s->pos = end;
                     return dict;
                 }
                 else
                 {
                     Value *msg = vstring_dup(GET_ERROR_MESSAGE(res));
-                    Value *dict = call_native_with(env, native_new_dict, vstring_dup("error"), vstring_dup("Generic"), vstring_dup("message"), msg, NULL);
+                    Value *dict = call_native_with(env, native_new_dict,
+                                                   vstring_dup("error"), vstring_dup("Generic"),
+                                                   vstring_dup("error_id"), vint(E_GENERIC),
+                                                   vstring_dup("message"), msg, NULL);
                     val_release(res);
                     env_set_local(env, id, dict);
-                    free(id);
+                    mila_free(id);
                     s->pos = end;
                     return dict;
                 }
@@ -7817,7 +8096,7 @@ Value *eval_statement(Src *s, Env *env)
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
-        free(params);
+        mila_free(params);
         if (!GET_FUNCTION(fn)->name)
             GET_FUNCTION(fn)->name = mila_strdup(name);
         env_set_local(env, name, fn);
@@ -7842,7 +8121,7 @@ Value *eval_statement(Src *s, Env *env)
             if (!obj_name)
             {
                 Value *res = vtagged_error(E_SYNTAX_ERROR, "Expected a name after `with` for object `%s`", name);
-                free(name);
+                mila_free(name);
                 return res;
             }
             obj = call_native_with(env, native_new_dict, NULL);
@@ -7967,28 +8246,25 @@ Value *eval_source(Src *s, Env *env)
         if (src_eof(s))
             break;
         Value *st = eval_statement(s, env);
-
-        if (st->type != T_NULL)
-        {
-            val_release(last);
-            last = st;
-            if (last)
-            {
-                if (IS_ERROR(last))
-                {
-                    return last;
-                }
-                else if (last->type == T_RETURN)
-                {
-                    Value *res = (Value *)last->v;
-                    val_release(last);
-                    return res;
-                }
-            }
-        }
-        else
+        if (GET_TYPE(st) == T_NULL)
         {
             val_release(st);
+            continue;
+        }
+        val_release(last);
+        last = st;
+        if (last)
+        {
+            if (IS_ERROR(last))
+            {
+                return last;
+            }
+            else if (last->type == T_RETURN)
+            {
+                Value *res = (Value *)last->v;
+                val_release(last);
+                return res;
+            }
         }
     }
     return last;
@@ -8056,7 +8332,7 @@ int run_file(char *name, Env *env)
     mila_free(src_text);
 #ifndef SAFE_BUILD
     path_list_remove(mila_search_path, loc_dir);
-    free(loc_dir);
+    mila_free(loc_dir);
 #endif
     return 0;
 }
@@ -8089,7 +8365,7 @@ Value *run_file_keep_res(char *name, Env *env)
     mila_free(src_text);
 #ifndef SAFE_BUILD
     path_list_remove(mila_search_path, loc_dir);
-    free(loc_dir);
+    mila_free(loc_dir);
 #endif
     return res;
 }
@@ -8100,8 +8376,8 @@ int invoke_file(char *name, Env *env)
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
     char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
-    free(_loc_dir);
-    free(cwd);
+    mila_free(_loc_dir);
+    mila_free(cwd);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
@@ -8119,14 +8395,14 @@ int invoke_file(char *name, Env *env)
         if (IS_ERROR(setup_res))
         {
             Value *err = verror("Setup file %s returned %s", setup_name, GET_TAGGED_ERROR_MESSAGE(setup_res));
-            free(setup_name);
+            mila_free(setup_name);
             print_error(err);
             val_release(setup_res);
             path_list_remove(mila_search_path, loc_dir);
-            free(loc_dir);
+            mila_free(loc_dir);
             return 1;
         }
-        free(setup_name);
+        mila_free(setup_name);
         val_release(setup_res);
     }
 #endif
@@ -8151,7 +8427,7 @@ int invoke_file(char *name, Env *env)
     mila_free(src_text);
 #ifndef SAFE_BUILD
     path_list_remove(mila_search_path, loc_dir);
-    free(loc_dir);
+    mila_free(loc_dir);
 #endif
     return 0;
 }
@@ -8162,8 +8438,8 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
     char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
-    free(_loc_dir);
-    free(cwd);
+    mila_free(_loc_dir);
+    mila_free(cwd);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
@@ -8178,11 +8454,11 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
 
         Value *setup_res = run_file_keep_res(setup_name, setup_env);
         env_free(setup_env);
-        free(setup_name);
+        mila_free(setup_name);
         if (IS_ERROR(setup_res))
         {
             path_list_remove(mila_search_path, loc_dir);
-            free(loc_dir);
+            mila_free(loc_dir);
             return setup_res;
         }
         val_release(setup_res);
@@ -8281,7 +8557,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
                     mila_free(src_text);
 #ifndef SAFE_BUILD
                     path_list_remove(mila_search_path, loc_dir);
-                    free(loc_dir);
+                    mila_free(loc_dir);
 #endif
                     return verror("Expected string annotation!");
                 }
@@ -8296,7 +8572,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
     mila_free(src_text);
 #ifndef SAFE_BUILD
     path_list_remove(mila_search_path, loc_dir);
-    free(loc_dir);
+    mila_free(loc_dir);
 #endif
     return res;
 }
@@ -8307,8 +8583,8 @@ Value *invoke_file_keep_res(char *name, Env *env)
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
     char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
-    free(_loc_dir);
-    free(cwd);
+    mila_free(_loc_dir);
+    mila_free(cwd);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
     env_set_local_raw(env, "__dir_path__", vstring_dup(loc_dir));
@@ -8323,11 +8599,11 @@ Value *invoke_file_keep_res(char *name, Env *env)
 
         Value *setup_res = run_file_keep_res(setup_name, setup_env);
         env_free(setup_env);
-        free(setup_name);
+        mila_free(setup_name);
         if (IS_ERROR(setup_res))
         {
             path_list_remove(mila_search_path, loc_dir);
-            free(loc_dir);
+            mila_free(loc_dir);
             return setup_res;
         }
         val_release(setup_res);
@@ -8352,7 +8628,7 @@ Value *invoke_file_keep_res(char *name, Env *env)
     mila_free(src_text);
 #ifndef SAFE_BUILD
     path_list_remove(mila_search_path, loc_dir);
-    free(loc_dir);
+    mila_free(loc_dir);
 #endif
     return res;
 }
@@ -8420,6 +8696,18 @@ Env *mila_global_init(void)
 #endif
 
     env_set(g, "__modules", mila_cached_modules);
+
+    struct sigaction sa = {0};
+    sa.sa_sigaction = mila_fatal_sig_handler; // the function from last message
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;    // SA_SIGINFO = get ucontext
+    sigemptyset(&sa.sa_mask);
+
+    sigaction(SIGINT, &sa, NULL);  // keyboard interrupt
+//    sigaction(SIGPIPE, &sa, NULL); // broken pipe
+    sigaction(SIGSEGV, &sa, NULL); // segfault
+    sigaction(SIGFPE, &sa, NULL);  // div by 0
+    sigaction(SIGABRT, &sa, NULL); // assert/abort
+    sigaction(SIGILL, &sa, NULL);  // illegal instruction
 
     return g;
 }
@@ -8545,13 +8833,6 @@ int main(int argc, char **argv)
         else if (strcmp(argv[1], "--dry") == 0)
         {
             Env *g = mila_global_init();
-            signal(SIGABRT, handle_signal);
-            signal(SIGFPE, handle_signal);
-            signal(SIGILL, handle_signal);
-            signal(SIGINT, handle_signal);
-            signal(SIGSEGV, handle_signal);
-            signal(SIGTERM, handle_signal);
-            signal(SIGINT, handle_signal);
 
             mila_search_path = path_list_new();
             char *cwd = path_get_cwd();
@@ -8563,7 +8844,7 @@ int main(int argc, char **argv)
             path_list_add(mila_search_path, "~/.local/mila");
 
             val_release(eval_str("println(\"Hello, world!\");", g));
-
+            mila_free(cwd);
             mila_global_deinit(g);
             return 0;
         }
@@ -8607,11 +8888,6 @@ int main(int argc, char **argv)
         else if (strcmp(argv[1], "-r") == 0)
         {
             Env *g = mila_global_init();
-            signal(SIGFPE, handle_signal);
-            signal(SIGILL, handle_signal);
-            signal(SIGINT, handle_signal);
-            signal(SIGSEGV, handle_signal);
-            signal(SIGTERM, handle_signal);
 
             mila_search_path = path_list_new();
             char *cwd = path_get_cwd();
@@ -8632,7 +8908,7 @@ int main(int argc, char **argv)
             }
             env_set_raw(g, "argv", array);
             env_set_raw(g, "__argv", vopaque(argv));
-            free(cwd);
+            mila_free(cwd);
             int return_code = 0;
 
             Value *res = eval_str(argv[2], g);
@@ -8676,12 +8952,6 @@ int main(int argc, char **argv)
 
     Env *g = mila_global_init();
 
-    signal(SIGFPE, handle_signal);
-    signal(SIGILL, handle_signal);
-    signal(SIGINT, handle_signal);
-    signal(SIGSEGV, handle_signal);
-    signal(SIGTERM, handle_signal);
-
     mila_search_path = path_list_new();
     char *cwd = path_get_cwd();
     if (!cwd)
@@ -8711,7 +8981,7 @@ int main(int argc, char **argv)
         }
         env_set_raw(g, "argv", array);
         env_set_raw(g, "__argv", vopaque(argv));
-        free(cwd);
+        mila_free(cwd);
         int return_code = 0;
 
         Value *res = invoke_main_file(argv[1], g, argc, argv);
@@ -8753,7 +9023,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        free(cwd);
+        mila_free(cwd);
         if (argc > 1 && strcmp(argv[1], "--") == 0)
         {
             array = call_function_str(g, "array", vint(argc - 2), NULL);
@@ -8797,7 +9067,7 @@ int main(int argc, char **argv)
         {
             // append line to buffer
             strcat(buffer, line);
-            free(line);
+            mila_free(line);
             fflush(stdout);
 
             // debugging
@@ -8860,7 +9130,7 @@ int main(int argc, char **argv)
 
                 if (is_truthy(env_get(g, "__check_time")))
                 {
-                    printf(" ?? took ");
+                    printf("  ?? took ");
                     print_duration(end_time - start_time);
                     puts("");
                 }

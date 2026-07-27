@@ -95,9 +95,6 @@ void mila_fatal_sig_handler(int sig, siginfo_t *si, void *ctx)
     case SIGTERM:
         write(2, "\n[terminated]\n", 14);
         _exit(sig);
-    case SIGPIPE:
-        write(2, "\n[broken pipe]\n", 15);
-        _exit(sig);
     }
     ucontext_t *uc = ctx;
 
@@ -8703,7 +8700,6 @@ Env *mila_global_init(void)
     sigemptyset(&sa.sa_mask);
 
     sigaction(SIGINT, &sa, NULL);  // keyboard interrupt
-//    sigaction(SIGPIPE, &sa, NULL); // broken pipe
     sigaction(SIGSEGV, &sa, NULL); // segfault
     sigaction(SIGFPE, &sa, NULL);  // div by 0
     sigaction(SIGABRT, &sa, NULL); // assert/abort

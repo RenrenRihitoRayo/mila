@@ -10,7 +10,7 @@ contexts:
     - include: comment-line
     - include: string
     - include: keyword
-    - include: builtin
+    - include: builtins
     - include: constant
     - include: number
     - include: operator
@@ -32,7 +32,7 @@ contexts:
       scope: string.quoted.double.mila
       push:
         - meta_scope: string.quoted.double.mila
-        - match: '\\[ntr0\\\"''abfvx]|\\x[0-9a-fA-F]{2}'
+        - match: '\\[ntr\\"''abfvx]|\\x[0-9a-fA-F]{2}'
           scope: constant.character.escape.mila
         - match: '"'
           pop: true
@@ -41,8 +41,37 @@ contexts:
     - match: '\b(namespace|block|catch|if|elif|else|while|fn|set|var|sync|forget|return|break|continue|foreach)\b'
       scope: keyword.control.mila
 
-  builtin:
-    - match: '\b(range|own|unown|copy|repr|repr_raw|random|srandom|noise|crandom|dump_mila_search_paths|is|hash|hash\.set_seed|hash\._get_seed|print|printr|println|input|and|or|xor|not|open|fdopen|fdredirect|fclose|close|fprint|fprint_bytes|fread|fread_all|fread_bytes|fread_all_bytes|fseek|ftell|fflush|file\.exists|file\.is_file|file\.is_dir|file\.list_dir|list|list\.pop|list\.len|list\.append|list\.contains|list\.index|list\.slice|list\.deconstruct|array|array\.from|array\.len|dict|dict\.rem|dict\.keys|cast\.int|cast\.float|cast\.str|cast\.i2f|cast\.i2u|cast\.u2i|cast\.f2i|typeof|_typeof|is_numeric|as_opaque|from_opaque|mjson\.loads|mjson\.dumps|json\.loads|json\.dumps|str\.slice|str\.index|str\.patch|str\.copy|str\.len|str\.pop_f|str\.pop_b|str\.split|str\.join|str\.startswith|str\.endswith|str\.contains|str\.caseless_contains|str\.find|str\.caseless_find|str\.match_replace|str\.match_find|istring|ascii\.from_int|ascii\.from_string|floor|ceil|sqrt|sqrtf|sin|cos|tan|atan2|pow|rand|fabs|abs|report|report_tagged|assert|exit|abort|get_time|time_sleep|time_sleep_ms|strftime|get_tm_gmt|get_tm_local|_breakpoint|system|sys\.get_platform|sys\.get_arch|sys\.get_pid|run|require|invoke|load|eval|thread\.make|thread\.join|thread\.cancel|thread\.check_cancel|thread\.set_daemon|thread\.get_pthread_id|thread\.status|thread\.mutex|thread\.mutex_unlock|thread\.mutex_lock|thread\.dump)\b'
+  
+  builtins:
+    - match: '\b(dump_mila_search_paths|thread\.get_pthread_id|str\.caseless_contains|thread\.check_cancel|_debug\.get_weakrefs|thread\.mutex_unlock|str\.caseless_find|str\.match_replace|ascii\.from_string|thread\.set_daemon)\b'
+      scope: support.function.mila
+    - match: '\b(thread\.mutex_lock|sys\.get_platform|list\.deconstruct|fread_all_bytes|str\.match_find|hash\._get_seed|str\.startswith|ascii\.from_int|mjson\.dumps_io|_debug\.get_mem)\b'
+      scope: support.function.mila
+    - match: '\b(list\.contains|thread\.status|thread\.cancel|hash\.set_seed|time_sleep_ms|report_tagged|json\.dumps_io|file\.list_dir|get_tm_local|sys\.get_arch)\b'
+      scope: support.function.mila
+    - match: '\b(fprint_bytes|str\.contains|str\.endswith|thread\.mutex|file\.is_file|mjson\.dumps|thread\.join|mjson\.loads|str\.tolower|from_opaque)\b'
+      scope: support.function.mila
+    - match: '\b(file\.exists|str\.toupper|file\.is_dir|_breakpoint|list\.append|sys\.get_pid|thread\.dump|thread\.make|fread_bytes|sys\.getenv)\b'
+      scope: support.function.mila
+    - match: '\b(fdredirect|list\.index|list\.slice|array\.from|cast\.float|is_numeric|json\.loads|json\.dumps|time_sleep|get_tm_gmt)\b'
+      scope: support.function.mila
+    - match: '\b(sys\.setenv|str\.split|str\.patch|str\.index|str\.pop_b|dict\.keys|str\.slice|fread_all|str\.pop_f|as_opaque)\b'
+      scope: support.function.mila
+    - match: '\b(array\.len|repr_raw|strftime|get_time|list\.len|list\.pop|cast\.int|str\.copy|str\.join|cast\.i2f)\b'
+      scope: support.function.mila
+    - match: '\b(cast\.i2u|cast\.u2i|str\.find|cast\.f2i|dict\.rem|cast\.str|srandom|crandom|_typeof|require)\b'
+      scope: support.function.mila
+    - match: '\b(istring|println|str\.len|assert|fdopen|printr|report|fflush|isatty|random)\b'
+      scope: support.function.mila
+    - match: '\b(readch|system|invoke|typeof|fprint|fclose|print|ftell|fseek|fread)\b'
+      scope: support.function.mila
+    - match: '\b(close|floor|sqrtf|atan2|abort|unown|input|range|vkill|qsort)\b'
+      scope: support.function.mila
+    - match: '\b(noise|array|fabs|rand|dict|open|sqrt|load|eval|copy)\b'
+      scope: support.function.mila
+    - match: '\b(hash|ceil|repr|exit|list|xor|pow|tan|cos|own)\b'
+      scope: support.function.mila
+    - match: '\b(not|and|run|sin|abs|is|or)\b'
       scope: support.function.mila
 
   constant:
@@ -54,5 +83,5 @@ contexts:
       scope: constant.numeric.mila
 
   operator:
-    - match: '\+\=|\-\=|\*\=|\/\=|\%\=|\=\=|\!\=|\?\?|\<\=|\>\=|\&\&|\|\||[+\-*/=<>!:%?&|]'
+    - match: '\+\=|\-\=|\*\=|\/\=|\%\=|\=\=|\!\=|\?\?|\<\=|\>\=|\&\&|\|\||[+\-*/=<>!:%?&|\?]'
       scope: keyword.operator.mila

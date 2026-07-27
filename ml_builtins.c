@@ -53,6 +53,9 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <termios.h>
+#include <fcntl.h>
+#include <errno.h>
 #endif
 
 #include <time.h>
@@ -72,6 +75,26 @@ Value *self_free(Value *self)
 }
 
 // ---------- Native functions ----------
+
+int kbhit_nb(void) {
+    struct termios oldt, newt;
+    int oldflags;
+    int c = -1;
+    tcgetattr(STDIN_FILENO, &oldt);
+    oldflags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    newt.c_cc[VMIN] = 0;
+    newt.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    fcntl(STDIN_FILENO, F_SETFL, oldflags | O_NONBLOCK);
+    unsigned char ch;
+    int n = read(STDIN_FILENO, &ch, 1);
+    if (n == 1) c = ch;
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    fcntl(STDIN_FILENO, F_SETFL, oldflags);
+    return c;
+}
 
 char *read_input(void)
 {
@@ -195,6 +218,10 @@ Value *native_input(Env *env, int argc, Value **argv)
 
     char *res = read_input();
     return res ? vstring_take(res) : vnull();
+}
+
+Value* native_readch(Env *env, int argc, Value** argv) {
+    return vint(kbhit_nb());
 }
 
 static _Thread_local Value *_mila_qsort_fn = NULL;
@@ -1984,6 +2011,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "printr", native_printr);
     env_register_native(g, "println", native_println);
     env_register_native(g, "input", native_input);
+    env_register_native(g, "readch", native_readch);
     // === Logic and Bitwise
     env_register_native(g, "and", native_bitwise_and);
     env_register_native(g, "or", native_bitwise_or);
@@ -1994,6 +2022,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "open", native_open);
     env_register_native(g, "fdopen", native_fdopen);
     env_register_native(g, "fdredirect", native_fdredirect);
+    env_register_native(g, "fileno", native_fileno);
     env_register_native(g, "fclose", native_fclose);
     env_register_native(g, "close", native_close);
     env_register_native(g, "fprint", native_fprint);

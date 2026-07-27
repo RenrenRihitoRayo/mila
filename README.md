@@ -17,7 +17,20 @@ MiLa is small, simple, and fast for general applications.
   Although MiLa started its origins from being a language kernel,
   it developed into being a proper programming language that follows the UNIX philosophy.
 
-## Keywords (22 total)
+## Where can I use MiLa?
+
+* Automation
+* Scripting
+* Embedding
+* Tools
+* Prototyping
+
+## Builtins
+
+There are currently 140+ builtins in MiLa
+all documented, in a interpreter as small as a picture.
+
+## Keywords (21 total)
 
 * if
 * elif
@@ -31,19 +44,17 @@ MiLa is small, simple, and fast for general applications.
 * var
 * contextual
 * sync
-* export
-* yield (from `foreach yield`)
 * object (2 variants)
 * foreach (2 variants)
 * while
 * break
-* continue
+* continue (2 variants)
 * true
 * false
 * null
 * none
 
-Total of 30 different constructs.
+Total of 31 different constructs.
 Less than most programming languages' number of keywords!
 (Python3.12 has 35 keywords)
 

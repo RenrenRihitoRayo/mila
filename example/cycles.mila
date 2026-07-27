@@ -1,4 +1,4 @@
-// At least a or b must be stored as weak ref
+// a or b must be stored as weak ref
 // original values MUST have one variable
 // holding its reference (leak if not done so)
 var a = [@ "value" = 80];

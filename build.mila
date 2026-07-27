@@ -1,0 +1,61 @@
+
+!fn (argc, _, target="debug")
+
+var cc = "gcc";
+var libs = ["m"];
+var libs_str = " -l " + str.join(" -l", libs);
+var flags_debug = " -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 -Iheaders ";
+var flags = " -march=native -Wextra -Wall -Wno-nonnull  -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 -Iheaders -Wno-overflow -flto -ffunction-sections -fdata-sections -Wl,-s,--gc-sections -fno-stack-protector ";
+
+var logs = open("logs.txt.temp", "w");
+var stderr_bak = fdredirect((logs), stderr_fd);
+
+if (target == "debug") {
+    if (system(cc
+        + " -o mila "
+        + flags_debug
+        + " -O0 -g "
+        + libs_str
+        + " mila.c "
+    )) {
+        fprint(stderr, "Returned non zero!\nCheck logs.txt.temp");
+        fclose(logs);
+        exit(1);
+    }
+} elif (target == "release") {
+    if (system(cc
+        + " -o mila "
+        + flags
+        + " -O3 "
+        + libs_str
+        + " mila.c "
+    )) {
+        println("Returned non zero!\nCheck logs.txt.temp");
+        fclose(logs);
+        exit(1);
+    }
+} elif (target == "clean") {
+    fclose(logs);
+    system("rm mila *.so **/*.so *.tmp *.temp **/*.tmp **/*.temp");
+    exit(0);
+} else {
+    println("Available targets:
+* debug
+    Build a debug version of mila (just asan)
+* release
+    Build a release version of mila
+* clean
+    Clean generated files (including compiled binary)");
+    exit({ if (argc != 1) {return 1;} else {return 0;}});
+}
+
+if (file.is_file("mila")) system("cp mila mila.recent");
+
+println("mila.recent will always be kept even when
+using the clean target. This is to avoid locking yourself
+in the next step.
+
+Steps:
+* Delete makefile (use mila.recent build.mila [target])
+* Write MiLa");
+fclose(logs);

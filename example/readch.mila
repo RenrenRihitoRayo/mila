@@ -1,0 +1,11 @@
+
+var count = 0;
+var last = " ";
+while (true) {
+    var ch = readch();
+    if (ch > 0) {
+        set last = ascii.from_int(ch);
+        print("Key: " + last + " Frame: " + count + "  \r");
+    }
+    set count += 1;
+}

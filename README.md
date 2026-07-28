@@ -30,6 +30,12 @@ MiLa is small, simple, and fast for general applications.
 There are currently 140+ builtins in MiLa
 all documented, in a interpreter as small as a picture.
 
+## Size
+
+|         Platform         |  Size  | Compiler     |
+|--------------------------|--------|--------------|
+| Android (MagicOS Termux) | 238KB  | clang 21.1.8 |
+
 ## Keywords (21 total)
 
 * if

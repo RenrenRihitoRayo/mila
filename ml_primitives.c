@@ -821,6 +821,16 @@ Value *native_str_match_find(Env *env, int argc, Value **argv)
     return vint(find_match_index(GET_STRING(argv[1]), GET_STRING(argv[0]), NULL));
 }
 
+Value *native_str_match_findx(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    (void)argc;
+    if (!match_types(argv, T_STRING, T_STRING, T_ARG_END))
+        return vnull();
+    size_t len = 0;
+    return make_list(vint(find_match_index(GET_STRING(argv[1]), GET_STRING(argv[0]), &len)), vint(len), NULL);
+}
+
 Value *native_str_len(Env *env, int argc, Value **argv)
 {
     (void)env;

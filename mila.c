@@ -781,10 +781,6 @@ FN_UNUSED static inline int is_truthy(Value *value)
     return 0;
 }
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 static const char *find_close(const char *p, char close)
 {
     while (*p)
@@ -1128,12 +1124,13 @@ char *mapped_replace_match(const char *pattern, const char *str, const char *rep
     return out.buf;
 }
 
+static int find_match_greedy(const char *pattern, const char *str, const char **out_start, size_t *out_len);
 /* like find_match but returns index of first match, -1 if none, out_len optional */
 long find_match_index(const char *pattern, const char *str, size_t *out_len)
 {
     const char *start;
     size_t len;
-    if (!find_match(pattern, str, &start, &len))
+    if (!find_match_greedy(pattern, str, &start, &len))
         return -1;
     if (out_len)
         *out_len = len;

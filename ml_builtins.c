@@ -2118,6 +2118,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.caseless_find", native_str_caseless_find);
     env_register_native(g, "str.match_replace", native_str_match_replace);
     env_register_native(g, "str.match_find", native_str_match_find);
+    env_register_native(g, "str.match_findx", native_str_match_findx);
     env_register_native(g, "str.toupper", native_str_toupper);
     env_register_native(g, "str.tolower", native_str_tolower);
 

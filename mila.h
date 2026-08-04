@@ -182,7 +182,6 @@ typedef enum
     T_NATIVE,
     T_OPAQUE,
     T_OWNED_OPAQUE,
-    T_WEAK_OPAQUE,
     T_RETURN,
     T_NONE,
     T_ERROR,
@@ -418,7 +417,7 @@ static inline Value *vtagged_coded_error(ErrorType type, int ret_code, char *mes
 // Create a function
 static inline Value *vfunction(char **params, char** defaults, char** contextuals, Env* closure, char *body_src);
 // Check if a value is any numeric type
-static inline int is_number(Value *v);
+static inline int is_numeric(Value *v);
 // Turn any numeric type to a double
 static inline double to_double(Value *v);
 static inline unsigned long to_uint(Value *v);
@@ -535,7 +534,6 @@ const char *MILA_TYPE_NAMES[] = {
     "native",
     "opaque",
     "owned_opaque",
-    "weak_opaque",
     "return",
     "none",
     "error",
@@ -619,7 +617,6 @@ typedef struct {
 typedef struct
 {
     NativeFn fn;
-    void *userdata;
     char *name;
 } NativeFunctionV;
 
@@ -685,7 +682,6 @@ Src *src_new(const char *s);
 void src_free(Src *s);
 static inline void skip_ws(Src *s);
 static inline char src_peek(Src *s);
-static inline void skip_expr(Src *s);
 static inline void skip_block(Src *s);
 static inline char src_get(Src *s);
 static inline int src_eof(Src *s);

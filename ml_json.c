@@ -271,8 +271,7 @@ char* _mila_to_json_unified(Value* v, int level, int include_fn) {
             break;
         }
         case T_OPAQUE:
-        case T_OWNED_OPAQUE:
-        case T_WEAK_OPAQUE: {
+        case T_OWNED_OPAQUE: {
             if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "list") == 0) {
                 LinkedList* list = (LinkedList*)GET_OPAQUE(v);
                 malloc_sprintf(&result, "[\n");
@@ -355,8 +354,7 @@ long _io_mila_to_json_unified(FILE* file, Value* v, int level, int include_fn) {
             break;
         }
         case T_OPAQUE:
-        case T_OWNED_OPAQUE:
-        case T_WEAK_OPAQUE: {
+        case T_OWNED_OPAQUE: {
             if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "list") == 0) {
                 LinkedList* list = (LinkedList*)GET_OPAQUE(v);
                 result += fprintf(file, "[\n");

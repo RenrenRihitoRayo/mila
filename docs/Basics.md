@@ -136,6 +136,16 @@ it's exposed in VIOO as `BMethodGetItem` and `BMethodSetItem`.
 <br><br>
 Function calls are the same as in C (yes we don't allow keyword arguments.)
 
+### Clarifications for Operations
+
+* Arithmetic, and Shifting is like in C
+
+* Glob operator is `string => patterb`
+
+* Comparisons are also like in C
+
+* `||` and `&&` do NOT short circuit
+
 ## <a id="decl"></a>Declarations and Assignments
 
 Declarations in MiLa are straightforward.
@@ -360,7 +370,7 @@ Notes:
 
 * "What happens to weak references when the value it references is freed?"
 
-    It becomes null.
+    It becomes none.
 
 ## <a id="namespaces"></a>Namespaces
 
@@ -391,6 +401,10 @@ catch error {
 }
 ```
 
+The variable `error` in this case may return
+an object being `[@"error"=..., "error_id"=..., "message"=...]`
+and if no errors were captured, `error` would have been set to `none`.
+
 ## <a id="blocks"></a>Blocks
 
 MiLa does not have line tracking.
@@ -414,5 +428,10 @@ have tbe blocks name.
 // argv gets expand to the rest of the parameters)
 !fn (argc, name, ...argv)
 ```
+
+This notation must come first before any
+statements. Specifically right after the shebang
+if present, if not then it must be at the first line.
+Blank lines before thid notation is acceptable.
 
 Note: MiLa will ignore shebangs when present.

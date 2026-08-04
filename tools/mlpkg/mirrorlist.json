@@ -1,7 +1,7 @@
 [
     {
-        "name": "My Mirror",
-        "link": "https://github.com/renrenrihitorayo/mila-<package>/archive/refs/heads/<version>.zip",
+        "name": "MiLa Primary Mirror",
+        "link": "https://codeload.github.com/renrenrihitorayo/mila-<package>/archive/refs/heads/<version>.zip",
         "recent-marker": "master",
         "command": "echo This will print after your package installs!"
     }

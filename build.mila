@@ -1,3 +1,4 @@
+// Build MiLa using MiLa!
 
 !fn (argc, _, target="debug")
 
@@ -56,6 +57,6 @@ using the clean target. This is to avoid locking yourself
 in the next step.
 
 Steps:
-* Delete makefile (use mila.recent build.mila [target])
+* Delete makefile (use './mila.recent build.mila [target]')
 * Write MiLa");
 fclose(logs);

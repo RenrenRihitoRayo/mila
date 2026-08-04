@@ -192,7 +192,7 @@ Value **ll_slice_front(LinkedList *list, unsigned long start)
     return values;
 }
 
-Value *ll_slice_ll(LinkedList *list, unsigned long start, unsigned long len)
+Value *ll_slice_ll(LinkedList *list, unsigned long start, long len)
 {
     Value **l = ll_to_iter(list);
     unsigned long size = GET_INTEGER(l[0]);

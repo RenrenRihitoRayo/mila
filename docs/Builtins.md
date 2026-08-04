@@ -44,46 +44,62 @@ and thus may not be guaranteed as safe for monkey patching.
 
 ## <a id="io-file"></a>File IO
 
-* `open(file: "string", mode: "string") -> "opaque:fd"`
+* `open(file: "string", mode: "string") -> "opaque:file"`
 
     Open a file, uses C `fopen`.
 
-* `fread(fd: "opaque:fd", num: "int") -> "string"`
+* `fdopen(fd: "int", mode: "string") -> "opaque:file"`
+
+    Open a file descriptor.
+
+* `fdredirect(to_fd: "[int,opaque:file]", from_fd: "[int,opaque:file]") -> "int"`
+
+    Redirect `from_fd` into `to_fd` and return `from_fd`
+
+* `fileno(file: "opaque:file") -> "int"`
+
+    Return the file as a file descriptor.
+
+* `fread(file: "opaque:file", num: "int") -> "string"`
 
     Read a certain amount of characters.
 
-* `fread_all(fd: "opaque:fd") -> "string"`
+* `fread_all(file: "opaque:file") -> "string"`
 
     Read the entire file.
 
-* `fread_bytes(fd: "opaque:fd", num: "int") -> "list[int]"`
+* `fread_bytes(file: "opaque:file", num: "int") -> "list[int]"`
 
     Read a certain amount of bytes.
 
-* `fread_all(fd: "opaque:fd") -> "list[int]"`
+* `fread_all(file: "opaque:file") -> "list[int]"`
 
     Read the entire file as bytes.
 
-* `fprint(fd: "opaque:fd", value: "string")`
+* `fprint(file: "opaque:file", value: "string")`
 
     Print the string into the file.
 
-* `fprint_bytes(fd: "opaque:fd", value: "list[int]")`
+* `fprint_bytes(file: "opaque:file", value: "list[int]")`
 
     Print the bytes into the file.
 
-* `ftell(fd: "opaque:fd") -> "int"`
+* `ftell(file: "opaque:file") -> "int"`
 
     Return the current cursor position.
 
-* `fseek(fd: "opaque:fd", offset: "int", whence: "int") -> "int"`
+* `fseek(file: "opaque:file", offset: "int", whence: "int") -> "int"`
 
     Exactly like C fseek.
     For whence use the values `SEEK_CUR`, `SEEK_SET`, and `SEEK_END`
 
-* `fclose(fd: "opaque:fd")`
+* `fclose(file: "opaque:file")`
 
     Close a file.
+
+* `close(fd: "int")`
+
+    Close a file descriptor.
 
 ### Variables related to File IO
 
@@ -93,13 +109,25 @@ and thus may not be guaranteed as safe for monkey patching.
 
 * `stderr`
 
-    Standard error file descriptor.
+    Standard error file.
 
 * `stdout`
 
-    Standard out file descriptor.
+    Standard out file.
 
 * `stdin`
+
+    Standard in file. (safe for piping data in)
+
+* `stderr_fd`
+
+    Standard error file descriptor.
+
+* `stdout_fd`
+
+    Standard out file descriptor.
+
+* `stdin_fd`
 
     Standard in file descriptor. (safe for piping data in)
 
@@ -311,6 +339,19 @@ typedef struct {
 
     Find the first match from the left of `pattern` in `str` and return the index to the first character of the match.
 
+* `str.match_findx(str: "string", pattern: "string") -> "list[int]"`
+
+    Find the first match from the left of `pattern` in `str` and return the index to the first character of the match
+    as the first item and return the length of the match as the second item.
+
+* `str.toupper(str: "string") -> "string"`
+
+    Self explanatory name.
+
+* `str.tolower(str: "string") -> "string"`
+
+    Self explanatory name.
+
 * `istring(str: "string") -> "opaque:istring"`
 
     Turn the string into an iterable string.
@@ -349,15 +390,21 @@ Self explanatory names.
 Self explanatory names.
 
 * `cast.int(s: "string") -> "int"`
+
 * `cast.float(s: "string") -> "float"`
+
 * `cast.str(a: "any") -> "string"`
 
     Most useless here....
 
 * `cast.i2u(i: "int") -> "uint"`
+
 * `cast.u2i(u: "uint") -> "int"`
+
 * `cast.i2f(i: "int") -> "float"`
+
 * `cast.f2i(f: "float") -> "int"`
+
 * `typeof(a: "any") -> "string"`
 
     Arguably the most useful function in MiLa
@@ -390,6 +437,27 @@ Self explanatory names.
     Under the hood MiLa int variations are actually "long" and
     "ulong".
 
+* `repr(any: "any") -> "string"`
+
+    Cast a string to its representation.
+    Useful for logging.
+
+* `repr_raw(any: "any") -> "string"`
+
+    Ignore the values set representation
+    and use only the built in representations.
+
+* `own(opq: "opaque") -> "owned_opaque"`
+
+    Cast any opaque to an opaque.
+
+* `unown(opq: "owned_opaque") -> "opaque"`
+
+    Cast any opaque to an unowned opaque.
+
+* `is_numeric(any: "any") -> "bool"`
+
+    Returns true if a type is numeric.
 
 ## <a id="time"></a>Time
 
@@ -461,7 +529,7 @@ Theres no date object shenanigans if theres no date object.
     * "riscv" (not tested yet)
     * "ppc" (not tested yet)
     * "mips" (not tested yet)
-    * "unknown" (not tested yet)
+    * "unknown" (good luck)
 
 * `sys.get_pid() -> "int"`
 
@@ -550,7 +618,7 @@ Theres no date object shenanigans if theres no date object.
 
     A force propagated non fatal error.
     Simply stops the thread that this is raised in,
-    if used in the main interprter this just exits.
+    if used in the main interpreter this just exits.
 
 ## <a id="json"></a>JSON and MJSON
 
@@ -562,6 +630,10 @@ Theres no date object shenanigans if theres no date object.
 
     Dumps a MiLa type as json.
 
+* `json.dumps_io(file: "opaque:file", mila: "list|dict") -> "string"`
+
+    Dumps a MiLa type as json directly into a file.
+
 * `mjson.loads(mjson: "string") -> "list|dict"`
 
     Loads an mjson string as MiLa types.
@@ -569,6 +641,10 @@ Theres no date object shenanigans if theres no date object.
 * `mjson.dumps(mila: "list|dict") -> "string"`
 
     Dumps a MiLa type as mjson.
+
+* `mjson.dumps_io(file: "opaque:file", mila: "list|dict") -> "string"`
+
+    Dumps a MiLa type as mjson directly into a file.
 
 ## MJSON vs JSON
 
@@ -636,25 +712,12 @@ Theres no date object shenanigans if theres no date object.
 
     Dump thread info.
 
-* `thread.yield(value)`
-
-    Called from inside a thread.
-    Turns the thread into a generator once called the first time.
-    Blocks execution of the thread until the value is retrieved by calling `thread.next`
-
-* `thread.next(thread_id: "int")`
-
-    Retrieves a value from a thread that yielded.
-    If a value is not yet available it blocks execution.
-
 ## <a id="other"></a>Miscellaneous
 
-* `is(a, b) -> "bool"`
+* `_breakpoint()`
 
-    Yay pointer equality.
-    Do not use this for everything.
-    These are also not true `is(none, none)` and
-    `is(null, null)`
+    Trigger a breakpoint trap.
+    NOTICE: not all platforms may support this
 
 * `crandom() -> "int"`
 
@@ -679,3 +742,16 @@ Theres no date object shenanigans if theres no date object.
 * `range(start: "int", stop: "int", step: "int"=1) -> "opaque:list[int]"`
 
     Just like in python, exlusive.
+
+* `hash(any: "any") -> "int"`
+
+    Hash any value.
+
+* `hash._get_seed() -> "int"`
+
+    Get the seed for hashing values.
+    By default this is `5381`
+
+* `hash.set_seed(seed: "int")`
+
+    Set the seed for hashing.

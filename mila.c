@@ -15,13 +15,13 @@
 #include "blr.c"
 #include "ml_dict.c"
 #include "ml_primitives.c"
-#include <stddef.h>
-#include <sys/types.h>
+//#include <stddef.h>
+//#include <sys/types.h>
 #if !(defined(__GNUC__) || defined(__clang__))
 #error "MiLa only supports GCC and Clang."
 #endif
 
-#include <stdatomic.h>
+//#include <stdatomic.h>
 #include <signal.h>
 
 #include <ctype.h>
@@ -30,21 +30,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <getopt.h>
-#include <assert.h>
-#include <ucontext.h>
+//#include <getopt.h>
+//#include <assert.h>
+//#include <ucontext.h>
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <direct.h>
-#include <psapi.h>
-#include <windows.h>
-#else
 #include <dlfcn.h>
 #include <limits.h>
 #include <sys/resource.h>
-#include <sys/time.h>
-#include <unistd.h>
-#endif
+//#include <sys/time.h>
+//#include <unistd.h>
 
 #ifndef SAFE_BUILD
 #include "ml_paths.c"
@@ -76,8 +70,8 @@ pthread_mutex_t mila_search_path_lock_read = {0};
 
 static void hex(uintptr_t v)
 {
-    char b[19] = "0x0000000000000000\n";
-    for (int i = 17; i >= 2; i--)
+    char b[19] = "0x000000000000000\n";
+    for (int i = 16; i >= 2; i--)
     {
         b[i] = "0123456789abcdef"[v & 15];
         v >>= 4;
@@ -161,7 +155,7 @@ void print_memory_usage()
         unit_index++;
     }
 
-    printf("Memory usage: %.2f %s\n", memory_usage_d, units[unit_index]);
+    printf("Mem usage: %.2f %s\n", memory_usage_d, units[unit_index]);
 }
 
 #ifdef MILA_RT_DEBUG
@@ -185,7 +179,7 @@ double get_mem_usage()
     return memory_usage_d;
 }
 
-char* get_mem_usage_unit(double bytes)
+const char *get_mem_usage_unit(double bytes)
 {
     const char *units[] = {"B", "KB", "MB", "GB", "TB"};
     int unit_index = 0;
@@ -199,7 +193,6 @@ char* get_mem_usage_unit(double bytes)
 
 double get_mem_usage_per_unit(double bytes)
 {
-    const char *units[] = {"B", "KB", "MB", "GB", "TB"};
     int unit_index = 0;
     while (bytes >= 1024 && unit_index < 4)
     {
@@ -208,7 +201,6 @@ double get_mem_usage_per_unit(double bytes)
     }
     return bytes;
 }
-
 
 #endif
 
@@ -285,7 +277,8 @@ void free_cleanup_registry(CleanupRegistry *registry)
 static inline void *mila_malloc(size_t size)
 {
     void *ptr = malloc(size);
-    if (!ptr) return NULL;
+    if (!ptr)
+        return NULL;
     memset(ptr, 0, size);
     return ptr;
 }
@@ -334,7 +327,24 @@ FunctionV *functionv_copy(const FunctionV *src)
     dst->contextuals = NULL;
     dst->body_src = NULL;
     dst->name = NULL;
-    dst->closure = src->closure;
+    dst->closure = env_new(NULL);
+    
+    Env* e = src->closure;
+    
+    Var *v = e->vars;
+    while (v)
+    {
+        Var *nx = v->next;
+        env_set(dst->closure, v->name, v->value);
+        v = nx;
+    }
+    v = e->contextual_vars;
+    while (v)
+    {
+        Var *nx = v->next;
+        env_set_contextual(dst->closure, v->name, v->value);
+        v = nx;
+    }
 
     if (src->params)
     {
@@ -463,7 +473,6 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
         return NULL;
 
     dst->fn = src->fn;
-    dst->userdata = src->userdata;
     dst->name = NULL;
 
     if (src->name)
@@ -479,180 +488,79 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
     return dst;
 }
 
+static inline Value* _copy(Value* src) {
+    Value *copy = mila_malloc(sizeof(Value));
+    if (!copy)
+        return NULL;
+
+    /* Copy structure layout */
+    copy->type = src->type;
+    copy->refcount = 1;
+    copy->type_name = mila_strdup(src->type_name);
+    copy->method_table = src->method_table;
+    copy->owns_table = 0;
+    copy->wrefs = NULL;
+
+    /* Deep copy based on type */
+    switch (src->type)
+    {
+    case T_STRING:
+        /* Strings: duplicate the string buffer */
+        copy->v = (void *)mila_strdup(GET_STRING(src));
+        break;
+    case T_INT:
+        copy->v = (ValueValue *)mila_malloc(sizeof(ValueValue));
+        copy->v->i = GET_INTEGER(src);
+        break;
+    case T_UINT:
+        copy->v = (ValueValue *)mila_malloc(sizeof(ValueValue));
+        copy->v->ui = GET_UINTEGER(src);
+        break;
+    case T_FLOAT:
+        copy->v = (ValueValue *)mila_malloc(sizeof(ValueValue));
+        copy->v->f = GET_FLOAT(src);
+        break;
+    case T_FUNCTION:
+        copy->v = (void *)functionv_copy(GET_FUNCTION(src));
+        break;
+    case T_NATIVE:
+        copy->v = (void *)nativefn_copy(GET_NATIVE(src));
+        break;
+    case T_BOOL:
+        copy->v = src->v;
+        break;
+    case T_OWNED_OPAQUE:
+    case T_OPAQUE:
+        copy->v = src->v;
+        break;
+    default:
+        copy->v = NULL;
+        val_release(copy);
+        return verror("type %s does not support copying", GET_TYPENAME(src));
+    }
+
+    return copy;
+}
+
 Value *val_copy(Value *src)
 {
     if (!src)
-        return vnull();
+        return NULL;
     if (src->method_table && src->method_table[UMethodCopy])
         return ((unary_method)src->method_table[UMethodCopy])(src);
     if (src->method_table && src->method_table[UMethodCopyShallow])
         return ((unary_method)src->method_table[UMethodCopyShallow])(src);
 
-    if (!src)
-        return NULL;
-
-    Value *copy = mila_malloc(sizeof(Value));
-    if (!copy)
-        return NULL;
-
-    /* Copy structure layout */
-    copy->type = src->type;
-    copy->refcount = 1;
-    copy->type_name = mila_strdup(src->type_name);
-    copy->method_table = src->method_table;
-
-    /* Deep copy based on type */
-    switch (src->type)
-    {
-    case T_STRING:
-        /* Strings: duplicate the string buffer */
-        copy->v = (void *)mila_strdup(GET_STRING(src));
-        break;
-    case T_BOOL:
-        /* Primitives: direct copy */
-        copy->v = (void *)src->v;
-        break;
-    case T_INT:
-        copy->v->i = GET_INTEGER(src);
-        break;
-    case T_UINT:
-        copy->v->ui = src->v->ui;
-        break;
-    case T_FLOAT:
-        copy->v->f = src->v->f;
-        break;
-    case T_ERROR:
-        /* Error messages: duplicate the message */
-        if (src->v)
-        {
-            copy->v = (void *)mila_strdup(GET_STRING(src));
-        }
-        break;
-    case T_TAGGED_ERROR:
-        /* Tagged errors: duplicate message and copy type */
-        copy->v->tagged_error.type = src->v->tagged_error.type;
-        if (src->v->tagged_error.message)
-        {
-            copy->v->tagged_error.message = mila_strdup(src->v->tagged_error.message);
-        }
-        break;
-    case T_FUNCTION:
-        /* Functions: retain reference (shared ownership) */
-        copy->v = (void *)functionv_copy(GET_FUNCTION(src));
-        break;
-    case T_NATIVE:
-        /* Native functions: retain reference */
-        copy->v = (void *)nativefn_copy(GET_NATIVE(src));
-        break;
-    case T_OPAQUE:
-    {
-        /* Opaques: share the pointer but increment if refcounted */
-        Value *fn = GET_OVERLOAD(src, OVERLOAD_COPY);
-        if (fn)
-            return call_function_with(NULL, fn, val_retain(src), NULL);
-        else
-            copy->v = src->v;
-    }
-    break;
-    case T_NONE:
-    case T_NULL:
-        copy->type = src->type;
-        break;
-
-    default:
-        val_release(copy);
-        return verror("Type %s doesnt support copying and may cause memory leaks if done so.", GET_TYPENAME(src));
-    }
-
-    return copy;
+    return _copy(src);
 }
-Value *val_copy_shallow(Value *src)
+FN_UNUSED Value *val_copy_shallow(Value *src)
 {
     if (!src)
         return vnull();
     if (src->method_table && src->method_table[UMethodCopyShallow])
         return ((unary_method)src->method_table[UMethodCopyShallow])(src);
 
-    if (!src)
-        return NULL;
-
-    Value *copy = mila_malloc(sizeof(Value));
-    if (!copy)
-        return NULL;
-
-    /* Copy structure layout */
-    copy->type = src->type;
-    copy->refcount = 1;
-    copy->type_name = mila_strdup(src->type_name);
-    copy->method_table = src->method_table;
-
-    /* Deep copy based on type */
-    switch (src->type)
-    {
-    case T_STRING:
-        /* Strings: duplicate the string buffer */
-        copy->v = (void *)mila_strdup(GET_STRING(src));
-        break;
-    case T_BOOL:
-        /* Primitives: direct copy */
-        copy->v = src->v;
-        break;
-    case T_INT:
-        copy->v->i = GET_INTEGER(src);
-        break;
-    case T_UINT:
-        copy->v->ui = src->v->ui;
-        break;
-    case T_FLOAT:
-        copy->v->f = src->v->f;
-        break;
-    case T_ERROR:
-        /* Error messages: duplicate the message */
-        if (src->v)
-        {
-            copy->v = (void *)mila_strdup(GET_STRING(src));
-        }
-        break;
-
-    case T_TAGGED_ERROR:
-        /* Tagged errors: duplicate message and copy type */
-        copy->v->tagged_error.type = src->v->tagged_error.type;
-        if (src->v->tagged_error.message)
-        {
-            copy->v->tagged_error.message = mila_strdup(src->v->tagged_error.message);
-        }
-        break;
-
-    case T_FUNCTION:
-        /* Functions: retain reference (shared ownership) */
-        copy->v = (void *)functionv_copy(GET_FUNCTION(src));
-        break;
-    case T_NATIVE:
-        /* Native functions: retain reference */
-        copy->v = (void *)nativefn_copy(GET_NATIVE(src));
-        break;
-
-    case T_OPAQUE:
-    {
-        /* Opaques: share the pointer but increment if refcounted */
-        Value *fn = GET_OVERLOAD(src, OVERLOAD_COPY);
-        if (fn)
-            return call_function_with(NULL, fn, val_retain(src), NULL);
-        else
-            copy->v = src->v;
-    }
-    break;
-    case T_NONE:
-    case T_NULL:
-        copy->type = src->type;
-        break;
-
-    default:
-        val_release(copy);
-        return verror("Type %s doesnt support copying and may cause memory leaks if done so.", GET_TYPENAME(src));
-    }
-
-    return copy;
+    return _copy(src);
 }
 
 Value *val_new(ValueType t)
@@ -708,12 +616,6 @@ void val_set_table(Value *v, MethodTable *t)
 {
     v->owns_table = 0;
     v->method_table = t;
-    // TODO: future update
-    // for (unsigned char i=0; i < 255; ++i) {
-    //     if (t[i]) {
-    //         v->table_offset = i;
-    //     }
-    // }
 }
 
 void val_set_method(Value *v, MethodType t, void *func)
@@ -721,14 +623,10 @@ void val_set_method(Value *v, MethodType t, void *func)
     v->method_table[t] = func;
 }
 
-void val_unset_method(Value *v, MethodType t) { v->method_table[t] = NULL; }
-
 void val_set_method_table(MethodTable *v, MethodType t, void *func)
 {
     v[t] = func;
 }
-
-FN_UNUSED void val_unset_method_table(MethodTable *v, MethodType t) { v[t] = NULL; }
 
 // Helpers to create typed values or check their truthiness
 
@@ -1048,36 +946,47 @@ static void sb_append(strbuf *b, const char *data, size_t n)
     b->buf[b->len] = '\0';
 }
 
-char* replace_dollar(const char *rep, const char *input) {
-    if (!input || !rep) return NULL;
+char *replace_dollar(const char *rep, const char *input)
+{
+    if (!input || !rep)
+        return NULL;
     char *out = NULL;
-    size_t rep_len = strlen(rep);
     const char *p = input;
-    while (1) {
+    while (1)
+    {
         const char *dollar = strchr(p, '$');
-        if (dollar) {
+        if (dollar)
+        {
             size_t chunk_len = dollar - p;
-            if (chunk_len > 0) {
+            if (chunk_len > 0)
+            {
                 malloc_sprintf(&out, "%.*s", (int)chunk_len, p);
             }
-        } else {
+        }
+        else
+        {
             malloc_sprintf(&out, "%s", p);
             break;
         }
         size_t bs = 0;
         const char *j = dollar;
-        while (j > input && *(j - 1) == '\\') {
+        while (j > input && *(j - 1) == '\\')
+        {
             bs++;
             j--;
         }
-        if (bs % 2 == 0) {
+        if (bs % 2 == 0)
+        {
             malloc_sprintf(&out, "%s", rep);
-        } else {
+        }
+        else
+        {
             malloc_sprintf(&out, "%c", '$');
         }
         p = dollar + 1;
     }
-    if (!out) malloc_sprintf(&out, "");
+    if (!out)
+        malloc_sprintf(&out, "");
     return out;
 }
 
@@ -1243,7 +1152,6 @@ char *replace_match(const char *pattern, const char *str, const char *replacemen
 {
     strbuf out;
     sb_init(&out);
-    size_t rep_len = strlen(replacement);
     const char *cursor = str;
     int done = 0;
 
@@ -1256,9 +1164,9 @@ char *replace_match(const char *pattern, const char *str, const char *replacemen
         m_end = m_start + m_len;
 
         sb_append(&out, cursor, (size_t)(m_start - cursor));
-        char* cursor_tmp = NULL;
+        char *cursor_tmp = NULL;
         malloc_sprintf(&cursor_tmp, "%.*s", m_len, m_start);
-        char* tmp = replace_dollar(cursor_tmp, replacement);
+        char *tmp = replace_dollar(cursor_tmp, replacement);
         sb_append(&out, tmp, strlen(tmp));
         mila_free(tmp);
         mila_free(cursor_tmp);
@@ -1581,12 +1489,6 @@ static inline Value *vopaque(void *p)
     v->v = (void *)p;
     return v;
 }
-static inline Value *vweak_opaque(void *p)
-{
-    Value *v = val_new_raw(T_WEAK_OPAQUE);
-    v->v = (void *)p;
-    return v;
-}
 static inline Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vopaque(p);
@@ -1614,7 +1516,6 @@ static inline Value *vnative(NativeFn fn, const char *name)
     Value *v = val_new_raw(T_NATIVE);
     NativeFunctionV *native_function = (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
     native_function->fn = fn;
-    native_function->userdata = NULL;
     native_function->name = name ? mila_strdup(name) : NULL;
     v->v = (void *)native_function;
     return v;
@@ -1634,7 +1535,8 @@ static inline Value *vfunction(char **params, char **defaults, char **contextual
     v->v = (void *)function;
     return v;
 }
-static inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
+
+FN_UNUSED static inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
 
 int malloc_sprintf(char **strp, const char *fmt, ...)
 {
@@ -1696,7 +1598,8 @@ char *as_c_string(Value *v)
     {
         return mila_strdup("?null?");
     }
-    if (v->refcount == ML_WEAK_REF_TRIGGER) {
+    if (v->refcount == ML_WEAK_REF_TRIGGER)
+    {
         malloc_sprintf(&buffer, "<weakref %p>", v->v);
         return buffer;
     }
@@ -1777,12 +1680,6 @@ char *as_c_string(Value *v)
         else
             malloc_sprintf(&buffer, "<opaque:%p>", v->v);
         break;
-    case T_WEAK_OPAQUE:
-        if (v->type_name)
-            malloc_sprintf(&buffer, "<weak opaque:%p %s>", v->v, v->type_name);
-        else
-            malloc_sprintf(&buffer, "<weak opaque:%p>", v->v);
-        break;
     case T_OWNED_OPAQUE:
         if (v->type_name)
             malloc_sprintf(&buffer, "<owned opaque:%p %s>", v->v, v->type_name);
@@ -1812,7 +1709,8 @@ char *as_c_string_repr(Value *v)
     {
         return mila_strdup("cnull");
     }
-    if (v->refcount == ML_WEAK_REF_TRIGGER) {
+    if (v->refcount == ML_WEAK_REF_TRIGGER)
+    {
         malloc_sprintf(&buffer, "<weakref %p>", v->v);
         return buffer;
     }
@@ -1971,11 +1869,6 @@ int raw_print_value(Value *v)
             return printf("<opaque:%p %s>", v->v, v->type_name);
         else
             return printf("<opaque:%p>", v->v);
-    case T_WEAK_OPAQUE:
-        if (v->type_name)
-            return printf("<weak opaque:%p %s>", v->v, v->type_name);
-        else
-            return printf("<weak opaque:%p>", v->v);
     case T_OWNED_OPAQUE:
         if (v->type_name)
             return printf("<owned opaque:%p %s>", v->v, v->type_name);
@@ -2081,7 +1974,8 @@ char *as_c_string_raw(Value *v)
     {
         return mila_strdup("?null?");
     }
-    if (v->refcount == ML_WEAK_REF_TRIGGER) {
+    if (v->refcount == ML_WEAK_REF_TRIGGER)
+    {
         malloc_sprintf(&buffer, "<weakref %p>", v->v);
         return buffer;
     }
@@ -2367,7 +2261,6 @@ static inline void val_release(Value *v)
         case T_NATIVE:
         case T_OPAQUE:
         case T_OWNED_OPAQUE:
-        case T_WEAK_OPAQUE:
         case T_NONE:
         case T_NULL:
         case T_BOOL:
@@ -3225,66 +3118,6 @@ static inline void skip_block(Src *s)
     s->pos = i;
 }
 
-static inline void skip_expr(Src *s)
-{
-    skip_ws(s);
-    // body is block; extract substring from '{' to matching '}'
-    int depth = 1;
-    size_t i = s->pos;
-    for (; i < s->len; ++i)
-    {
-        char ch = s->src[i];
-        if (ch == '(')
-            depth++;
-        else if (ch == ')')
-        {
-            depth--;
-            if (depth == 0)
-            {
-                i++;
-                break;
-            }
-        }
-        else if (ch == '"')
-        {
-            val_release(parse_string(s));
-        }
-    }
-    if (i > s->len)
-        i = s->len;
-    s->pos = i;
-}
-
-static inline void skip_stmt(Src *s)
-{
-    skip_ws(s);
-    size_t i = s->pos;
-    for (; i < s->len; ++i)
-    {
-        char ch = s->src[i];
-        if (ch == ';')
-        {
-            i++;
-            break;
-        }
-        else if (ch == '"')
-        {
-            // skip string literal
-            i++;
-            while (i < s->len && s->src[i] != '"')
-            {
-                if (s->src[i] == '\\' && i + 1 < s->len)
-                    i += 2;
-                else
-                    i++;
-            }
-        }
-    }
-    if (i > s->len)
-        i = s->len;
-    s->pos = i;
-}
-
 static inline void skip_ws(Src *s)
 {
     for (;;)
@@ -3339,7 +3172,7 @@ int match_char(Src *s, char c)
 }
 
 // Return type: const char* (NULL = success, non-NULL = error message)
-const char *skip_expr_prec(Src *s, int min_prec);
+const char *skip_parse_expr_prec(Src *s, int min_prec);
 
 const char *skip_fn_call_args(Src *s)
 {
@@ -3351,7 +3184,7 @@ const char *skip_fn_call_args(Src *s)
 
     for (;;)
     {
-        const char *err = skip_expr_prec(s, 1);
+        const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
 
@@ -3397,7 +3230,7 @@ const char *skip_primary(Src *s)
             src_get(s);
         while (isdigit((unsigned char)src_peek(s)) || src_peek(s) == '.' ||
                src_peek(s) == 'x' || src_peek(s) == 'X' ||
-               isxdigit((unsigned char)src_peek(s)) || src_peek(s) == '~')
+               isxdigit((unsigned char)src_peek(s)))
             src_get(s);
         if (src_peek(s) == 'u' || src_peek(s) == 'U')
             src_get(s);
@@ -3423,13 +3256,12 @@ const char *skip_primary(Src *s)
     if (c == '[')
     {
         src_get(s);
-        skip_ws(s);
         match_char(s, '@');
         if (src_peek(s) != ']')
         {
             for (;;)
             {
-                const char *err = skip_expr_prec(s, 1);
+                const char *err = skip_parse_expr_prec(s, 1);
                 if (err)
                     return err;
                 skip_ws(s);
@@ -3454,14 +3286,12 @@ const char *skip_primary(Src *s)
     if (c == '(')
     {
         src_get(s);
-        const char *err = skip_expr_prec(s, 1);
+        const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
         skip_ws(s);
         if (!match_char(s, ')'))
             return ERR_PAREN_UNCLOSED;
-
-        skip_ws(s);
 
         // Function call on expression
         if (src_peek(s) == '(')
@@ -3475,7 +3305,7 @@ const char *skip_primary(Src *s)
             while (src_peek(s) == '[')
             {
                 src_get(s);
-                err = skip_expr_prec(s, 1);
+                err = skip_parse_expr_prec(s, 1);
                 if (err)
                     return err;
                 if (!match_char(s, ']'))
@@ -3517,7 +3347,6 @@ const char *skip_primary(Src *s)
         src_get(s); // consume '!'
         src_get(s); // consume '{'
         src_get(s); // consume '{'
-        size_t start = s->pos;
         while (s->pos + 1 < s->len && !(s->src[s->pos] == '}' && s->src[s->pos + 1] == '}'))
         {
             src_get(s);
@@ -3594,7 +3423,7 @@ const char *skip_primary(Src *s)
         while (src_peek(s) == '[')
         {
             src_get(s);
-            const char *err = skip_expr_prec(s, 1);
+            const char *err = skip_parse_expr_prec(s, 1);
             if (err)
                 return err;
             if (!match_char(s, ']'))
@@ -3617,15 +3446,13 @@ const char *skip_primary(Src *s)
 
         return ERR_SUCCESS;
     }
-
-    skip_ws(s);
     if (src_eof(s))
         return ERR_SUCCESS;
     else
         return ERR_INVALID_EXPR;
 }
 
-const char *skip_expr_prec(Src *s, int min_prec)
+const char *skip_parse_expr_prec(Src *s, int min_prec)
 {
     const char *err = skip_primary(s);
     if (err)
@@ -3758,7 +3585,7 @@ const char *skip_expr_prec(Src *s, int min_prec)
             return ERR_SUCCESS;
         }
 
-        err = skip_expr_prec(s, prec + 1);
+        err = skip_parse_expr_prec(s, prec + 1);
         if (err)
             return err;
     }
@@ -3766,7 +3593,7 @@ const char *skip_expr_prec(Src *s, int min_prec)
 
 const char *skip_parse_expr(Src *s)
 {
-    return skip_expr_prec(s, 1);
+    return skip_parse_expr_prec(s, 1);
 }
 
 const char *skip_parse_statement(Src *s)
@@ -3789,7 +3616,7 @@ const char *skip_parse_statement(Src *s)
         }
         if (match_char(s, '='))
         {
-            const char *err = skip_expr_prec(s, 1);
+            const char *err = skip_parse_expr_prec(s, 1);
             if (err)
                 return err;
         }
@@ -3805,7 +3632,7 @@ const char *skip_parse_statement(Src *s)
         mila_free(id);
         while (match_char(s, '['))
         {
-            const char *err = skip_expr_prec(s, 1);
+            const char *err = skip_parse_expr_prec(s, 1);
             if (err)
                 return err;
             if (!match_char(s, ']'))
@@ -3817,7 +3644,7 @@ const char *skip_parse_statement(Src *s)
             src_get(s);
         if (!match_char(s, '='))
             return ERR_EXPECTED_EQUALS;
-        const char *err = skip_expr_prec(s, 1);
+        const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
         match_char(s, ';');
@@ -3827,7 +3654,7 @@ const char *skip_parse_statement(Src *s)
     if (is_keyword_at(s, "return"))
     {
         s->pos += 6;
-        const char *err = skip_expr_prec(s, 1);
+        const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
         return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
@@ -3838,7 +3665,7 @@ const char *skip_parse_statement(Src *s)
         s->pos += 2;
         if (!match_char(s, '('))
             return ERR_EXPECTED_PAREN;
-        const char *err = skip_expr_prec(s, 1);
+        const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
         if (!match_char(s, ')'))
@@ -3861,7 +3688,7 @@ const char *skip_parse_statement(Src *s)
             s->pos += 4;
             if (!match_char(s, '('))
                 return ERR_EXPECTED_PAREN;
-            err = skip_expr_prec(s, 1);
+            err = skip_parse_expr_prec(s, 1);
             if (err)
                 return err;
             if (!match_char(s, ')'))
@@ -3905,7 +3732,7 @@ const char *skip_parse_statement(Src *s)
         s->pos += 5;
         if (!match_char(s, '('))
             return ERR_EXPECTED_PAREN;
-        const char *err = skip_expr_prec(s, 1);
+        const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
         if (!match_char(s, ')'))
@@ -3927,7 +3754,7 @@ const char *skip_parse_statement(Src *s)
         mila_free(id);
         if (!match_char(s, ':'))
             return ERR_EXPECTED_COLON;
-        const char *err = skip_expr_prec(s, 1);
+        const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
         if (match_char(s, '{'))
@@ -4046,7 +3873,7 @@ const char *skip_parse_statement(Src *s)
         return skip_parse_block(s);
     }
 
-    const char *err = skip_expr_prec(s, 1);
+    const char *err = skip_parse_expr_prec(s, 1);
     if (err)
         return err;
     match_char(s, ';');
@@ -5821,24 +5648,6 @@ Value *eval_primary(Src *s, Env *env)
         HANDLE_RETURN(v);
         return v;
     }
-    if (c == '!' && s->pos + 2 < s->len && s->src[s->pos + 1] == '{' && s->src[s->pos + 2] == '{')
-    {
-        src_get(s); // consume '!'
-        src_get(s); // consume '{'
-        src_get(s); // consume '{'
-        size_t start = s->pos;
-        while (s->pos + 1 < s->len && !(s->src[s->pos] == '}' && s->src[s->pos + 1] == '}'))
-        {
-            src_get(s);
-        }
-        src_get(s);
-        src_get(s);
-        size_t end = s->pos - 2; // avoid the closing }
-        char *buffer = (char *)mila_malloc(sizeof(char) * (end - start) + 1);
-        memcpy(buffer, s->src + start, end - start);
-        Value *res = vstring_take(buffer);
-        return res;
-    }
     if (c == '!' && s->src[s->pos + 1] == '{')
     {
         src_get(s); // consume '!'
@@ -6354,7 +6163,7 @@ Value *eval_primary(Src *s, Env *env)
 }
 
 // helper to convert numeric types and do arithmetic
-static inline int is_number(Value *v)
+static inline int is_numeric(Value *v)
 {
     return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
 }
@@ -6436,7 +6245,7 @@ static inline Value *binary_op(Value *a, MethodType op, Value *b)
         int res = is_truthy(a) && is_truthy(b);
         return vbool(res);
     }
-    else if (is_number(a) && is_number(b))
+    else if (is_numeric(a) && is_numeric(b))
     {
         if (a->type == T_UINT || b->type == T_UINT)
         // treat both numbers as unsigned.
@@ -6594,9 +6403,9 @@ static inline Value *binary_op(Value *a, MethodType op, Value *b)
         {
             for (size_t index = 0; index < last_a; ++index)
             {
-                if (!is_number(list_a[index]) || !is_number(list_b[index]))
+                if (!is_numeric(list_a[index]) || !is_numeric(list_b[index]))
                 {
-                    char *item_repr = as_c_string_repr(!is_number(list_a[index]) ? list_a[index] : list_b[index]);
+                    char *item_repr = as_c_string_repr(!is_numeric(list_a[index]) ? list_a[index] : list_b[index]);
                     Value *msg = verror("Item %s is not numeric but was used in list numerical comparison!", item_repr);
                     mila_free(item_repr);
                     // Clean up
@@ -6934,7 +6743,7 @@ void clean_elif_chain(Src *s)
     {
         s->pos += strlen("elif");
         if (match_char(s, '('))
-            skip_expr(s);
+            skip_parse_expr(s);
         match_char(s, ')');
         if (match_char(s, '{'))
         {
@@ -7557,9 +7366,10 @@ Value *eval_statement(Src *s, Env *env)
         s->pos += strlen("while");
         if (match_char(s, '('))
         {
+            s->pos--;
             uint64_t cond_start_pos = s->pos;
-            skip_expr(s);
-            s->pos--; // skip_expr consumes the closing parenthesis
+            skip_parse_expr(s);
+            s->pos--;
             if (!match_char(s, ')'))
                 return verror("while: Expected condition to close with a parenthesis!");
             uint64_t body_start_pos = s->pos;
@@ -7958,7 +7768,7 @@ Value *eval_statement(Src *s, Env *env)
                                                    vstring_dup("error_id"), vint(GET_ERROR_TYPE(res)),
                                                    vstring_dup("message"), msg, NULL);
                     val_release(res);
-                    env_set_local(env, id, dict);
+                    env_set_local_raw(env, id, dict);
                     mila_free(id);
                     s->pos = end;
                     return dict;
@@ -7971,7 +7781,7 @@ Value *eval_statement(Src *s, Env *env)
                                                    vstring_dup("error_id"), vint(E_GENERIC),
                                                    vstring_dup("message"), msg, NULL);
                     val_release(res);
-                    env_set_local(env, id, dict);
+                    env_set_local_raw(env, id, dict);
                     mila_free(id);
                     s->pos = end;
                     return dict;
@@ -7984,6 +7794,7 @@ Value *eval_statement(Src *s, Env *env)
         }
 
         s->pos = end;
+        env_set_local(env, id, vnone());
         mila_free(id);
         return res;
     }

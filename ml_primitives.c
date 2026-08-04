@@ -183,7 +183,7 @@ Value *native_list_contains(Env *env, int argc, Value **argv)
 }
 
 Value *native_list_slice(Env *env, int argc, Value** argv) {
-    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0 || !is_number(argv[1]) || !is_number(argv[2]))
+    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0 || !is_numeric(argv[1]) || !is_numeric(argv[2]))
     {
         return verror("list.slice(list, start, len): Expects three arguments mila:list, num, num (list, start, len)");
     }

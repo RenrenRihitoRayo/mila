@@ -109,8 +109,8 @@ part of the implementation that is critical.
 
 True Primitives in MiLa are (lowest possible level of abstraction):
 * Strings
-* Integer variants
-* Float variants
+* Integer
+* Float
 * none
 * null
 * booleans
@@ -119,16 +119,11 @@ True Primitives in MiLa are (lowest possible level of abstraction):
 True Primitives that are hidden from the user:
 * Error values
 * Control values
-
-False Primitives (part of the runtime but not really supported in a critical level):
+Second tier of abstraction:
 * Dictionaries
 * Lists (this is a half exception as it does have behavior the runtime itself dictates)
 * Arrays
-
-False primitives are implemented using the `opaque` type and use operator overloading via
-Value Instance Operator Overloading (VIOO) which is faster than Object Instance Operator Overloading (OOIO).
-
-None Primitves:
+Last tier of abstraction, Non Primitves:
 * User defined objects
 
 ## VIOO vs OIOO
@@ -263,7 +258,8 @@ const char* lib_functions[] = {
     NULL
 };
 
-// More stable way (for C++ code bases where name mangling may take place, prioritized over lib_functions)
+// More stable way (for C++ code bases where name mangling may take place,
+// prioritized over lib_functions)
 const NativeEntry lib_function_entries[] = {
     {.name = "hello", .func = hello},
     {NULL, NULL}

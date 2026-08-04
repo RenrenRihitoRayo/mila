@@ -96,6 +96,8 @@ void mila_fatal_sig_handler(int sig, siginfo_t *si, void *ctx)
     uintptr_t mila_crash_pc = uc->uc_mcontext.pc;
 #elif __x86_64__
     uintptr_t mila_crash_pc = uc->uc_mcontext.gregs[REG_RIP];
+#else
+    uintptr_t mila_crash_pc = 0;
 #endif
 
     const char s[] = "\n[MiLa FATAL] ";

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+mkdir ~/.vim 2> /dev/null
+mkdir ~/.vim/ftdetect 2> /dev/null
+mkdir ~/.vim/syntax 2> /dev/null
+
+cp ./syntax/mila.vim ~/.vim/syntax/
+cp ./ftdetect/mila.vim ~/.vim/ftdetect/
+
+echo "Installed for vim."
+
+config_dir=~/.config/nvim
+mkdir -p "$config_dir/after/syntax" 2> /dev/null
+touch "$config_dir/init.lua"
+if ! grep "\-- MiLa setup" "$config_dir/init.lua" > /dev/null; then
+    read -r -d '' var << EOF
+-- MiLa setup
+vim.filetype.add({
+    extension = {
+        ['mila'] = 'mila',
+        ['setup-mila'] = 'mila'
+    }
+})
+EOF
+    echo "$var" >> $config_dir/init.lua
+else 
+    echo "init.lua for nvim already contains extensions" 1>&2
+fi
+cp ./syntax/mila.vim $config_dir/after/syntax
+
+echo "Installed for nvim."

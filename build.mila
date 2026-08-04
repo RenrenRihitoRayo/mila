@@ -1,3 +1,4 @@
+#!/usr/bin/env mila
 // Build MiLa using MiLa!
 
 !fn (argc, _, target="debug")

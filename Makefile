@@ -85,5 +85,10 @@ test-embed: embed.c
 	./embed && ls -lh embed
 	rm embed
 
+install: release
+	cp mila /usr/bin
+	cp mila mila.release
+
 clean:
 	rm mila *.so test.*
+

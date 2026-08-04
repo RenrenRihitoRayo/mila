@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+config_dir=$(bat --config-dir)/syntaxes
+
+if [[ -d $config_dir ]]; then
+    rm -rf $config_dir
+fi
+
+mkdir -p $config_dir
+cp MiLa.sublime-syntax $config_dir
+bat cache --build

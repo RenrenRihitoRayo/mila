@@ -24,6 +24,12 @@ typedef struct {
 #define INITIAL_CAPACITY 16
 #define LOAD_FACTOR 0.75
 
+#define ITERATE_DICT(dict)                         \
+    for (size_t _i = 0; _i < (dict)->capacity; ++_i)\
+        for (DictEntry *entry = (dict)->buckets[_i];\
+             entry;                                \
+             entry = entry->next)
+
 void hash_set_seed(unsigned long seed);
 static unsigned long hash_string(const char *str);
 FN_UNUSED static unsigned long hash_value(Value *val);

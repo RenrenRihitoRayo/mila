@@ -1,4 +1,5 @@
 
+
 !fn (argc, _, for="vim", bsize="10")
 // Generate syntax for vim or sublime files
 
@@ -6,7 +7,7 @@ var batch_size = cast.int(bsize);
 
 var names = [];
 
-var file;
+var file = none;
 if (isatty(stdin_fd)) {
     set file = open("ml_builtins.c", "r");
 } else {
@@ -29,14 +30,18 @@ foreach line : lines
         list.append(names, str.slice(line, 0, end));
     }
 }
-
 fprint(stderr, ": Done.\n");
 
 fprint(stderr, "For: " + for + "\n");
 
-if (isatty(stdin_fd)) fclose(file);
+if (isatty(stdin_fd))
+{
+    fclose(file);
+}
 
-if (for != "json") set names = qsort(names, fn(a,b):[str.len] {return str.len(b) - str.len(a);});
+if (for != "json") {
+    set names = qsort(names, fn(a,b):[str.len] {return str.len(b) - str.len(a);});
+}
 
 if (for == "vim")
 {
@@ -61,8 +66,8 @@ elif (for == "sublime")
     println("  builtins:")
     var i = 0;
     while (i < list.len(names)) {
-        println("    - match: '\\b(" + str.join("|", list.slice(names, i, batch_size)) + ")\\b'");
-        println("      scope: support.function.mila");
+        println("  - match: '\\b(" + str.join("|", list.slice(names, i, batch_size)) + ")\\b'");
+        println("    scope: support.function.mila");
         set i += batch_size;
     }
 }

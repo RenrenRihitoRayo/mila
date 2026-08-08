@@ -46,35 +46,37 @@ contexts:
       scope: keyword.control.mila
   
   builtins:
-    - match: '\b(dump_mila_search_paths|thread\.get_pthread_id|str\.caseless_contains|thread\.check_cancel|_debug\.get_weakrefs|thread\.mutex_unlock|str\.caseless_find|str\.match_replace|ascii\.from_string|thread\.set_daemon)\b'
+    - match: '\b(str\.caseless_contains|thread\.get_pthread_id|thread\.check_cancel|thread\.mutex_unlock|_debug\.get_weakrefs|str\.caseless_find|str\.match_replace|ascii\.from_string|thread\.set_daemon|thread\.mutex_lock)\b'
       scope: support.function.mila
-    - match: '\b(thread\.mutex_lock|sys\.get_platform|list\.deconstruct|fread_all_bytes|str\.match_find|hash\._get_seed|str\.startswith|ascii\.from_int|mjson\.dumps_io|_debug\.get_mem)\b'
+    - match: '\b(list\.deconstruct|sys\.get_platform|fread_all_bytes|str\.match_findx|hash\._get_seed|mjson\.dumps_io|str\.startswith|str\.match_find|str\.substitute|ascii\.from_int)\b'
       scope: support.function.mila
-    - match: '\b(list\.contains|thread\.status|thread\.cancel|hash\.set_seed|time_sleep_ms|report_tagged|json\.dumps_io|file\.list_dir|get_tm_local|sys\.get_arch)\b'
+    - match: '\b(_debug\.get_mem|hash\.set_seed|env\.set_local|env\.get_names|file\.list_dir|list\.contains|json\.dumps_io|report_tagged|time_sleep_ms|thread\.cancel)\b'
       scope: support.function.mila
-    - match: '\b(fprint_bytes|str\.contains|str\.endswith|thread\.mutex|file\.is_file|mjson\.dumps|thread\.join|mjson\.loads|str\.tolower|from_opaque)\b'
+    - match: '\b(thread\.status|fprint_bytes|file\.is_file|str\.endswith|str\.contains|get_tm_local|sys\.get_arch|thread\.mutex|fread_bytes|file\.exists)\b'
       scope: support.function.mila
-    - match: '\b(file\.exists|str\.toupper|file\.is_dir|_breakpoint|list\.append|sys\.get_pid|thread\.dump|thread\.make|fread_bytes|sys\.getenv)\b'
+    - match: '\b(file\.is_dir|list\.append|from_opaque|mjson\.loads|mjson\.dumps|str\.toupper|str\.tolower|_breakpoint|sys\.get_pid|thread\.make)\b'
       scope: support.function.mila
-    - match: '\b(fdredirect|list\.index|list\.slice|array\.from|cast\.float|is_numeric|json\.loads|json\.dumps|time_sleep|get_tm_gmt)\b'
+    - match: '\b(thread\.join|thread\.dump|fdredirect|list\.index|list\.slice|array\.from|cast\.float|is_numeric|json\.loads|json\.dumps)\b'
       scope: support.function.mila
-    - match: '\b(sys\.setenv|str\.split|str\.patch|str\.index|str\.pop_b|dict\.keys|str\.slice|fread_all|str\.pop_f|as_opaque)\b'
+    - match: '\b(time_sleep|get_tm_gmt|sys\.setenv|sys\.getenv|readch_nb|fread_all|array\.len|dict\.keys|as_opaque|str\.slice)\b'
       scope: support.function.mila
-    - match: '\b(array\.len|repr_raw|strftime|get_time|list\.len|list\.pop|cast\.int|str\.copy|str\.join|cast\.i2f)\b'
+    - match: '\b(str\.index|str\.patch|str\.pop_f|str\.pop_b|str\.split|repr_raw|list\.pop|list\.len|dict\.rem|cast\.int)\b'
       scope: support.function.mila
-    - match: '\b(cast\.i2u|cast\.u2i|str\.find|cast\.f2i|dict\.rem|cast\.str|srandom|crandom|_typeof|require)\b'
+    - match: '\b(cast\.str|cast\.i2f|cast\.i2u|cast\.u2i|cast\.f2i|str\.copy|str\.join|str\.find|get_time|strftime)\b'
       scope: support.function.mila
-    - match: '\b(istring|println|str\.len|assert|fdopen|printr|report|fflush|isatty|random)\b'
+    - match: '\b(srandom|crandom|env\.set|env\.get|println|str\.len|istring|require|random|printr)\b'
       scope: support.function.mila
-    - match: '\b(readch|system|invoke|typeof|fprint|fclose|print|ftell|fseek|fread)\b'
+    - match: '\b(readch|fdopen|fileno|fclose|fprint|fflush|isatty|typeof|export|report)\b'
       scope: support.function.mila
-    - match: '\b(close|floor|sqrtf|atan2|abort|unown|input|range|vkill|qsort)\b'
+    - match: '\b(assert|system|invoke|range|qsort|print|input|close|fread|fseek)\b'
       scope: support.function.mila
-    - match: '\b(noise|array|fabs|rand|dict|open|sqrt|load|eval|copy)\b'
+    - match: '\b(ftell|array|unown|floor|sqrtf|atan2|abort|copy|repr|hash)\b'
       scope: support.function.mila
-    - match: '\b(hash|ceil|repr|exit|list|xor|pow|tan|cos|own)\b'
+    - match: '\b(open|list|dict|ceil|sqrt|rand|fabs|exit|eval|load)\b'
       scope: support.function.mila
-    - match: '\b(not|and|run|sin|abs|is|or)\b'
+    - match: '\b(and|xor|not|own|sin|cos|tan|pow|abs|run)\b'
+      scope: support.function.mila
+    - match: '\b(or)\b'
       scope: support.function.mila
 
   constant:

@@ -283,6 +283,9 @@ typedef struct Var
     struct Var *next;
 } Var;
 
+#define ITERATE_ENV(env) \
+    for (Var *var = (env)->vars; var; var = var->next)
+
 struct Env
 {
     Var *vars;

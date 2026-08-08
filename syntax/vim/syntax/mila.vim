@@ -4,27 +4,29 @@
 " Keywords
 syntax keyword milaKeyword if elif else while fn set var export return break continue contextual forget foreach alias const catch
 
+" RT-Statements
 syntax match milaKeyword "\v\@[a-zA-Z0-9._]+"
 
 syntax keyword keyword_indent "{"
 syntax keyword keyword_dedent "}"
 
 " Builtins
-syntax match milaBuiltins "\<dump_mila_search_paths\>\|\<thread.get_pthread_id\>\|\<str.caseless_contains\>\|\<thread.check_cancel\>\|\<_debug.get_weakrefs\>\|\<thread.mutex_unlock\>\|\<str.caseless_find\>\|\<str.match_replace\>\|\<ascii.from_string\>\|\<thread.set_daemon\>"
-syntax match milaBuiltins "\<thread.mutex_lock\>\|\<sys.get_platform\>\|\<list.deconstruct\>\|\<fread_all_bytes\>\|\<str.match_find\>\|\<hash._get_seed\>\|\<str.startswith\>\|\<ascii.from_int\>\|\<mjson.dumps_io\>\|\<_debug.get_mem\>"
-syntax match milaBuiltins "\<list.contains\>\|\<thread.status\>\|\<thread.cancel\>\|\<hash.set_seed\>\|\<time_sleep_ms\>\|\<report_tagged\>\|\<json.dumps_io\>\|\<file.list_dir\>\|\<get_tm_local\>\|\<sys.get_arch\>"
-syntax match milaBuiltins "\<fprint_bytes\>\|\<str.contains\>\|\<str.endswith\>\|\<thread.mutex\>\|\<file.is_file\>\|\<mjson.dumps\>\|\<thread.join\>\|\<mjson.loads\>\|\<str.tolower\>\|\<from_opaque\>"
-syntax match milaBuiltins "\<file.exists\>\|\<str.toupper\>\|\<file.is_dir\>\|\<_breakpoint\>\|\<list.append\>\|\<sys.get_pid\>\|\<thread.dump\>\|\<thread.make\>\|\<fread_bytes\>\|\<sys.getenv\>"
-syntax match milaBuiltins "\<fdredirect\>\|\<list.index\>\|\<list.slice\>\|\<array.from\>\|\<cast.float\>\|\<is_numeric\>\|\<json.loads\>\|\<json.dumps\>\|\<time_sleep\>\|\<get_tm_gmt\>"
-syntax match milaBuiltins "\<sys.setenv\>\|\<str.split\>\|\<str.patch\>\|\<str.index\>\|\<str.pop_b\>\|\<dict.keys\>\|\<str.slice\>\|\<fread_all\>\|\<str.pop_f\>\|\<as_opaque\>"
-syntax match milaBuiltins "\<array.len\>\|\<repr_raw\>\|\<strftime\>\|\<get_time\>\|\<list.len\>\|\<list.pop\>\|\<cast.int\>\|\<str.copy\>\|\<str.join\>\|\<cast.i2f\>"
-syntax match milaBuiltins "\<cast.i2u\>\|\<cast.u2i\>\|\<str.find\>\|\<cast.f2i\>\|\<dict.rem\>\|\<cast.str\>\|\<srandom\>\|\<crandom\>\|\<_typeof\>\|\<require\>"
-syntax match milaBuiltins "\<istring\>\|\<println\>\|\<str.len\>\|\<assert\>\|\<fdopen\>\|\<printr\>\|\<report\>\|\<fflush\>\|\<isatty\>\|\<random\>"
-syntax match milaBuiltins "\<readch\>\|\<system\>\|\<invoke\>\|\<typeof\>\|\<fprint\>\|\<fclose\>\|\<print\>\|\<ftell\>\|\<fseek\>\|\<fread\>"
-syntax match milaBuiltins "\<close\>\|\<floor\>\|\<sqrtf\>\|\<atan2\>\|\<abort\>\|\<unown\>\|\<input\>\|\<range\>\|\<vkill\>\|\<qsort\>"
-syntax match milaBuiltins "\<noise\>\|\<array\>\|\<fabs\>\|\<rand\>\|\<dict\>\|\<open\>\|\<sqrt\>\|\<load\>\|\<eval\>\|\<copy\>"
-syntax match milaBuiltins "\<hash\>\|\<ceil\>\|\<repr\>\|\<exit\>\|\<list\>\|\<xor\>\|\<pow\>\|\<tan\>\|\<cos\>\|\<own\>"
-syntax match milaBuiltins "\<not\>\|\<and\>\|\<run\>\|\<sin\>\|\<abs\>\|\<is\>\|\<or\>"
+syntax match milaBuiltins "\<str.caseless_contains\>\|\<thread.get_pthread_id\>\|\<thread.check_cancel\>\|\<thread.mutex_unlock\>\|\<_debug.get_weakrefs\>\|\<str.caseless_find\>\|\<str.match_replace\>\|\<ascii.from_string\>\|\<thread.set_daemon\>\|\<thread.mutex_lock\>"
+syntax match milaBuiltins "\<list.deconstruct\>\|\<sys.get_platform\>\|\<fread_all_bytes\>\|\<str.match_findx\>\|\<hash._get_seed\>\|\<mjson.dumps_io\>\|\<str.startswith\>\|\<str.match_find\>\|\<str.substitute\>\|\<ascii.from_int\>"
+syntax match milaBuiltins "\<_debug.get_mem\>\|\<hash.set_seed\>\|\<env.set_local\>\|\<env.get_names\>\|\<file.list_dir\>\|\<list.contains\>\|\<json.dumps_io\>\|\<report_tagged\>\|\<time_sleep_ms\>\|\<thread.cancel\>"
+syntax match milaBuiltins "\<thread.status\>\|\<fprint_bytes\>\|\<file.is_file\>\|\<str.endswith\>\|\<str.contains\>\|\<get_tm_local\>\|\<sys.get_arch\>\|\<thread.mutex\>\|\<fread_bytes\>\|\<file.exists\>"
+syntax match milaBuiltins "\<file.is_dir\>\|\<list.append\>\|\<from_opaque\>\|\<mjson.loads\>\|\<mjson.dumps\>\|\<str.toupper\>\|\<str.tolower\>\|\<_breakpoint\>\|\<sys.get_pid\>\|\<thread.make\>"
+syntax match milaBuiltins "\<thread.join\>\|\<thread.dump\>\|\<fdredirect\>\|\<list.index\>\|\<list.slice\>\|\<array.from\>\|\<cast.float\>\|\<is_numeric\>\|\<json.loads\>\|\<json.dumps\>"
+syntax match milaBuiltins "\<time_sleep\>\|\<get_tm_gmt\>\|\<sys.setenv\>\|\<sys.getenv\>\|\<readch_nb\>\|\<fread_all\>\|\<array.len\>\|\<dict.keys\>\|\<as_opaque\>\|\<str.slice\>"
+syntax match milaBuiltins "\<str.index\>\|\<str.patch\>\|\<str.pop_f\>\|\<str.pop_b\>\|\<str.split\>\|\<repr_raw\>\|\<list.pop\>\|\<list.len\>\|\<dict.rem\>\|\<cast.int\>"
+syntax match milaBuiltins "\<cast.str\>\|\<cast.i2f\>\|\<cast.i2u\>\|\<cast.u2i\>\|\<cast.f2i\>\|\<str.copy\>\|\<str.join\>\|\<str.find\>\|\<get_time\>\|\<strftime\>"
+syntax match milaBuiltins "\<srandom\>\|\<crandom\>\|\<env.set\>\|\<env.get\>\|\<println\>\|\<str.len\>\|\<istring\>\|\<require\>\|\<random\>\|\<printr\>"
+syntax match milaBuiltins "\<readch\>\|\<fdopen\>\|\<fileno\>\|\<fclose\>\|\<fprint\>\|\<fflush\>\|\<isatty\>\|\<typeof\>\|\<export\>\|\<report\>"
+syntax match milaBuiltins "\<assert\>\|\<system\>\|\<invoke\>\|\<range\>\|\<qsort\>\|\<print\>\|\<input\>\|\<close\>\|\<fread\>\|\<fseek\>"
+syntax match milaBuiltins "\<ftell\>\|\<array\>\|\<unown\>\|\<floor\>\|\<sqrtf\>\|\<atan2\>\|\<abort\>\|\<copy\>\|\<repr\>\|\<hash\>"
+syntax match milaBuiltins "\<open\>\|\<list\>\|\<dict\>\|\<ceil\>\|\<sqrt\>\|\<rand\>\|\<fabs\>\|\<exit\>\|\<eval\>\|\<load\>"
+syntax match milaBuiltins "\<and\>\|\<xor\>\|\<not\>\|\<own\>\|\<sin\>\|\<cos\>\|\<tan\>\|\<pow\>\|\<abs\>\|\<run\>"
+syntax match milaBuiltins "\<or\>"
 
 " Constants
 syntax keyword milaConstant true false null none

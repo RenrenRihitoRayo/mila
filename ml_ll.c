@@ -175,41 +175,31 @@ Value **ll_to_iter(LinkedList *list)
     return arr;
 }
 
-Value **ll_slice_front(LinkedList *list, unsigned long start)
-{
-    Value **l = ll_to_iter(list);
-    unsigned long size = GET_INTEGER(l[0]);
-    unsigned long true_size = GET_INTEGER(l[0]) - start;
-    for (unsigned long i = 1; i < start; ++i)
-        val_release(l[i]);
-    Value **values = mila_malloc(sizeof(Value *) * true_size + 2);
-    values[0] = vuint(true_size);
-    unsigned long idx = 1;
-    for (unsigned long i = start; i < size; ++i)
-        values[idx++] = l[i];
-    values[true_size - 1] = NULL;
-    val_release(l[0]);
-    return values;
-}
-
 Value *ll_slice_ll(LinkedList *list, unsigned long start, long len)
 {
     Value **l = ll_to_iter(list);
     unsigned long size = GET_INTEGER(l[0]);
     start++; // account for [len, ...] that ll_to_iter returns
-    for (unsigned long i = 1; i < start - 1; ++i)
+    for (unsigned long i = 1; i < start; ++i)
         val_release(l[i]);
     Value *values = make_list(NULL);
     if (len != -1)
     {
-        for (unsigned long i = start; i < size && i < start + len; ++i)
+        for (unsigned long i = start; i < size && i < start + len; ++i) {
             val_release(call_native_with(NULL, native_list_append, val_retain(values), l[i], NULL));
+        }
+        for (unsigned long i = start + len; i < size; ++i) {
+            val_release(l[i]);
+        }
     }
     else
     {
-        for (unsigned long i = start; i < size; ++i)
+        for (unsigned long i = start; i < size; ++i) {
             val_release(call_native_with(NULL, native_list_append, val_retain(values), l[i], NULL));
+        }
     }
+    val_release(l[0]);
+    mila_free(l);
     return values;
 }
 

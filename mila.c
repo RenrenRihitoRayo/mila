@@ -1378,17 +1378,17 @@ char *replace_match(const char *pattern, const char *str, const char *replacemen
     return out.buf;
 }
 
- Value *vnull() { return val_new_raw(T_NULL); }
- Value *vnone() { return val_new_raw(T_NONE); }
- Value *vbreak() { return val_new_raw(T_BREAK); }
- Value *vcontinue() { return val_new_raw(T_CONTINUE); }
- Value *vcontinue_step(unsigned long steps)
+Value *vnull() { return val_new_raw(T_NULL); }
+Value *vnone() { return val_new_raw(T_NONE); }
+Value *vbreak() { return val_new_raw(T_BREAK); }
+Value *vcontinue() { return val_new_raw(T_CONTINUE); }
+Value *vcontinue_step(unsigned long steps)
 {
     Value *v = val_new(T_CONTINUE);
     v->v->ui = steps;
     return v;
 }
- Value *vbreak_step(unsigned long steps)
+Value *vbreak_step(unsigned long steps)
 {
     Value *v = val_new(T_CONTINUE);
     v->v->ui = steps;
@@ -1533,42 +1533,42 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
     return v;
 }
 
- Value *vint(long x)
+Value *vint(long x)
 {
     Value *v = val_new(T_INT);
     v->v->i = x;
     return v;
 }
 
- Value *vuint(unsigned long x)
+Value *vuint(unsigned long x)
 {
     Value *v = val_new(T_UINT);
     v->v->ui = x;
     return v;
 }
 
- Value *vfloat(double f)
+Value *vfloat(double f)
 {
     Value *v = val_new(T_FLOAT);
     v->v->f = f;
     return v;
 }
 
- Value *vbool(int b)
+Value *vbool(int b)
 {
     Value *v = val_new_raw(T_BOOL);
     v->v = (void *)(b ? 1L : 0L);
     return v;
 }
 
- Value *vstring_dup(const char *restrict s)
+Value *vstring_dup(const char *restrict s)
 {
     Value *v = val_new_raw(T_STRING);
     v->v = (void *)mila_strdup(s ? s : "");
     return v;
 }
 
- Value *vstring_take(char *s)
+Value *vstring_take(char *s)
 {
     Value *v = val_new_raw(T_STRING);
     v->v = (void *)s;
@@ -1576,11 +1576,11 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
 }
 
 // String
- Value *vstring_slice(const char *restrict src, size_t start, size_t len)
+Value *vstring_slice(const char *restrict src, size_t start, size_t len)
 {
     size_t n = strlen(src);
     if (start > n)
-        return verror("Out of bounds string slice!"); // empty string
+        return verror("Out of bounds string slice!");
 
     if (start + len > n)
         len = n - start;
@@ -1595,7 +1595,7 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
     return vstring_take(buf);
 }
 
- Value *vstring_index(const char *restrict src, size_t index)
+Value *vstring_index(const char *restrict src, size_t index)
 {
     size_t n = strlen(src);
     if (index >= n)
@@ -1611,7 +1611,7 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
     return vstring_take(buf);
 }
 
- Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict replacement)
+Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict replacement)
 {
     if (!*needle)
         return vstring_dup(src); // can't match empty substring
@@ -1660,19 +1660,19 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
 
     return vstring_take(buf);
 }
- Value *vowned_opaque(void *p)
+Value *vowned_opaque(void *p)
 {
     Value *v = val_new_raw(T_OWNED_OPAQUE);
     v->v = (void *)p;
     return v;
 }
- Value *vopaque(void *p)
+Value *vopaque(void *p)
 {
     Value *v = val_new_raw(T_OPAQUE);
     v->v = (void *)p;
     return v;
 }
- Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
+Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vopaque(p);
     if (dis && v)
@@ -1683,7 +1683,7 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
     v->type_name = mila_strdup(type_name);
     return v;
 }
- Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
+Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vowned_opaque(p);
     if (dis && v)
@@ -1694,7 +1694,7 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
     v->type_name = mila_strdup(type_name);
     return v;
 }
- Value *vnative(NativeFn fn, const char *name)
+Value *vnative(NativeFn fn, const char *name)
 {
     Value *v = val_new_raw(T_NATIVE);
     NativeFunctionV *native_function = (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
@@ -1704,7 +1704,7 @@ __attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
     return v;
 }
 // vfunction creation
- Value *vfunction(FunctionParameters* params, char* return_type, char **contextuals, Env *closure,
+Value *vfunction(FunctionParameters* params, char* return_type, char **contextuals, Env *closure,
                                char *body_src)
 {
     Value *v = val_new_raw(T_FUNCTION);
@@ -2324,7 +2324,7 @@ int print_value_debug(Value *v)
     return i;
 }
 
- Value *val_retain(Value *v)
+Value *val_retain(Value *v)
 {
 #ifdef MILA_DEBUG
     if (v->refcount != ML_WEAK_REF_TRIGGER)
@@ -2906,6 +2906,7 @@ int env_set_local_raw_contextual(Env *e, const char *name, Value *val)
     Var *nv = mila_malloc(sizeof(Var));
     nv->name = mila_strdup(name);
     nv->value = val;
+    nv->flag = VAR_NORM;
     nv->next = e->contextual_vars;
     e->contextual_vars = nv;
     return 1; // not found
@@ -2986,7 +2987,7 @@ int env_set(Env *e, const char *name, Value *val)
                 if (v->flag & VAR_CONST) return 1;
                 val_release(v->value);
                 v->value = val_retain(val);
-                return 1;
+                return 0;
             }
         }
     }
@@ -4396,7 +4397,7 @@ __int128 atoi128(char *s)
 }
 
 // parse number (int or float)
- Value *parse_number(Src *s)
+Value *parse_number(Src *s)
 {
     int st = s->pos;
     _Bool seen_dot = 0;
@@ -4553,7 +4554,7 @@ char *dedent(char *str)
 }
 
 // parse string literal (double quotes)
- Value *parse_string(Src *s)
+Value *parse_string(Src *s)
 {
     src_get(s); // consume opening "
     char do_dedent = 0;
@@ -6513,7 +6514,7 @@ FN_UNUSED  long to_int(Value *v)
 }
 
 // binary ops
- Value *binary_op(Value *a, MethodType op, Value *b)
+Value *binary_op(Value *a, MethodType op, Value *b)
 {
     if (a->method_table && a->method_table[TMethodBinop])
     {
@@ -7911,9 +7912,8 @@ Value *eval_statement(Src *s, Env *env)
 
                 env_set_local_raw(frame, id, v);
                 bod = eval_block_raw(s, frame);
-                val_release(v);
-                env_remove(frame, id);
-
+                // val_release(v);
+                // env_remove(frame, id);
                 env_free(frame);
                 // --- Handle body result ---
                 switch (GET_TYPE(bod))
@@ -8525,7 +8525,7 @@ void print_error(Value *v)
     {
         if (v->v->tagged_error.type == E_EXIT)
         {
-            fprintf(stderr, "\n= Recieved Exit Signal: %s\n", GET_TAGGED_ERROR_MESSAGE(v));
+            fprintf(stderr, "\n= Recieved Exit Signal [%d]: %s\n", v->v->tagged_error.return_code, GET_TAGGED_ERROR_MESSAGE(v));
             return;
         }
         if (v->v->tagged_error.type == E_THREAD_HALT)
@@ -8778,10 +8778,13 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
             {
                 if (fnp->defaults[i])
                     mila_free(fnp->defaults[i]);
+                if (fnp->types[i])
+                    mila_free(fnp->types[i]);
                 mila_free(fnp->params[i]);
             }
             mila_free(fnp->params);
             mila_free(fnp->defaults);
+            mila_free(fnp->types);
             mila_free(fnp);
 
             if (is_keyword_at(S, "->"))
@@ -9253,9 +9256,7 @@ int main(int argc, char **argv)
 
         // cleanup
         val_release(res);
-
         mila_free(src_text);
-
         mila_global_deinit(g);
         return return_code;
     }

@@ -794,8 +794,11 @@ Value *native_str_slice(Env *env, int argc, Value **argv)
     (void)argc;
     if (!(match_types(argv, T_STRING, T_INT, T_ARG_END) || match_types(argv, T_STRING, T_INT, T_INT, T_ARG_END)))
         return verror("str.slice(str, index, len): Expected atleast 2 arguments.");
-    if (argc == 3) return vstring_slice(GET_STRING(argv[0]), argv[1]->v->i, argv[2]->v->i);
-    else return vstring_slice(GET_STRING(argv[0]), GET_INTEGER(argv[1]), strlen(GET_STRING(argv[0])+GET_INTEGER(argv[1])));
+    if (argc == 3) {
+        return vstring_slice(GET_STRING(argv[0]), argv[1]->v->i, argv[2]->v->i);
+    } else {
+        return vstring_slice(GET_STRING(argv[0]), GET_INTEGER(argv[1]), strlen(GET_STRING(argv[0])+GET_INTEGER(argv[1])));
+    }
 }
 
 Value *native_str_copy(Env *env, int argc, Value **argv)
@@ -882,13 +885,11 @@ Value* native_str_split(Env* env, int argc, Value** argv) {
     char* save_ptr = NULL;
     char* copy = mila_strdup(GET_STRING(argv[0]));
 
-    Value* append_fn = env_get(env, "list.append");
-
-    Value* list = call_function_str(env, "list", NULL);
+    Value* list = make_list(NULL);
 
     char* part = strtok_r(copy, GET_STRING(argv[1]), &save_ptr);
     while (part) {
-        val_release(call_function_with(env, append_fn, val_retain(list), vstring_dup(part), NULL));
+        val_release(call_native_with(NULL, native_list_append, val_retain(list), vstring_dup(part), NULL));
         part = strtok_r(NULL, GET_STRING(argv[1]), &save_ptr);
     }
     free(copy);

@@ -25,6 +25,7 @@
 #include <string.h>
 #include <uchar.h>
 
+#include "ml_dict.h"
 #include "ml_json.c"
 #include "ml_paths.c"
 
@@ -1449,27 +1450,6 @@ Value *native_random(Env *env, int argc, Value **argv)
     return verror("random(lower, upper): Expected two integer arguments.");
 }
 
-Value *native_noise(Env *env, int argc, Value **argv)
-{
-    if (argc > 5 || argc < 4)
-        return verror("noise(start, count, max, min, magnitude?): Expected at least 4 or 5 arguments.");
-    long start = GET_INTEGER(argv[0]);
-    long count = GET_INTEGER(argv[1]);
-    long max = GET_INTEGER(argv[2]);
-    long min = GET_INTEGER(argv[3]);
-    long mag = argc == 5 ? GET_INTEGER(argv[4]) : 5L;
-
-    long *nums = (long *)malloc(sizeof(long) * count);
-    Value *arr = call_function_str(env, "array", vint(count), NULL);
-    noise(start, count, max, min, mag, nums);
-    for (long i = 0; i < count; ++i)
-    {
-        val_release(call_function_str(env, "array.set", val_retain(arr), vint(i), vint(nums[i]), NULL));
-    }
-    free(nums);
-    return arr;
-}
-
 Value *native_crandom(Env *env, int argc, Value **argv)
 {
     if (argc != 0)
@@ -1784,13 +1764,47 @@ Value *native_list_deconstruct(Env *env, int argc, Value **argv)
     return result;
 }
 
-Value* native_vkill(Env* env, int argc, Value** argv)
-{
-    if (argc != 1) return verror("vkill(value): Expected one value.");
-    argv[0]->v = NULL;
-    val_kill(argv[0]);
-    argv[0] = NULL; // so mila doesnt double free
+Value* native_export(Env* env, int argc, Value** argv) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "dict") != 0) {
+        return verror("export(obj): Expected one dict argument!");
+    }
+    Env* to = env->parent ? env->parent : env;
+    ITERATE_DICT((Dict*)GET_OPAQUE(argv[0])) {
+        if (entry->key_type == T_STRING) {
+            char* name = NULL;
+            malloc_sprintf(&name, "%.*s", strlen(entry->key+1)-1, entry->key+1);
+            env_set_local(to, name, entry->value);
+            mila_free(name);
+        }
+    }
     return vnull();
+}
+
+Value* native_env_set(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("env.set(name, val): Expected two arguments!");
+    if (GET_TYPE(argv[0]) != T_STRING) return verror("env.set(name, val): Expected first argument to be a string!");
+    return vint(env_set(env, GET_STRING(argv[0]), argv[1]));
+}
+
+Value* native_env_set_local(Env* env, int argc, Value** argv) {
+    if (argc != 2) return verror("env.set_local(name, val): Expected two arguments!");
+    if (GET_TYPE(argv[0]) != T_STRING) return verror("env.set_local(name, val): Expected first argument to be a string!");
+    return vint(env_set_local(env, GET_STRING(argv[0]), argv[1]));
+}
+
+Value* native_env_get(Env* env, int argc, Value** argv) {
+    if (argc != 1) return verror("env.get(name): Expected one argument!");
+    if (GET_TYPE(argv[0]) != T_STRING) return verror("env.get(name): Expected first argument to be a string!");
+    return env_get(env, GET_STRING(argv[0]));
+}
+
+Value* native_env_get_names(Env* env, int argc, Value** argv) {
+    if (argc != 0) return verror("env.get_names(): Expected no arguments!");
+    Value* lst = make_list(NULL);
+    ITERATE_ENV(env) {
+        val_release(call_native_with(NULL, native_list_append, val_retain(lst), vstring_dup(var->name), NULL));
+    }
+    return lst;
 }
 
 #ifdef MILA_RT_DEBUG
@@ -1893,13 +1907,17 @@ void env_register_builtins(Env *g)
     env_register_native(g, "repr_raw", native_repr_raw);
     env_register_native(g, "random", native_random);
     env_register_native(g, "srandom", native_srandom);
-    env_register_native(g, "noise", native_noise);
     env_register_native(g, "crandom", native_crandom);
     env_register_native(g, "hash", native_hash);
     env_register_native(g, "hash.set_seed", native_hash_set_seed);
     env_register_native(g, "hash._get_seed", native_hash_get_seed);
-    // Organize
+    // === Organize
     env_register_native(g, "qsort", native_qsort);
+    // === Scopes
+    env_register_native(g, "env.set", native_env_set);
+    env_register_native(g, "env.set_local", native_env_set_local);
+    env_register_native(g, "env.get", native_env_get);
+    env_register_native(g, "env.get_names", native_env_get_names);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
@@ -1989,6 +2007,8 @@ void env_register_builtins(Env *g)
      * _typeof differentiates between native and non native functions
      * this is for very specific use cases
      */
+    // === Exporting
+    env_register_native(g, "export", native_export);
     // === JSON
     env_register_native(g, "mjson.loads", native_mjson_loads);
     env_register_native(g, "mjson.dumps", native_mjson_dumps);

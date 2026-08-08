@@ -1,8 +1,13 @@
 
+!fn (argc, _, file_name="1mb.csv")
 // Boast our string capabilities to Lua
-var file = open("test.csv", "r");
+var file = open(file_name, "r");
+println("Parsing...");
+var start = get_time();
 var lines = str.split(fread_all(file), "\n");
+fclose(file);
 var header = str.split(lines[0], ",");
+println("Headers " + lines[0], list.len(header));
 var rest = list.slice(lines, 1, -1);
 var final_csv = [];
 foreach line : rest {
@@ -14,8 +19,27 @@ foreach line : rest {
     }
     list.append(final_csv, data);
 }
+println("Time: " + ( get_time() - start ) + "s");
+println(list.len(final_csv) + " rows");
+println("Converting to JSON...");
 var file_out = open("out.json", "w");
 // *Laughs in builtin json*
-fprint(file_out, json.dumps(final_csv));
+var start = get_time();
+var batch_size = 900;
+fprint(file_out, "[");
+foreach batch_start :
+    range(0, list.len(final_csv), batch_size)
+{
+    var str = json.dumps(
+        list.slice(final_csv, batch_start, batch_size));
+    str.pop_f(str);
+    str.pop_b(str);
+    str.pop_b(str);
+    var str = str + ",\n"
+    fprint(file_out, str);
+}
+fseek(file_out, -2, SEEK_CUR);
+fprint(file_out, "\n]");
+println("Time: " + ( get_time() - start ) + "s");
+println("Done!");
 fclose(file_out);
-fclose(file);

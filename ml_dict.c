@@ -273,11 +273,8 @@ void dict_free(Dict *dict) {
   mila_free(dict);
 }
 
-Value *dict_display(Value *self) {
+Value *dict_str(Value *self) {
   Dict *dict = (Dict *)self->v;
-
-  if (dict->size > MAX_ITEMS_DISPLAYED)
-    return vstring_fmt("[@ %zu pairs]", dict->size);
 
   if (!dict || !dict->buckets)
     return vstring_dup("[@]");
@@ -325,6 +322,13 @@ Value *dict_display(Value *self) {
   return vstring_take(buffer);
 }
 
+Value *dict_repr(Value *self) {
+  Dict *dict = (Dict *)self->v;
+  if (dict->size > MAX_ITEMS_DISPLAYED)
+    return vstring_fmt("[@ %zu pairs]", dict->size);
+  return dict_str(self);
+}
+
 Value *dict_copy(Value *self) {
   if (!self || !self->v)
     return NULL;
@@ -349,7 +353,7 @@ Value *dict_copy(Value *self) {
     }
   }
   
-  Value *result = val_new(T_OPAQUE);
+  Value *result = val_new_raw(T_OPAQUE);
   result->v = (void *)copy;
   val_set_table(result, dict_meta);
   return result;

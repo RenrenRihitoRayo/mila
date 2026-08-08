@@ -263,7 +263,7 @@ Value *ll_copy(Value *self)
         cur = cur->next;
     }
 
-    Value *result = val_new(T_OPAQUE);
+    Value *result = val_new_raw(T_OPAQUE);
     result->v = (void *)copy;
     val_set_table(result, list_meta);
     return result;

@@ -12,6 +12,10 @@ cflags = $(libraries) -march=native -Wextra -Wall -Wno-nonnull\
          -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
          $(eflags) -Iheaders -Wno-overflow -flto -ffunction-sections -fdata-sections -Wl,-s\
          -Wl,--gc-sections -fno-stack-protector
+cflags_lib = $(libraries) -Wextra -Wall -Wno-nonnull\
+         -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
+         $(eflags) -Iheaders -Wno-overflow -DML_NO_MAIN
+
 
 .PHONY: web
 
@@ -24,6 +28,17 @@ debug: $(files)
 
 debug-asan: $(files)
 	$(cc)  $(libraries) $(cflags_debug) -O0 -o mila mila.c -g -D MILA_DEBUG -fsanitize=address
+
+lib: $(files)
+	$(cc) $(libraries) $(cflags_lib) -O3 -shared -fPIC mila.c -o libmila.so
+
+libstatic: $(files)
+	$(cc) $(libarries) $(cflags_lib) -O3 -c mila.c -o mila.so -DML_NO_DL
+	ar rcs libmila.a mila.so
+
+libstatic-debug: $(files)
+	$(cc) $(libarries) $(cflags_lib) -O0 -g -c mila.c -o mila.so -DML_NO_DL
+	ar rcs libmila.a mila.so
 
 test:
 	$(cc) -o test.o0.mila -O0 mila.c $(libraries)
@@ -78,17 +93,19 @@ release: $(files)
 web $(targets_web): $(files_web)
 	mkdir -p build/web;:
 	emcc -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_main"]' -s EXPORTED_RUNTIME_METHODS='["FS","callMain"]' mila.c addon/ml_web.c -o ./build/web/mila.js \
-	-D EXT_WEB -Iheaders -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11
+	-D EXT_WEB -Iheaders -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 \
+	-s EXPORT_NAME="ModuleFactory" -s MODULARIZE=1 -s FORCE_FILESYSTEM
 
 test-embed: embed.c
 	gcc -o embed embed.c -Iheaders
 	./embed && ls -lh embed
 	rm embed
 
-install: release
+install:
+	make release
 	cp mila /usr/bin
 	cp mila mila.release
 
 clean:
-	rm mila *.so test.*
+	rm mila *.so test.* *.a
 

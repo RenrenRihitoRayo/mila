@@ -8,6 +8,7 @@
  */
 
 #include "mila.h"
+#include "ml_commons.h"
 
 #include <stdalign.h>
 #define _GNU_SOURCE
@@ -40,7 +41,7 @@
 //#include <sys/time.h>
 //#include <unistd.h>
 
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
 #include "ml_paths.c"
 #endif
 
@@ -67,6 +68,41 @@ pthread_mutex_t mila_cached_modules_lock_read = {0};
 pthread_mutex_t mila_search_path_lock = {0};
 pthread_mutex_t mila_search_path_lock_read = {0};
 #endif
+
+const char *MILA_ERROR_NAMES[] = {
+    NULL,
+    "SyntaxError",
+    "PreRuntime",
+    "Runtime",
+    "TypeError",
+    "Fatal",
+    "ConstError",
+    "Generic",
+    "AssertionError",
+    "ThreadHalt",
+    "Exit",
+};
+const char *MILA_TYPE_NAMES[] = {
+    "null",
+    "int",
+    "uint",
+    "float",
+    "string",
+    "bool",
+    "function",
+    "native",
+    "opaque",
+    "owned_opaque",
+    "return",
+    "none",
+    "error",
+    "break",
+    "continue",
+    "tagged_error",
+    "arg_end",
+};
+const int MILA_TYPE_COUNT = T_ARG_END;
+const int MILA_ERROR_COUNT = E_THREAD_HALT;
 
 static void hex(uintptr_t v)
 {
@@ -160,6 +196,165 @@ void print_memory_usage()
     printf("Mem usage: %.2f %s\n", memory_usage_d, units[unit_index]);
 }
 
+// Used for code blocks
+char* substitute_text(const char* needle, Value* replacement, const char* text) {
+    if (!needle || !replacement || !text) {
+        return NULL;
+    }
+    
+    size_t needle_len = strlen(needle);
+    char* replacement_str = GET_TYPE(replacement) != T_STRING ? as_c_string(replacement) : as_c_string_repr(replacement);
+    char* replacement_lit = GET_TYPE(replacement) == T_STRING ? mila_strdup(GET_STRING(replacement)) : as_c_string(replacement);
+    size_t replacement_len = strlen(replacement_str);
+    size_t replacement_len_lit = strlen(replacement_lit);
+    
+    // First pass: calculate required buffer size
+    size_t result_size = 0;
+    const char* p = text;
+    
+    while (*p) {
+        if (*p == '"') {
+            // String literal: copy everything including the quotes
+            result_size++;
+            p++;
+            while (*p && *p != '"') {
+                if (*p == '\\' && *(p + 1)) {
+                    // Escape sequence: copy backslash and next char
+                    result_size += 2;
+                    p += 2;
+                } else {
+                    result_size++;
+                    p++;
+                }
+            }
+            // Copy closing quote
+            if (*p == '"') {
+                result_size++;
+                p++;
+            }
+        } 
+        else if (*p == '!' && *(p + 1) == '{') {
+            // !{...} block with brace counting (not nesting level counting)
+            int brace_depth = 1;  // Count ALL braces, not just !{ nesting
+            result_size += 2;  // !{
+            p += 2;
+            
+            while (*p) {
+                if (*p == '{') {
+                    brace_depth++;
+                    result_size++;
+                    p++;
+                } 
+                else if (*p == '}') {
+                    brace_depth--;
+                    result_size++;
+                    p++;
+                    if (brace_depth == 0) break;  // Exit when all braces are closed
+                } 
+                else {
+                    result_size++;
+                    p++;
+                }
+            }
+        } 
+        else if (*p == '$' && *(p + 1) == '{') {
+            // Potential substitution: check if it matches needle
+            if (strncmp(p + 2, needle, needle_len) == 0 && 
+                *(p + 2 + needle_len) == '}') {
+                // It's a match! Add replacement length
+                result_size += replacement_len;
+                p += 2 + needle_len + 1;  // Skip ${needle}
+            } else if (strncmp(p + 2, needle, needle_len) == 0 && 
+                *(p + 2 + needle_len) == '!'&& 
+                *(p + 3 + needle_len) == '}') {
+                // It's a match! Add replacement length
+                result_size += replacement_len_lit;
+                p += 2 + needle_len + 2;  // Skip ${needle!}
+            } else {
+                // Not our needle, keep the $
+                result_size++;
+                p++;
+            }
+        } 
+        else {
+            result_size++;
+            p++;
+        }
+    }
+    
+    // Allocate result buffer
+    char* result = (char*)mila_malloc(result_size + 1);
+    if (!result) {
+        mila_free(replacement_str);
+        mila_free(replacement_lit);
+        return NULL;
+    }
+    
+    // Second pass: build the result string
+    char* out = result;
+    p = text;
+    
+    while (*p) {
+        if (*p == '"') {
+            *out++ = *p++;
+            while (*p && *p != '"') {
+                if (*p == '\\' && *(p + 1)) {
+                    *out++ = *p++;
+                    *out++ = *p++;
+                } else {
+                    *out++ = *p++;
+                }
+            }
+            if (*p == '"') {
+                *out++ = *p++;
+            }
+        } 
+        else if (*p == '!' && *(p + 1) == '{') {
+            int brace_depth = 1;
+            *out++ = *p++;
+            *out++ = *p++;
+            
+            while (*p) {
+                if (*p == '{') {
+                    brace_depth++;
+                    *out++ = *p++;
+                } 
+                else if (*p == '}') {
+                    brace_depth--;
+                    *out++ = *p++;
+                    if (brace_depth == 0) break;
+                } 
+                else {
+                    *out++ = *p++;
+                }
+            }
+        } 
+        else if (*p == '$' && *(p + 1) == '{') {
+            if (strncmp(p + 2, needle, needle_len) == 0 && 
+                *(p + 2 + needle_len) == '}') {
+                memcpy(out, replacement_str, replacement_len);
+                out += replacement_len;
+                p += 2 + needle_len + 1;
+            } else if (strncmp(p + 2, needle, needle_len) == 0 && 
+                *(p + 2 + needle_len) == '!' && 
+                *(p + 3 + needle_len) == '}') {
+                memcpy(out, replacement_lit, replacement_len_lit);
+                out += replacement_len_lit;
+                p += 2 + needle_len + 2;
+            } else {
+                *out++ = *p++;
+            }
+        } 
+        else {
+            *out++ = *p++;
+        }
+    }
+    mila_free(replacement_str);
+    mila_free(replacement_lit);
+    *out = '\0';
+    return result;
+}
+
 #ifdef MILA_RT_DEBUG
 double get_mem_usage()
 {
@@ -206,7 +401,7 @@ double get_mem_usage_per_unit(double bytes)
 
 #endif
 
-static inline void print_duration(double s)
+ void print_duration(double s)
 {
     if (s >= 1.0)
     {
@@ -276,7 +471,7 @@ void free_cleanup_registry(CleanupRegistry *registry)
 #include <stdio.h>
 #include <string.h>
 
-static inline void *mila_malloc(size_t size)
+ void *mila_malloc(size_t size)
 {
     void *ptr = malloc(size);
     if (!ptr)
@@ -284,11 +479,11 @@ static inline void *mila_malloc(size_t size)
     memset(ptr, 0, size);
     return ptr;
 }
-static inline void mila_free(void *ptr_in)
+ void mila_free(void *ptr_in)
 {
     free(ptr_in);
 }
-static inline void *mila_realloc(void *ptr, size_t size)
+ void *mila_realloc(void *ptr, size_t size)
 {
     return realloc(ptr, size);
 }
@@ -319,13 +514,15 @@ void float_to_string(float f, char *buf, size_t bufsize)
 FunctionV *functionv_copy(const FunctionV *src)
 {
     if (!src)
-        return NULL;
+        abort();
 
     FunctionV *dst = mila_malloc(sizeof(FunctionV));
     if (!dst)
-        return NULL;
+        abort();
 
     dst->params = NULL;
+    dst->defaults = NULL;
+    dst->types = NULL;
     dst->contextuals = NULL;
     dst->body_src = NULL;
     dst->name = NULL;
@@ -357,7 +554,6 @@ FunctionV *functionv_copy(const FunctionV *src)
         dst->params = mila_malloc((n + 1) * sizeof(char *));
         if (!dst->params)
         {
-            mila_free(dst);
             return NULL;
         }
 
@@ -366,14 +562,48 @@ FunctionV *functionv_copy(const FunctionV *src)
             dst->params[i] = mila_strdup(src->params[i]);
             if (!dst->params[i])
             {
-                for (size_t j = 0; j < i; j++)
-                    mila_free(dst->params[j]);
-                mila_free(dst->params);
-                mila_free(dst);
                 return NULL;
             }
         }
         dst->params[n] = NULL;
+    }
+
+    if (src->types)
+    {
+        size_t n = 0;
+        while (src->params[n])
+            n++;
+
+        dst->types = mila_malloc((n + 1) * sizeof(char *));
+        if (!dst->types)
+        {
+            return NULL;
+        }
+
+        for (size_t i = 0; i < n; i++)
+        {
+            dst->types[i] = mila_strdup(src->types[i]);
+        }
+        dst->types[n] = NULL;
+    }
+
+    if (src->defaults)
+    {
+        size_t n = 0;
+        while (src->params[n])
+            n++;
+
+        dst->defaults = mila_malloc((n + 1) * sizeof(char *));
+        if (!dst->defaults)
+        {
+            return NULL;
+        }
+
+        for (size_t i = 0; i < n; i++)
+        {
+            dst->defaults[i] = mila_strdup(src->defaults[i]);
+        }
+        dst->defaults[n] = NULL;
     }
 
     if (src->contextuals)
@@ -385,13 +615,6 @@ FunctionV *functionv_copy(const FunctionV *src)
         dst->contextuals = mila_malloc((n + 1) * sizeof(char *));
         if (!dst->contextuals)
         {
-            if (dst->params)
-            {
-                for (size_t i = 0; dst->params[i]; i++)
-                    mila_free(dst->params[i]);
-                mila_free(dst->params);
-            }
-            mila_free(dst);
             return NULL;
         }
 
@@ -400,16 +623,6 @@ FunctionV *functionv_copy(const FunctionV *src)
             dst->contextuals[i] = mila_strdup(src->contextuals[i]);
             if (!dst->contextuals[i])
             {
-                for (size_t j = 0; j < i; j++)
-                    mila_free(dst->contextuals[j]);
-                mila_free(dst->contextuals);
-                if (dst->params)
-                {
-                    for (size_t k = 0; dst->params[k]; k++)
-                        mila_free(dst->params[k]);
-                    mila_free(dst->params);
-                }
-                mila_free(dst);
                 return NULL;
             }
         }
@@ -421,19 +634,6 @@ FunctionV *functionv_copy(const FunctionV *src)
         dst->body_src = mila_strdup(src->body_src);
         if (!dst->body_src)
         {
-            if (dst->contextuals)
-            {
-                for (size_t i = 0; dst->contextuals[i]; i++)
-                    mila_free(dst->contextuals[i]);
-                mila_free(dst->contextuals);
-            }
-            if (dst->params)
-            {
-                for (size_t i = 0; dst->params[i]; i++)
-                    mila_free(dst->params[i]);
-                mila_free(dst->params);
-            }
-            mila_free(dst);
             return NULL;
         }
     }
@@ -441,25 +641,6 @@ FunctionV *functionv_copy(const FunctionV *src)
     if (src->name)
     {
         dst->name = mila_strdup(src->name);
-        if (!dst->name)
-        {
-            if (dst->body_src)
-                mila_free(dst->body_src);
-            if (dst->contextuals)
-            {
-                for (size_t i = 0; dst->contextuals[i]; i++)
-                    mila_free(dst->contextuals[i]);
-                mila_free(dst->contextuals);
-            }
-            if (dst->params)
-            {
-                for (size_t i = 0; dst->params[i]; i++)
-                    mila_free(dst->params[i]);
-                mila_free(dst->params);
-            }
-            mila_free(dst);
-            return NULL;
-        }
     }
 
     return dst;
@@ -490,7 +671,7 @@ NativeFunctionV *nativefn_copy(const NativeFunctionV *src)
     return dst;
 }
 
-static inline Value* _copy(Value* src) {
+Value* _copy(Value* src) {
     Value *copy = mila_malloc(sizeof(Value));
     if (!copy)
         return NULL;
@@ -547,7 +728,7 @@ static inline Value* _copy(Value* src) {
 Value *val_copy(Value *src)
 {
     if (!src)
-        return NULL;
+        return vnull();
     if (src->method_table && src->method_table[UMethodCopy])
         return ((unary_method)src->method_table[UMethodCopy])(src);
     if (src->method_table && src->method_table[UMethodCopyShallow])
@@ -620,19 +801,19 @@ void val_set_table(Value *v, MethodTable *t)
     v->method_table = t;
 }
 
-void val_set_method(Value *v, MethodType t, void *func)
+FN_UNUSED void val_set_method(Value *v, MethodType t, void *func)
 {
     v->method_table[t] = func;
 }
 
-void val_set_method_table(MethodTable *v, MethodType t, void *func)
+FN_UNUSED void val_set_method_table(MethodTable *v, MethodType t, void *func)
 {
     v[t] = func;
 }
 
 // Helpers to create typed values or check their truthiness
 
-FN_UNUSED static inline int is_truthy(Value *value)
+FN_UNUSED  int is_truthy(Value *value)
 {
     switch (GET_TYPE(value))
     {
@@ -1197,24 +1378,24 @@ char *replace_match(const char *pattern, const char *str, const char *replacemen
     return out.buf;
 }
 
-static inline Value *vnull() { return val_new_raw(T_NULL); }
-static inline Value *vnone() { return val_new_raw(T_NONE); }
-static inline Value *vbreak() { return val_new_raw(T_BREAK); }
-static inline Value *vcontinue() { return val_new_raw(T_CONTINUE); }
-static inline Value *vcontinue_step(unsigned long steps)
+ Value *vnull() { return val_new_raw(T_NULL); }
+ Value *vnone() { return val_new_raw(T_NONE); }
+ Value *vbreak() { return val_new_raw(T_BREAK); }
+ Value *vcontinue() { return val_new_raw(T_CONTINUE); }
+ Value *vcontinue_step(unsigned long steps)
 {
     Value *v = val_new(T_CONTINUE);
     v->v->ui = steps;
     return v;
 }
-static inline Value *vbreak_step(unsigned long steps)
+ Value *vbreak_step(unsigned long steps)
 {
     Value *v = val_new(T_CONTINUE);
     v->v->ui = steps;
     return v;
 }
 
-static inline __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
+ __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
                                                                          char *fmt, ...)
 {
     va_list ap;
@@ -1250,7 +1431,7 @@ static inline __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorTy
     return v;
 }
 
-static inline __attribute__((format(printf, 3, 4))) Value *vtagged_coded_error(ErrorType err, int ret_code,
+ __attribute__((format(printf, 3, 4))) Value *vtagged_coded_error(ErrorType err, int ret_code,
                                                                                char *fmt, ...)
 {
     va_list ap;
@@ -1286,7 +1467,7 @@ static inline __attribute__((format(printf, 3, 4))) Value *vtagged_coded_error(E
     return v;
 }
 
-static inline __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...)
+ __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1319,7 +1500,7 @@ static inline __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...
     return v;
 }
 
-__attribute__((format(printf, 1, 2))) static inline Value *vstring_fmt(char *fmt, ...)
+__attribute__((format(printf, 1, 2)))  Value *vstring_fmt(char *fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1352,42 +1533,42 @@ __attribute__((format(printf, 1, 2))) static inline Value *vstring_fmt(char *fmt
     return v;
 }
 
-static inline Value *vint(long x)
+ Value *vint(long x)
 {
     Value *v = val_new(T_INT);
     v->v->i = x;
     return v;
 }
 
-static inline Value *vuint(unsigned long x)
+ Value *vuint(unsigned long x)
 {
     Value *v = val_new(T_UINT);
     v->v->ui = x;
     return v;
 }
 
-static inline Value *vfloat(double f)
+ Value *vfloat(double f)
 {
     Value *v = val_new(T_FLOAT);
     v->v->f = f;
     return v;
 }
 
-static inline Value *vbool(int b)
+ Value *vbool(int b)
 {
     Value *v = val_new_raw(T_BOOL);
     v->v = (void *)(b ? 1L : 0L);
     return v;
 }
 
-static inline Value *vstring_dup(const char *restrict s)
+ Value *vstring_dup(const char *restrict s)
 {
     Value *v = val_new_raw(T_STRING);
     v->v = (void *)mila_strdup(s ? s : "");
     return v;
 }
 
-static inline Value *vstring_take(char *s)
+ Value *vstring_take(char *s)
 {
     Value *v = val_new_raw(T_STRING);
     v->v = (void *)s;
@@ -1395,7 +1576,7 @@ static inline Value *vstring_take(char *s)
 }
 
 // String
-static inline Value *vstring_slice(const char *restrict src, size_t start, size_t len)
+ Value *vstring_slice(const char *restrict src, size_t start, size_t len)
 {
     size_t n = strlen(src);
     if (start > n)
@@ -1414,7 +1595,7 @@ static inline Value *vstring_slice(const char *restrict src, size_t start, size_
     return vstring_take(buf);
 }
 
-static inline Value *vstring_index(const char *restrict src, size_t index)
+ Value *vstring_index(const char *restrict src, size_t index)
 {
     size_t n = strlen(src);
     if (index >= n)
@@ -1430,7 +1611,7 @@ static inline Value *vstring_index(const char *restrict src, size_t index)
     return vstring_take(buf);
 }
 
-static inline Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict replacement)
+ Value *vstring_replace(const char *restrict src, const char *restrict needle, const char *restrict replacement)
 {
     if (!*needle)
         return vstring_dup(src); // can't match empty substring
@@ -1479,19 +1660,19 @@ static inline Value *vstring_replace(const char *restrict src, const char *restr
 
     return vstring_take(buf);
 }
-static inline Value *vowned_opaque(void *p)
+ Value *vowned_opaque(void *p)
 {
     Value *v = val_new_raw(T_OWNED_OPAQUE);
     v->v = (void *)p;
     return v;
 }
-static inline Value *vopaque(void *p)
+ Value *vopaque(void *p)
 {
     Value *v = val_new_raw(T_OPAQUE);
     v->v = (void *)p;
     return v;
 }
-static inline Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
+ Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vopaque(p);
     if (dis && v)
@@ -1502,7 +1683,7 @@ static inline Value *vopaque_extra(void *p, VPrinter dis, const char *type_name)
     v->type_name = mila_strdup(type_name);
     return v;
 }
-static inline Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
+ Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name)
 {
     Value *v = vowned_opaque(p);
     if (dis && v)
@@ -1513,7 +1694,7 @@ static inline Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type
     v->type_name = mila_strdup(type_name);
     return v;
 }
-static inline Value *vnative(NativeFn fn, const char *name)
+ Value *vnative(NativeFn fn, const char *name)
 {
     Value *v = val_new_raw(T_NATIVE);
     NativeFunctionV *native_function = (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
@@ -1523,13 +1704,20 @@ static inline Value *vnative(NativeFn fn, const char *name)
     return v;
 }
 // vfunction creation
-static inline Value *vfunction(char **params, char **defaults, char **contextuals, Env *closure,
+ Value *vfunction(FunctionParameters* params, char* return_type, char **contextuals, Env *closure,
                                char *body_src)
 {
     Value *v = val_new_raw(T_FUNCTION);
     FunctionV *function = (FunctionV *)mila_malloc(sizeof(FunctionV));
-    function->params = params;
-    function->defaults = defaults;
+    if (params) {
+        function->params = params->params;
+        function->defaults = params->defaults;
+        function->types = params->types;
+    } else {
+        function->params = NULL;
+        function->defaults = NULL;
+        function->types = NULL;
+    }
     function->contextuals = contextuals;
     function->body_src = body_src;
     function->closure = closure;
@@ -1538,7 +1726,7 @@ static inline Value *vfunction(char **params, char **defaults, char **contextual
     return v;
 }
 
-FN_UNUSED static inline Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
+FN_UNUSED  Value *vtruthy(Value *value) { return vbool(is_truthy(value)); }
 
 int malloc_sprintf(char **strp, const char *fmt, ...)
 {
@@ -2136,7 +2324,7 @@ int print_value_debug(Value *v)
     return i;
 }
 
-static inline Value *val_retain(Value *v)
+ Value *val_retain(Value *v)
 {
 #ifdef MILA_DEBUG
     if (v->refcount != ML_WEAK_REF_TRIGGER)
@@ -2169,7 +2357,7 @@ static inline Value *val_retain(Value *v)
 void val_kill_incomplete(Value *v);
 
 // release
-static inline void val_release(Value *v)
+ void val_release(Value *v)
 {
     if (!v)
         return;
@@ -2216,10 +2404,17 @@ static inline void val_release(Value *v)
             }
             if (GET_FUNCTION(v)->defaults)
             {
-                char **d = GET_FUNCTION(v)->defaults;
-                for (int i = 0; d[i]; ++i)
-                    mila_free(d[i]);
-                mila_free(d);
+                char **p = GET_FUNCTION(v)->defaults;
+                for (int i = 0; p[i]; ++i)
+                    mila_free(p[i]);
+                mila_free(p);
+            }
+            if (GET_FUNCTION(v)->types)
+            {
+                char **p = GET_FUNCTION(v)->types;
+                for (int i = 0; p[i]; ++i)
+                    mila_free(p[i]);
+                mila_free(p);
             }
             if (GET_FUNCTION(v)->contextuals)
             {
@@ -2280,13 +2475,7 @@ static inline void val_release(Value *v)
             for (size_t i = 0; i < v->wrefs->count; ++i)
             {
                 Value *wr = v->wrefs->items[i];
-                wr->type = T_NONE;
-                wr->v = NULL;
-                wr->type_name = NULL;
-                wr->method_table = NULL;
-                wr->refcount = 1;
-                wr->owns_table = 0;
-                wr->wrefs = NULL;
+                memset((void*)wr, 0, sizeof(void*));
             }
             mila_free(v->wrefs->items);
             mila_free(v->wrefs);
@@ -2333,6 +2522,20 @@ void val_kill(Value *v)
         if (GET_FUNCTION(v)->params)
         {
             char **p = GET_FUNCTION(v)->params;
+            for (int i = 0; p[i]; ++i)
+                mila_free(p[i]);
+            mila_free(p);
+        }
+        if (GET_FUNCTION(v)->defaults)
+        {
+            char **p = GET_FUNCTION(v)->defaults;
+            for (int i = 0; p[i]; ++i)
+                mila_free(p[i]);
+            mila_free(p);
+        }
+        if (GET_FUNCTION(v)->types)
+        {
+            char **p = GET_FUNCTION(v)->types;
             for (int i = 0; p[i]; ++i)
                 mila_free(p[i]);
             mila_free(p);
@@ -2723,8 +2926,7 @@ int env_set_raw_contextual(Env *e, const char *name, Value *val)
         }
     }
     // not found, set locally
-    env_set_local_raw_contextual(e, name, val);
-    return 1;
+    return env_set_local_raw_contextual(e, name, val);
 }
 
 int env_set_local(Env *e, const char *name, Value *val)
@@ -2743,9 +2945,33 @@ int env_set_local(Env *e, const char *name, Value *val)
     Var *nv = mila_malloc(sizeof(Var));
     nv->name = mila_strdup(name);
     nv->value = val_retain(val);
+    nv->flag = VAR_NORM;
     nv->next = e->vars;
     e->vars = nv;
-    return 1;
+    return 0;
+}
+
+int env_set_local_const(Env *e, const char *name, Value *val)
+{
+    // set or create in current frame
+    for (Var *v = e->vars; v; v = v->next)
+    {
+        if (strcmp(v->name, name) == 0)
+        {
+            if (v->flag & VAR_CONST) return 1;
+            val_release(v->value);
+            v->value = val_retain(val);
+            return 0;
+        }
+    }
+
+    Var *nv = mila_malloc(sizeof(Var));
+    nv->name = mila_strdup(name);
+    nv->value = val_retain(val);
+    nv->flag = VAR_CONST;
+    nv->next = e->vars;
+    e->vars = nv;
+    return 0;
 }
 
 int env_set(Env *e, const char *name, Value *val)
@@ -2757,6 +2983,7 @@ int env_set(Env *e, const char *name, Value *val)
         {
             if (strcmp(v->name, name) == 0)
             {
+                if (v->flag & VAR_CONST) return 1;
                 val_release(v->value);
                 v->value = val_retain(val);
                 return 1;
@@ -2764,8 +2991,7 @@ int env_set(Env *e, const char *name, Value *val)
         }
     }
     // not found, set locally
-    env_set_local(e, name, val);
-    return 0;
+    return env_set_local(e, name, val);
 }
 
 int env_set_local_raw(Env *e, const char *name, Value *val)
@@ -2775,6 +3001,7 @@ int env_set_local_raw(Env *e, const char *name, Value *val)
     {
         if (strcmp(v->name, name) == 0)
         {
+            if (v->flag & VAR_CONST) return 1;
             val_release(v->value);
             v->value = val;
             return 0;
@@ -2783,9 +3010,10 @@ int env_set_local_raw(Env *e, const char *name, Value *val)
     Var *nv = mila_malloc(sizeof(Var));
     nv->name = mila_strdup(name);
     nv->value = val;
+    nv->flag = VAR_NORM;
     nv->next = e->vars;
     e->vars = nv;
-    return 1;
+    return 0;
 }
 
 int env_set_raw(Env *e, const char *name, Value *val)
@@ -2797,6 +3025,7 @@ int env_set_raw(Env *e, const char *name, Value *val)
         {
             if (strcmp(v->name, name) == 0)
             {
+                if (v->flag & VAR_CONST) return 1;
                 val_release(v->value);
                 v->value = val;
                 return 0;
@@ -2804,8 +3033,49 @@ int env_set_raw(Env *e, const char *name, Value *val)
         }
     }
     // not found, set locally
-    env_set_local_raw(e, name, val);
-    return 1;
+    return env_set_local_raw(e, name, val);
+}
+
+int env_set_local_raw_const(Env *e, const char *name, Value *val)
+{
+    // set or create in current frame
+    for (Var *v = e->vars; v; v = v->next)
+    {
+        if (strcmp(v->name, name) == 0)
+        {
+            if (v->flag & VAR_CONST) return 1;
+            val_release(v->value);
+            v->value = val;
+            return 0;
+        }
+    }
+    Var *nv = mila_malloc(sizeof(Var));
+    nv->name = mila_strdup(name);
+    nv->flag = VAR_CONST;
+    nv->value = val;
+    nv->next = e->vars;
+    e->vars = nv;
+    return 0;
+}
+
+int env_set_raw_const(Env *e, const char *name, Value *val)
+{
+    // assign to nearest visible frame that contains name, else set local
+    for (Env *cur = e; cur; cur = cur->parent)
+    {
+        for (Var *v = cur->vars; v; v = v->next)
+        {
+            if (strcmp(v->name, name) == 0)
+            {
+                if (v->flag & VAR_CONST) return 1;
+                val_release(v->value);
+                v->value = val;
+                return 0;
+            }
+        }
+    }
+    // not found, set locally
+    return env_set_local_raw_const(e, name, val);
 }
 
 int env_remove(Env *env, const char *name)
@@ -2862,7 +3132,7 @@ int env_remove_contextual(Env *env, const char *name)
     return 1;
 }
 
-#ifndef SAFE_BUILD
+#ifndef ML_NO_DL
 
 int load_library(Env *env, const char *libpath)
 {
@@ -3026,7 +3296,7 @@ int load_library_noisy(Env *env, const char *libpath)
     return -2;
 }
 
-#endif
+#endif // ML_NO_DL
 
 // helper to bind native into environment with a name
 void env_register_native(Env *env, const char *name, NativeFn fn)
@@ -3055,15 +3325,15 @@ void src_free(Src *s)
 }
 
 // helpers
-static inline char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
-static inline char src_get(Src *s)
+ char src_peek(Src *s) { return s->pos < s->len ? s->src[s->pos] : '\0'; }
+ char src_get(Src *s)
 {
     char c = s->pos < s->len ? s->src[s->pos++] : '\0';
     return c;
 }
-static inline int src_eof(Src *s) { return s->pos >= s->len; }
+ int src_eof(Src *s) { return s->pos >= s->len; }
 
-static inline void skip_block(Src *s)
+ void skip_block(Src *s)
 {
     skip_ws(s);
     // body is block; extract substring from '{' to matching '}'
@@ -3120,7 +3390,7 @@ static inline void skip_block(Src *s)
     s->pos = i;
 }
 
-static inline void skip_ws(Src *s)
+ void skip_ws(Src *s)
 {
     for (;;)
     {
@@ -3254,6 +3524,12 @@ const char *skip_primary(Src *s)
         return ERR_STRING_UNCLOSED;
     }
 
+    if (c == '?')
+    {
+        src_get(s);
+        return skip_parse_expr(s);
+    }
+
     // Lists/dicts with element validation
     if (c == '[')
     {
@@ -3343,19 +3619,10 @@ const char *skip_primary(Src *s)
         return skip_parse_block(s);
     }
 
-    // String block
-    if (c == '!' && s->pos + 2 < s->len && s->src[s->pos + 1] == '{' && s->src[s->pos + 2] == '{')
+    if (c == '!')
     {
-        src_get(s); // consume '!'
-        src_get(s); // consume '{'
-        src_get(s); // consume '{'
-        while (s->pos + 1 < s->len && !(s->src[s->pos] == '}' && s->src[s->pos + 1] == '}'))
-        {
-            src_get(s);
-        }
         src_get(s);
-        src_get(s);
-        return ERR_SUCCESS;
+        return skip_parse_expr(s);
     }
 
     // Function literals - validate body recursively
@@ -3782,9 +4049,12 @@ const char *skip_parse_statement(Src *s)
             mila_free(params->params[i]);
             if (params->defaults[i])
                 mila_free(params->defaults[i]);
+            if (params->types[i])
+                mila_free(params->types[i]);
         }
         mila_free(params->params);
         mila_free(params->defaults);
+        mila_free(params->types);
         mila_free(params);
 
         char **ctx = parse_context_list(s);
@@ -3840,26 +4110,6 @@ const char *skip_parse_statement(Src *s)
         return skip_parse_block(s);
     }
 
-    if (is_keyword_at(s, "block"))
-    {
-        s->pos += 5;
-        char *bname = parse_ident(s);
-        if (!bname)
-            return ERR_INVALID_IDENT;
-        mila_free(bname);
-        return skip_parse_block(s);
-    }
-
-    if (is_keyword_at(s, "namespace"))
-    {
-        s->pos += 9;
-        char *ns = parse_ident(s);
-        if (!ns)
-            return ERR_INVALID_IDENT;
-        mila_free(ns);
-        return skip_parse_block(s);
-    }
-
     if (is_keyword_at(s, "catch"))
     {
         s->pos += 5;
@@ -3874,6 +4124,34 @@ const char *skip_parse_statement(Src *s)
     {
         return skip_parse_block(s);
     }
+
+if (src_peek(s) == '@') {
+    src_get(s);  // consume '@'
+    
+    // Parse the function identifier
+    char* id = parse_ident(s);
+    if (!id) {
+        return ERR_INVALID_IDENT;
+    }
+    mila_free(id);
+    
+    // Parse arguments until semicolon
+    const char* err = ERR_SUCCESS;
+    while ((err == ERR_SUCCESS) && !match_char(s, ';')) {
+        skip_ws(s);
+        if (src_peek(s) == '\0') {
+            return ERR_EXPECTED_SEMICOLON;
+        }
+        if (src_peek(s) == '{') {
+            err = skip_parse_block(s);
+            match_char(s, '}');
+        }
+        else {
+            err = skip_parse_expr(s);
+        }
+    }
+    return ERR_SUCCESS;
+}
 
     const char *err = skip_parse_expr_prec(s, 1);
     if (err)
@@ -3986,7 +4264,7 @@ int is_ident_start(char c)
     return isalpha((unsigned char)c) || c == '_' || c == '.' || c == '\'';
 }
 
-static inline char *parse_ident_string(Src *s)
+ char *parse_ident_string(Src *s)
 {
     skip_ws(s);
     if (src_peek(s) != '\'')
@@ -4030,7 +4308,7 @@ static inline char *parse_ident_string(Src *s)
 }
 
 // parse identifier
-static inline char *parse_ident(Src *s)
+ char *parse_ident(Src *s)
 {
     skip_ws(s);
     int st = s->pos;
@@ -4050,14 +4328,6 @@ static inline char *parse_ident(Src *s)
     char *res = mila_malloc(n + 1);
     memcpy(res, s->src + st, n);
     res[n] = 0;
-
-    if (res[0] == '.' && s->cur_namespace != NULL)
-    {
-        char *r = mila_strdup(s->cur_namespace);
-        malloc_sprintf(&r, ".%s", res + 1);
-        mila_free(res);
-        return r;
-    }
 
     return res;
 }
@@ -4126,7 +4396,7 @@ __int128 atoi128(char *s)
 }
 
 // parse number (int or float)
-static inline Value *parse_number(Src *s)
+ Value *parse_number(Src *s)
 {
     int st = s->pos;
     _Bool seen_dot = 0;
@@ -4283,7 +4553,7 @@ char *dedent(char *str)
 }
 
 // parse string literal (double quotes)
-static inline Value *parse_string(Src *s)
+ Value *parse_string(Src *s)
 {
     src_get(s); // consume opening "
     char do_dedent = 0;
@@ -4601,7 +4871,7 @@ static inline Value *parse_string(Src *s)
 void src_advance_by(Src *s, size_t amount) { s->pos += amount; }
 
 // parse function literal: fn(a,b){ ... }
-static inline int is_keyword_at(Src *s, const char *kw)
+ int is_keyword_at(Src *s, const char *kw)
 {
     skip_ws(s);
     int p = s->pos;
@@ -4631,36 +4901,43 @@ char *dup_substr(Src *s, int a, int b)
 FunctionParameters *parse_param_list(Src *s)
 {
     skip_ws(s);
+    FunctionParameters *fnp = (FunctionParameters *)mila_malloc(sizeof(FunctionParameters));
     if (!match_char(s, '('))
     {
-        FunctionParameters *fnp = (FunctionParameters *)mila_malloc(sizeof(FunctionParameters));
         char **p = mila_malloc(sizeof(char *));
+        char **t = mila_malloc(sizeof(char *));
         char **d = mila_malloc(sizeof(char *));
         p[0] = NULL;
+        t[0] = NULL;
         d[0] = NULL;
         fnp->params = p;
+        fnp->types = t;
         fnp->defaults = d;
         return fnp;
     }
     skip_ws(s);
     // empty
-    FunctionParameters *fnp = (FunctionParameters *)mila_malloc(sizeof(FunctionParameters));
     char *buffer = NULL;
     fnp->count = 0;
     if (match_char(s, ')'))
     {
         char **p = mila_malloc(sizeof(char *));
+        char **t = mila_malloc(sizeof(char *));
         char **d = mila_malloc(sizeof(char *));
         p[0] = NULL;
+        t[0] = NULL;
         d[0] = NULL;
         fnp->params = p;
+        fnp->types = t;
         fnp->defaults = d;
         return fnp;
     }
     // read identifiers
     char **arr = NULL;
+    char **typ = NULL;
     char **def = NULL;
     int cnt = 0;
+    char* type_string = NULL;
     for (;;)
     {
         char *id = parse_ident(s);
@@ -4672,14 +4949,21 @@ FunctionParameters *parse_param_list(Src *s)
                 mila_free(arr[i]);
             mila_free(arr);
             for (int i = 0; i < cnt; i++)
+                mila_free(typ[i]);
+            mila_free(typ);
+            for (int i = 0; i < cnt; i++)
                 mila_free(def[i]);
             mila_free(def);
             return NULL;
         }
         if (match_char(s, ':'))
         {
+            skip_ws(s);
             Value *type = parse_string(s);
-            // ignore types for now
+            if (type)
+                type_string = mila_strdup(GET_STRING(type));
+            else
+                type_string = NULL;
             val_kill(type);
         }
         if (match_char(s, '='))
@@ -4696,17 +4980,21 @@ FunctionParameters *parse_param_list(Src *s)
             buffer = NULL;
         arr = mila_realloc(arr, sizeof(char *) * (cnt + 2));
         def = mila_realloc(def, sizeof(char *) * (cnt + 2));
+        typ = mila_realloc(typ, sizeof(char *) * (cnt + 2));
         arr[cnt++] = id;
         def[cnt - 1] = buffer;
+        typ[cnt - 1] = type_string;
         arr[cnt] = NULL;
         def[cnt] = NULL;
+        typ[cnt] = NULL;
         if (match_char(s, ','))
             continue;
         if (match_char(s, ')'))
             break;
-        break;
+        return NULL;
     }
     fnp->params = arr;
+    fnp->types = typ;
     fnp->defaults = def;
     fnp->count = cnt;
     return fnp;
@@ -5171,7 +5459,10 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv)
     else
     {
         // not callable
-        return verror("Attempt to call non-callable value.");
+        char* repr = as_c_string_repr_raw(fnval);
+        Value* res = verror("Attempt to call non-callable value (%s)", repr);
+        mila_free(repr);
+        return res;
     }
     return vnull();
 }
@@ -5662,6 +5953,13 @@ Value *eval_primary(Src *s, Env *env)
         mila_free(buffer);
         return res;
     }
+    if (c == '!') {
+        src_get(s);
+        Value* v = eval_expr(s, env);
+        Value* res = vbool(!is_truthy(v));
+        val_release(v);
+        return res;
+    }
     // function literal
     if (is_keyword_at(s, "fn"))
     {
@@ -5671,6 +5969,7 @@ Value *eval_primary(Src *s, Env *env)
         FunctionParameters *params = parse_param_list(s);
         char **contextuals = parse_context_list(s);
         char **names;
+        char* ret = NULL;
         Env *closure = env_new(NULL);
         if (match_char(s, ':'))
         {
@@ -5697,7 +5996,7 @@ Value *eval_primary(Src *s, Env *env)
             if (src_peek(s) == '"')
             {
                 Value *ret_type = parse_string(s);
-                // ignore return type for now
+                ret = mila_strdup(GET_STRING(ret_type));
                 val_kill(ret_type);
             }
             else
@@ -5706,8 +6005,12 @@ Value *eval_primary(Src *s, Env *env)
                 for (int i = 0; params->params[i]; ++i)
                 {
                     mila_free(params->params[i]);
+                    mila_free(params->types[i]);
                     mila_free(params->defaults[i]);
                 }
+                mila_free(params->params);
+                mila_free(params->defaults);
+                mila_free(params->types);
                 mila_free(params);
                 return vtagged_error(E_SYNTAX_ERROR,
                                      "Expected a string literal for the return type.");
@@ -5762,7 +6065,7 @@ Value *eval_primary(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
+        Value *fn = vfunction(params, ret, contextuals, closure, body);
         mila_free(params);
         GET_FUNCTION(fn)->name = mila_strdup("[lambda]");
         return fn;
@@ -6165,12 +6468,12 @@ Value *eval_primary(Src *s, Env *env)
 }
 
 // helper to convert numeric types and do arithmetic
-static inline int is_numeric(Value *v)
+ int is_numeric(Value *v)
 {
     return v && (v->type == T_INT || v->type == T_FLOAT || v->type == T_UINT);
 }
 
-static inline double to_double(Value *v)
+ double to_double(Value *v)
 {
     if (!v)
         return 0.0;
@@ -6183,7 +6486,7 @@ static inline double to_double(Value *v)
     return 0.0;
 }
 
-static inline unsigned long to_uint(Value *v)
+ unsigned long to_uint(Value *v)
 {
     if (!v)
         return 0.0;
@@ -6196,7 +6499,7 @@ static inline unsigned long to_uint(Value *v)
     return 0.0;
 }
 
-FN_UNUSED static inline long to_int(Value *v)
+FN_UNUSED  long to_int(Value *v)
 {
     if (!v)
         return 0;
@@ -6210,7 +6513,7 @@ FN_UNUSED static inline long to_int(Value *v)
 }
 
 // binary ops
-static inline Value *binary_op(Value *a, MethodType op, Value *b)
+ Value *binary_op(Value *a, MethodType op, Value *b)
 {
     if (a->method_table && a->method_table[TMethodBinop])
     {
@@ -6603,7 +6906,7 @@ Value *binary_op_objects(Env *env, char right, Value *a, MethodType op, Value *b
 }
 
 // evaluate expression with precedence climbing
-static inline int precedence_of(MethodType op)
+ int precedence_of(MethodType op)
 {
     if (BMethodAnd == op)
         return 1;
@@ -6627,7 +6930,7 @@ static inline int precedence_of(MethodType op)
     return 0;
 }
 
-static inline MethodType parse_op(Src *s)
+ MethodType parse_op(Src *s)
 {
     skip_ws(s);
     char a = src_peek(s);
@@ -7092,9 +7395,14 @@ Value *eval_statement(Src *s, Env *env)
             GET_FUNCTION(v)->name = mila_strdup(id);
         }
 
-        env_set(env, id, v);
+        if (env_set(env, id, v)) {
+            Value *res = vtagged_error(E_CONST_ERROR, "Tried to set constant value %s", id);
+            mila_free(id);
+            val_release(v);
+            return res;
+        }
         mila_free(id);
-        return v;
+        return v ? v : vnull();
     }
     if (is_keyword_at(s, "var"))
     {
@@ -7115,7 +7423,12 @@ Value *eval_statement(Src *s, Env *env)
         {
             // declare none
             Value *r = vnone();
-            env_set_raw(env, id, r);
+            if (env_set_local_raw(env, id, r)) {
+                Value* res = vtagged_error(E_CONST_ERROR, "Tried to set constant value %s", id);
+                mila_free(id);
+                val_release(r);
+                return res;
+            }
             mila_free(id);
             return vnull();
         }
@@ -7146,7 +7459,67 @@ Value *eval_statement(Src *s, Env *env)
             GET_FUNCTION(v)->name = mila_strdup(id);
         }
 
-        env_set_local(env, id, v);
+        if (env_set_local(env, id, v)) {
+            Value* res = vtagged_error(E_CONST_ERROR, "Tried to set constant value %s", id);
+            val_release(v);
+            mila_free(id);
+            return res;
+        }
+        mila_free(id);
+        return v;
+    }
+    if (is_keyword_at(s, "const"))
+    {
+        s->pos += strlen("const");
+        char *id = parse_ident(s);
+        // check for type hints
+        if (match_char(s, ':'))
+        {
+            Value *type = parse_string(s);
+            val_release(type); // ignore for now
+        }
+        if (!id)
+            return verror("Invalid const statement.");
+#ifdef MILA_DEBUG
+        printf("  ?? Assigning %s\n", id);
+#endif
+        if (match_char(s, ';'))
+        {
+            return verror("Constant statement must have a value!");
+        }
+        Value *v = NULL;
+        if (match_char(s, '='))
+        {
+            v = eval_expr(s, env);
+            match_char(s, ';');
+        }
+        else if (match_char(s, ':'))
+        {
+            v = eval_statement(s, env);
+        }
+        else
+        {
+            mila_free(id);
+            return verror("Expected a proper const statement!");
+        }
+
+        if (v && v->type == T_RETURN)
+        {
+            Value *tmp = v;
+            v = (Value *)tmp->v;
+            val_release(tmp);
+        }
+        else if (v && v->type == T_FUNCTION && !GET_FUNCTION(v)->name)
+        {
+            GET_FUNCTION(v)->name = mila_strdup(id);
+        }
+
+        if (env_set_local_const(env, id, v)) {
+            Value* res = vtagged_error(E_CONST_ERROR, "Tried to set constant value %s", id);
+            mila_free(id);
+            val_release(v);
+            return res;
+        }
         mila_free(id);
         return v;
     }
@@ -7270,6 +7643,17 @@ Value *eval_statement(Src *s, Env *env)
         Value *r = val_new_raw(T_RETURN);
         r->v = (void *)v;
         return r;
+    }
+    if (is_keyword_at(s, "alias")) {
+        s->pos += strlen("alias");
+        char* from = parse_ident(s);
+        match_char(s, ':');
+        Value* to = eval_expr(s, env);
+        Value* res = NULL;
+        env_set_local(env, GET_STRING(to), res=env_get(env, from));
+        val_release(to);
+        mila_free(from);
+        return vnull();
     }
     if (is_keyword_at(s, "if"))
     {
@@ -7453,7 +7837,11 @@ Value *eval_statement(Src *s, Env *env)
         if (!match_char(s, ';'))
         {
             Value *n = eval_expr(s, env);
-            return vbreak_step(GET_UINTEGER(n));
+            Value* res = NULL;
+            if (GET_UINTEGER(n) == 1) res = vbreak();
+            else res = vbreak_step(GET_UINTEGER(n));
+            val_release(n);
+            return res;
         }
         return vbreak();
     }
@@ -7463,7 +7851,9 @@ Value *eval_statement(Src *s, Env *env)
         if (!match_char(s, ';'))
         {
             Value *n = eval_expr(s, env);
-            return vcontinue_step(GET_UINTEGER(n));
+            Value* res = vcontinue_step(GET_UINTEGER(n));
+            val_release(n);
+            return res;
         }
         return vcontinue();
     }
@@ -7531,19 +7921,20 @@ Value *eval_statement(Src *s, Env *env)
                 case T_BREAK:
                 {
                     s->pos = body_end_pos;
+                    unsigned long level = bod->v ? GET_UINTEGER(bod) : 1;
                     val_release(bod);
                     mila_free(value);
                     mila_free(id);
                     ((unary_method)iter_obj->method_table[UMethodStepIterClean])(iter_state);
                     val_release(iter_obj);
-                    return vnull();
+                    return level <= 1 ? vnull() : vbreak_step(level-1);
                 }
                 case T_CONTINUE:
                 {
                     s->pos = body_start_pos;
                     if (bod)
                     {
-                        for (unsigned long steps = GET_UINTEGER(bod) - 1; steps > 0; steps--)
+                        for (unsigned long steps = (bod->v ? GET_UINTEGER(bod) : 1) - 1; steps > 0; steps--)
                         {
                             Value *v = ((unary_method)iter_obj->method_table[UMethodStepIter])(iter_state);
                             if (!v)
@@ -7554,6 +7945,7 @@ Value *eval_statement(Src *s, Env *env)
                                 val_release(iter_obj);
                                 return vnull();
                             }
+                            val_release(v);
                         }
                         val_release(bod);
                     }
@@ -7642,11 +8034,11 @@ Value *eval_statement(Src *s, Env *env)
                     s->pos = body_end_pos;
                     for (; value[i]; ++i)
                         val_release(value[i]);
+                    unsigned long level = bod->v? GET_UINTEGER(bod) : 1;
                     val_release(bod);
                     mila_free(value);
                     mila_free(id);
-                    val_release(value[0]);
-                    return vnull();
+                    return level <= 1 ? vnull() : vbreak_step(level-1);
                 }
                 case T_CONTINUE:
                 {
@@ -7699,78 +8091,40 @@ Value *eval_statement(Src *s, Env *env)
         }
         return vnull();
     }
-    if (is_keyword_at(s, "block"))
-    {
-        s->pos += strlen("block");
-        skip_ws(s);
-        char *name = parse_ident(s);
-        if (!name)
-            return verror("Block needs a name!");
-        skip_ws(s);
-        Env *frame = env_new(env);
-        env_set_local_raw(frame, "@block_name", vstring_take(name));
-        Value *res = eval_block_raw(s, frame);
-        if (IS_ERROR_TAGGED(res))
-        {
-            Value *new_res =
-                vtagged_coded_error(res->v->tagged_error.type, res->v->tagged_error.return_code, "Block %s reported an error: %s", name, res->v->tagged_error.message);
-            val_release(res);
-            env_free(frame);
-            return new_res;
-        }
-        else if (IS_ERROR(res))
-        {
-            Value *new_res =
-                verror("Block %s reported an error: %s", name, GET_ERROR_MESSAGE(res));
-            val_release(res);
-            env_free(frame);
-            return new_res;
-        }
-        env_free(frame);
-        return res;
-    }
-    if (is_keyword_at(s, "namespace"))
-    {
-        s->pos += strlen("namespace");
-        skip_ws(s);
-        char *old_name = s->cur_namespace;
-        s->cur_namespace = parse_ident(s);
-        if (!s->cur_namespace)
-        {
-            s->cur_namespace = old_name;
-            return verror("Namespace needs a name!");
-        }
-        skip_ws(s);
-        Value *res = eval_block_raw(s, env);
-        mila_free(s->cur_namespace);
-        s->cur_namespace = old_name;
-        return res;
-    }
     if (is_keyword_at(s, "catch"))
     {
         s->pos += strlen("catch");
         char *id = parse_ident(s);
         size_t start = s->pos;
-        skip_block(s);
+        skip_parse_block(s);
         size_t end = s->pos;
         s->pos = start;
         Value *res = eval_block_raw(s, env);
-
+        if (id)
+            if (env_set_local_raw(env, id, vnone())) {
+                val_release(res);
+                Value* res = vtagged_error(E_CONST_ERROR, "id %s for error capture was a constant!", id);
+                mila_free(id);
+                return res;
+            }
         if (IS_ERROR(res) && !IS_FATAL(res))
         {
-            env_set_local_raw(env, id, vnone());
             if (id)
             {
                 if (IS_ERROR_TAGGED(res))
                 {
                     Value *msg = vstring_dup(res->v->tagged_error.message);
                     Value *type = vstring_dup(GET_TAGGED_ERROR_TYPENAME(res));
-                    Value *dict = call_native_with(env, native_new_dict,
-                                                   vstring_dup("error"), type,
-                                                   vstring_dup("error_id"), vint(GET_ERROR_TYPE(res)),
-                                                   vstring_dup("message"), msg, NULL);
+                    Value *e_id, *e_msg;
+                    Value *dict = make_dict(
+                       vstring_dup("error"), type,
+                       vstring_dup("error_id"), e_id=vint(GET_ERROR_TYPE(res)),
+                       vstring_dup("message"), e_msg=msg, NULL);
                     val_release(res);
-                    env_set_local_raw(env, id, dict);
+                    val_release(e_id);
+                    val_release(e_msg);
+                    val_release(type);
+                    env_set_local(env, id, dict);
                     mila_free(id);
                     s->pos = end;
                     return dict;
@@ -7778,12 +8132,16 @@ Value *eval_statement(Src *s, Env *env)
                 else
                 {
                     Value *msg = vstring_dup(GET_ERROR_MESSAGE(res));
-                    Value *dict = call_native_with(env, native_new_dict,
-                                                   vstring_dup("error"), vstring_dup("Generic"),
-                                                   vstring_dup("error_id"), vint(E_GENERIC),
-                                                   vstring_dup("message"), msg, NULL);
+                    Value *e_name, *e_id, *e_msg;
+                    Value *dict = make_dict(
+                       vstring_dup("error"), e_name=vstring_dup("Generic"),
+                       vstring_dup("error_id"), e_id=vint(E_GENERIC),
+                       vstring_dup("message"), e_msg=msg, NULL);
+                    val_release(e_name);
+                    val_release(e_id);
+                    val_release(e_msg);
                     val_release(res);
-                    env_set_local_raw(env, id, dict);
+                    env_set_local(env, id, dict);
                     mila_free(id);
                     s->pos = end;
                     return dict;
@@ -7796,7 +8154,6 @@ Value *eval_statement(Src *s, Env *env)
         }
 
         s->pos = end;
-        env_set_local(env, id, vnone());
         mila_free(id);
         return res;
     }
@@ -7810,6 +8167,7 @@ Value *eval_statement(Src *s, Env *env)
         FunctionParameters *params = parse_param_list(s);
         char **contextuals = parse_context_list(s);
         char **names;
+        char* ret = NULL;
         Env *closure = env_new(NULL);
         if (match_char(s, ':'))
         {
@@ -7836,7 +8194,7 @@ Value *eval_statement(Src *s, Env *env)
             if (src_peek(s) == '"')
             {
                 Value *ret_type = parse_string(s);
-                // ignore return type for now
+                ret = mila_strdup(GET_STRING(ret_type));
                 val_kill(ret_type);
             }
             else
@@ -7902,7 +8260,7 @@ Value *eval_statement(Src *s, Env *env)
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
-        Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
+        Value *fn = vfunction(params, ret, contextuals, closure, body);
         mila_free(params);
         if (!GET_FUNCTION(fn)->name)
             GET_FUNCTION(fn)->name = mila_strdup(name);
@@ -8022,6 +8380,78 @@ Value *eval_statement(Src *s, Env *env)
         env_free(frame);
         return res;
     }
+    if (src_peek(s) == '@')
+    {
+        src_get(s);
+        char* id = parse_ident(s);
+        if (!id) return vtagged_error(E_SYNTAX_ERROR, "RT-Statement requires identifier!");
+        Value* fn = env_get(env, id);
+        if (GET_TYPE(fn) != T_FUNCTION) {
+            char* str = as_c_string_repr(fn);
+            Value* res = vtagged_error(E_TYPE_ERROR, "RT-Statement must call a function but got %s (%s)", GET_TYPENAME(fn), str);
+            free(str);
+            free(id);
+            return res;
+        }
+
+        FunctionV* fn_v = GET_FUNCTION(fn);
+        struct {void** items; size_t size, count;} args = {};
+        int i=0;
+        for (; fn_v->types[i]; i++) {
+            char* type = fn_v->types[i];
+            if (strcmp(type, "@expr") == 0) {
+                skip_ws(s);
+                size_t start = s->pos;
+                skip_parse_expr(s);
+                size_t end = s->pos;
+                char* block = NULL;
+                malloc_sprintf(&block, "%.*s", end-start, s->src + start);
+                da_append(&args, vstring_take(block));
+            } else if (strcmp(type, "@expr-run") == 0) {
+                Value* expr = eval_expr(s, env);
+                da_append(&args, expr);
+            } else if (strcmp(type, "@block") == 0 && match_char(s, '{')) {
+                s->pos--;
+                size_t start = s->pos;
+                skip_parse_block(s);
+                size_t end = s->pos;
+                char* block = NULL;
+                malloc_sprintf(&block, "%.*s", end-start-2, s->src + start + 1);
+                da_append(&args, vstring_take(block));
+            } else if (strcmp(type, "@block-run") == 0 && match_char(s, '{')) {
+                s->pos--;
+                Value* block = eval_block(s, env);
+                match_char(s, '}');
+                if (IS_ERROR(block)) {
+                    for (size_t i=0; i < args.count; ++i) {
+                        val_release(args.items[i]);
+                    }
+                    free(id);
+                    return block;
+                }
+                if (GET_TYPE(block) == T_RETURN) {
+                    Value* res = (Value*)block->v;
+                    val_release(block);
+                    da_append(&args, res);
+                    continue;
+                }
+                da_append(&args, block);
+            } else if (strcmp(type, "@id") == 0) {
+                char* id = parse_ident(s);
+                if (!id) id = mila_strdup("invalid!");
+                da_append(&args, vstring_take(id));
+            } else {
+                return vtagged_error(E_TYPE_ERROR, "Invalid type %s", type);
+            }
+        }
+        Value* res = call_function(fn, env, args.count, (Value**)(args.items));
+        for (size_t i=0; i < args.count; ++i) {
+            val_release(args.items[i]);
+        }
+        mila_free(args.items);
+        mila_free(id);
+        return res;
+    }
     // expression statement
     Value *e = eval_expr(s, env);
     match_char(s, ';');
@@ -8111,7 +8541,7 @@ void print_error(Value *v)
 
 int run_file(char *name, Env *env)
 {
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     char *loc_dir = path_dirname_alloc(name);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
@@ -8137,7 +8567,7 @@ int run_file(char *name, Env *env)
     val_release(res);
     src_free(S);
     mila_free(src_text);
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     path_list_remove(mila_search_path, loc_dir);
     mila_free(loc_dir);
 #endif
@@ -8146,7 +8576,7 @@ int run_file(char *name, Env *env)
 
 Value *run_file_keep_res(char *name, Env *env)
 {
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     char *loc_dir = path_dirname_alloc(name);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
@@ -8170,7 +8600,7 @@ Value *run_file_keep_res(char *name, Env *env)
     Value *res = eval_source(S, env);
     src_free(S);
     mila_free(src_text);
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     path_list_remove(mila_search_path, loc_dir);
     mila_free(loc_dir);
 #endif
@@ -8179,7 +8609,7 @@ Value *run_file_keep_res(char *name, Env *env)
 
 int invoke_file(char *name, Env *env)
 {
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
     char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
@@ -8232,7 +8662,7 @@ int invoke_file(char *name, Env *env)
     val_release(res);
     src_free(S);
     mila_free(src_text);
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     path_list_remove(mila_search_path, loc_dir);
     mila_free(loc_dir);
 #endif
@@ -8241,7 +8671,7 @@ int invoke_file(char *name, Env *env)
 
 Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
 {
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
     char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
@@ -8362,7 +8792,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
                 {
                     src_free(S);
                     mila_free(src_text);
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
                     path_list_remove(mila_search_path, loc_dir);
                     mila_free(loc_dir);
 #endif
@@ -8377,7 +8807,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
     Value *res = eval_source(S, env);
     src_free(S);
     mila_free(src_text);
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     path_list_remove(mila_search_path, loc_dir);
     mila_free(loc_dir);
 #endif
@@ -8386,7 +8816,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[])
 
 Value *invoke_file_keep_res(char *name, Env *env)
 {
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
     char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
@@ -8433,7 +8863,7 @@ Value *invoke_file_keep_res(char *name, Env *env)
     Value *res = eval_source(S, env);
     src_free(S);
     mila_free(src_text);
-#ifndef SAFE_BUILD
+#ifndef RESTRICTED_BUILD
     path_list_remove(mila_search_path, loc_dir);
     mila_free(loc_dir);
 #endif
@@ -8509,11 +8939,13 @@ Env *mila_global_init(void)
     sa.sa_flags = SA_SIGINFO | SA_RESTART;    // SA_SIGINFO = get ucontext
     sigemptyset(&sa.sa_mask);
 
+#ifndef ML_NO_SIGNAL
     sigaction(SIGINT, &sa, NULL);  // keyboard interrupt
     sigaction(SIGSEGV, &sa, NULL); // segfault
     sigaction(SIGFPE, &sa, NULL);  // div by 0
     sigaction(SIGABRT, &sa, NULL); // assert/abort
     sigaction(SIGILL, &sa, NULL);  // illegal instruction
+#endif
 
     return g;
 }
@@ -8585,7 +9017,7 @@ void handle_signal(int signal)
     _exit(signal);
 }
 
-#ifndef ML_LIB
+#ifndef ML_NO_MAIN
 int main(int argc, char **argv)
 {
     char *src_text = NULL;
@@ -8899,7 +9331,7 @@ int main(int argc, char **argv)
                 buffer[0] = 0;
                 continue;
             }
-#ifndef SAFE_BUILD
+#ifndef ML_NO_DL
             else if (strncmp(buffer, ".load", 5) == 0)
             {
                 char *file = path_list_find(mila_search_path, buffer + 6);
@@ -8911,7 +9343,7 @@ int main(int argc, char **argv)
                 buffer[0] = 0;
                 continue;
             }
-#endif
+#endif // ML_NO_DL
             else if (strncmp(buffer, ".mem", 4) == 0)
             {
                 print_memory_usage();
@@ -8941,11 +9373,13 @@ int main(int argc, char **argv)
                     puts("");
                 }
 
-                if (GET_TYPE(res) != T_NULL && !IS_ERROR(res) && buffer[strlen(buffer) - 1] != ';')
+                if (GET_TYPE(res) != T_NULL && !IS_ERROR(res))
                 {
-                    printf("  : ");
-                    raw_print_value_repr(res);
-                    putchar('\n');
+                    if (buffer[strlen(buffer) - 1] != ';') {
+                        printf("  : ");
+                        raw_print_value_repr(res);
+                        putchar('\n');
+                    }
                 }
                 else
                 {
@@ -8992,4 +9426,4 @@ int main(int argc, char **argv)
     }
     return 0;
 }
-#endif
+#endif // ML_NO_MAIN

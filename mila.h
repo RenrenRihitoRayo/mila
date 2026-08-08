@@ -21,14 +21,23 @@
     (for source level discernment)
 */
 
-#ifdef SAFE_BUILD
-    #define ML_NO_MATH
-    #define ML_NO_C_CAST
-    #define ML_NO_THREADING
-    #define ML_NO_PLATFORM
-    #define ML_NO_EXECUTABLES
-    #define ML_NO_TIME
-    #define ML_NO_FILE_IO
+#ifdef RESTRICTED_BUILD
+    // dont use functions that would require -lm
+    #define ML_NO_LIBM 
+    // dont expose functions that cast like in C (unprotected)
+    #define ML_NO_C_CAST 
+    // dont expose threading
+    #define ML_NO_THREADING 
+    // dont expose platform introspection
+    #define ML_NO_PLATFORM 
+    // dont expose functions that can interpret MiLa code
+    #define ML_NO_ACE 
+    // dont expose functions regarding time (dates, geting timestamp, sleep)
+    #define ML_NO_TIME 
+    // dont expose file IO
+    #define ML_NO_FILE_IO 
+    // dont expose dynamic library shenanigans
+    #define ML_NO_DL 
 #endif
 
 #define _GNU_SOURCE
@@ -200,40 +209,40 @@ typedef enum
 // so updates might change so fast developers might get whiplash
 
 // Left Operators
-const char* OVERLOAD_ADD = ":+";
-const char* OVERLOAD_SUB = ":-";
-const char* OVERLOAD_MUL = ":*";
-const char* OVERLOAD_DIV = ":/";
-const char* OVERLOAD_MOD = ":%";
-const char* OVERLOAD_RSHIFT = ":>>";
-const char* OVERLOAD_LSHIFT = ":<<";
-const char* OVERLOAD_EQ = ":==";
-const char* OVERLOAD_NE = ":!=";
-const char* OVERLOAD_GT = ":>";
-const char* OVERLOAD_LT = ":<";
-const char* OVERLOAD_GE = ":>=";
-const char* OVERLOAD_LE = ":<=";
+#define OVERLOAD_ADD ":+"
+#define OVERLOAD_SUB ":-"
+#define OVERLOAD_MUL ":*"
+#define OVERLOAD_DIV ":/"
+#define OVERLOAD_MOD ":%"
+#define OVERLOAD_RSHIFT ":>>"
+#define OVERLOAD_LSHIFT ":<<"
+#define OVERLOAD_EQ ":=="
+#define OVERLOAD_NE ":!="
+#define OVERLOAD_GT ":>"
+#define OVERLOAD_LT ":<"
+#define OVERLOAD_GE ":>="
+#define OVERLOAD_LE ":<="
 
 // Right Operators
-const char* OVERLOAD_R_ADD = "+:";
-const char* OVERLOAD_R_SUB = "-:";
-const char* OVERLOAD_R_MUL = "*:";
-const char* OVERLOAD_R_DIV = "/:";
-const char* OVERLOAD_R_MOD = "%:";
-const char* OVERLOAD_R_RSHIFT = ">>:";
-const char* OVERLOAD_R_LSHIFT = "<<:";
-const char* OVERLOAD_R_EQ = "==:";
-const char* OVERLOAD_R_NE = "!=:";
-const char* OVERLOAD_R_GT = ">:";
-const char* OVERLOAD_R_LT = "<:";
-const char* OVERLOAD_R_GE = ">=:";
-const char* OVERLOAD_R_LE = "<=:";
+#define OVERLOAD_R_ADD "+:"
+#define OVERLOAD_R_SUB "-:"
+#define OVERLOAD_R_MUL "*:"
+#define OVERLOAD_R_DIV "/:"
+#define OVERLOAD_R_MOD "%:"
+#define OVERLOAD_R_RSHIFT ">>:"
+#define OVERLOAD_R_LSHIFT "<<:"
+#define OVERLOAD_R_EQ "==:"
+#define OVERLOAD_R_NE "!=:"
+#define OVERLOAD_R_GT ">:"
+#define OVERLOAD_R_LT "<:"
+#define OVERLOAD_R_GE ">=:"
+#define OVERLOAD_R_LE "<=:"
 
 // More complex overloads
-const char* OVERLOAD_DISPLAY = ":display";
-const char* OVERLOAD_COPY = ":copy";
-const char* OVERLOAD_COPYSHALLOW = ":copyshallow";
-const char* OVERLOAD_TO_BOOL = ":to_bool";
+#define OVERLOAD_DISPLAY ":display"
+#define OVERLOAD_COPY ":copy"
+#define OVERLOAD_COPYSHALLOW ":copyshallow"
+#define OVERLOAD_TO_BOOL ":to_bool"
 
 #endif // MILA_PROTO
 
@@ -245,6 +254,7 @@ typedef enum
     E_RUNTIME,           // Errors such as undefined variables or just runtime stuff (mostly in interpreter)
     E_TYPE_ERROR,        // Errors when doing a type cannot do (impossible in core mila, invalid op == null)
     E_FATAL,             // Errors that should be fatal, like syntax errors
+    E_CONST_ERROR,       // Errors pertaining to modifying constant values
     E_GENERIC,           // Errors that cannot be classified as ones above
     E_ASSERT,            // Errors triggered by a failed assert
     E_THREAD_HALT,       // Signal threads to halt (propagates like a fatal error but only in that thread)
@@ -253,17 +263,7 @@ typedef enum
 
 #ifndef MILA_PROTO
 // Use (GET_TAGGED_ERROR_TYPENAME than this)
-const char *MILA_ERROR_NAMES[] = {
-    "SyntaxError",
-    "PreRuntime",
-    "Runtime",
-    "TypeError",
-    "Fatal",
-    "Generic",
-    "AssertionError",
-    "ThreadHalt",
-    "Exit",
-};
+extern const char *MILA_ERROR_NAMES[];
 #endif // MILA_PROTO
 
 typedef struct Value Value;
@@ -271,8 +271,13 @@ typedef struct Env Env;
 typedef Value *(*NativeFn)(Env *env, int argc, Value **argv);
 typedef void* MethodTable;
 
+#define VAR_NORM 0
+#define VAR_CONST 1
+
 typedef struct Var
 {
+    // 32 flags available
+    int flag;
     char *name;
     Value *value;
     struct Var *next;
@@ -336,92 +341,87 @@ void env_register_builtins(Env *g);
 // == Value Related
 
 // Return an int if a MiLa value is truthy
-static inline int is_truthy(Value *value);
+ int is_truthy(Value *value);
 // Make a new value with a type
-static inline Value *val_new(ValueType t);
+Value *val_new(ValueType t);
 // Make a new value with a type
-static inline Value *val_new_raw(ValueType t);
+Value *val_new_raw(ValueType t);
 // Copy a value
-static inline Value* val_copy(Value *src);
+Value* val_copy(Value *src);
 // Copy a value shallowly
-static inline Value* val_copy_shallow(Value *src);
+Value* val_copy_shallow(Value *src);
 // Allocate a method table for a value
-static inline void val_allocate_table(Value *v);
+ void val_allocate_table(Value *v);
 // Make a standalone method table
-static inline MethodTable *val_make_table(void);
+ MethodTable *val_make_table(void);
 // Set a values method table
-static inline void val_set_table(Value *v, MethodTable *t);
+ void val_set_table(Value *v, MethodTable *t);
 // Set the method of a value
-static inline void val_set_method(Value *v, MethodType t, void* func);
+ void val_set_method(Value *v, MethodType t, void* func);
 // Set the method of a method table
-static inline void val_set_method_table(MethodTable *v, MethodType t, void* func);
-//  Unset the method of a method table
-static inline void val_unset_method_table(MethodTable *v, MethodType t);
-// Unset the method of a value
-static inline void val_unset_method(Value *v, MethodType t);
+ void val_set_method_table(MethodTable *v, MethodType t, void* func);
 // Own a value
-static inline Value *val_retain(Value *v);
+Value *val_retain(Value *v);
 // Disown a value
-static inline void val_release(Value *v);
+ void val_release(Value *v);
 // Free a value regardless of refcount
-static inline void val_kill(Value *v);
+ void val_kill(Value *v);
 // Integer contructor
-static inline Value *vint(long i);
-// Pointer Inlined Integer Constructor
-static inline Value *vptr_int(long x);
+Value *vint(long i);
 // Uint constructor
-static inline Value *vuint(unsigned long i);
+Value *vuint(unsigned long i);
 // Float constructor
-static inline Value *vfloat(double f);
+Value *vfloat(double f);
 // Bool constructor
-static inline Value *vbool(int b);
+Value *vbool(int b);
 // Duplicate a string
-static inline Value *vstring_dup(const char *s);
+Value *vstring_dup(const char *s);
 // Take a string (assuming MiLa can free it)
-static inline Value *vstring_take(char *s);
+Value *vstring_take(char *s);
 // Generates a string from an fmt
 __attribute__((format(printf, 1, 2)))
-static inline Value *vstring_fmt(char *fmt, ...);
+Value *vstring_fmt(char *fmt, ...);
 // Slice a string
-static inline Value *vstring_slice(const char *src, size_t start, size_t len);
+Value *vstring_slice(const char *src, size_t start, size_t len);
 // Index a string
-static inline Value *vstring_index(const char *src, size_t index);
+Value *vstring_index(const char *src, size_t index);
 // Replace some path of a string (used string.patch)
-static inline Value *vstring_replace(const char *src,
+Value *vstring_replace(const char *src,
                        const char *needle,
                        const char *repl);
 // Opaque pointer constructor
-static inline Value *vopaque(void *p);
+Value *vopaque(void *p);
 // Owned opaque pointer constructor (MiLa takes ownership)
-static inline Value *vowned_opaque(void *p);
+Value *vowned_opaque(void *p);
 // Create a native function
-static inline Value *vnative(NativeFn fn, const char *name);
+Value *vnative(NativeFn fn, const char *name);
 // Create a bool if a value is truthy
-static inline Value *vtruthy(Value *value);
-static inline Value *vbreak();
-static inline Value *vcontinue();
-static inline Value *vbreak_step(unsigned long step);
-static inline Value *vcontinue_step(unsigned long step);
+Value *vtruthy(Value *value);
+Value *vbreak();
+Value *vcontinue();
+Value *vbreak_step(unsigned long step);
+Value *vcontinue_step(unsigned long step);
 // Null
-static inline Value *vnull();
+Value *vnull();
 // None
-static inline Value *vnone();
+Value *vnone();
 // Error
 __attribute__((format(printf, 1, 2)))
-static inline Value *verror(char *message, ...);
+Value *verror(char *message, ...);
 // Tagged error
 __attribute__((format(printf, 2, 3)))
-static inline Value *vtagged_error(ErrorType type, char *message, ...);
+Value *vtagged_error(ErrorType type, char *message, ...);
 // Tagged error with a return code
 __attribute__((format(printf, 3, 4)))
-static inline Value *vtagged_coded_error(ErrorType type, int ret_code, char *message, ...);
+Value *vtagged_coded_error(ErrorType type, int ret_code, char *message, ...);
+typedef struct FunctionParameters FunctionParameters;
 // Create a function
-static inline Value *vfunction(char **params, char** defaults, char** contextuals, Env* closure, char *body_src);
+Value *vfunction(FunctionParameters* params, char* return_type, char** contextuals, Env* closure, char *body_src);
 // Check if a value is any numeric type
-static inline int is_numeric(Value *v);
+ int is_numeric(Value *v);
 // Turn any numeric type to a double
-static inline double to_double(Value *v);
-static inline unsigned long to_uint(Value *v);
+ double to_double(Value *v);
+ unsigned long to_uint(Value *v);
 // Turn a value into its string equivalent
 Value *to_string(Value *v);
 // Turn a value into its c string equivalent
@@ -438,16 +438,18 @@ int print_value(Value *v);
 int print_value_debug(Value *v);
 // Print a values representation
 int print_value_repr(Value *v);
+// Print the error
+void print_error(Value *v);
 // Call a function
 Value *call_function_with(Env *env, Value *fnval, Value *first, ...);
 // Call a function from within an environment using its name representation
 Value *call_function_str(Env *env, const char *fnname, Value *first, ...);
 // Create an opaque
-static inline Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+Value *vopaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Create an owned opaque
-static inline Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
+Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 // Short hand to create a dict
-static inline Value *make_dict(Value *first, ...);
+Value *make_dict(Value *first, ...);
 // Short hand to create a list
 Value *make_list(Value *first, ...);
 #ifndef EXT_WEB
@@ -524,30 +526,10 @@ typedef Value *(*VPrinter)(Value *self);
 
 #ifndef MILA_PROTO
 // Simple trick (use GET_TYPENAME rather than use this directly)
-const char *MILA_TYPE_NAMES[] = {
-    "null",
-    "int",
-    "uint",
-    "float",
-    "string",
-    "bool",
-    "function",
-    "native",
-    "opaque",
-    "owned_opaque",
-    "return",
-    "none",
-    "error",
-    "break",
-    "continue",
-    "tagged_error",
-    "arg_end",
-};
+extern const char *MILA_TYPE_NAMES[];
 
-const int MILA_TYPE_COUNT = T_ARG_END;
-
-const int MILA_ERROR_COUNT = E_THREAD_HALT;
-
+extern const int MILA_TYPE_COUNT;
+extern const int MILA_ERROR_COUNT;
 extern path_list *mila_search_path;
 
 #else
@@ -600,20 +582,23 @@ typedef Value *(*unary_method)(Value *self);
 
 typedef struct
 {
-    char **params;  // NULL-terminated
-    char **defaults;  // NULL-terminated
+    char **params;      // NULL-terminated
+    char** types;       // NULL-terminated
+    char **defaults;    // NULL-terminated
     char **contextuals; // NULL_terminated
-    char *body_src; // pointer to function body source (we'll keep a copy)
+    char *body_src;     // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll parse/eval at call-time.
     char *name;
+    char* return_type;
     Env* closure;
 } FunctionV;
 
-typedef struct {
+struct FunctionParameters {
     char** params;
+    char** types;
     char** defaults;
     size_t count;
-} FunctionParameters;
+};
 
 typedef struct
 {
@@ -674,43 +659,42 @@ struct Value
 typedef struct Src
 {
     char *src;    // full source string (null-terminated)
-    char *cur_namespace; // current namespace
     uint64_t pos; // current position
     uint64_t len;
 } Src;
 
 Src *src_new(const char *s);
 void src_free(Src *s);
-static inline void skip_ws(Src *s);
-static inline char src_peek(Src *s);
-static inline void skip_block(Src *s);
-static inline char src_get(Src *s);
-static inline int src_eof(Src *s);
+ void skip_ws(Src *s);
+ char src_peek(Src *s);
+ void skip_block(Src *s);
+ char src_get(Src *s);
+ int src_eof(Src *s);
 void src_advance_by(Src* s, size_t amount);
 int is_ident_start(char c);
 uint64_t get_line_pos(Src *src);
 int report(Src *src, FILE *fp, const char *fmt, ...);
 int match_char(Src *s, char c);
-static inline char *parse_ident_string(Src *s);
-static inline char *parse_ident(Src *s);
-static inline Value *parse_number(Src *s);
-static inline Value *parse_string(Src *s);
-static inline int is_keyword_at(Src *s, const char *kw);
+ char *parse_ident_string(Src *s);
+ char *parse_ident(Src *s);
+Value *parse_number(Src *s);
+Value *parse_string(Src *s);
+ int is_keyword_at(Src *s, const char *kw);
 char *dup_substr(Src *s, int a, int b);
 FunctionParameters *parse_param_list(Src *s);
 char** parse_context_list(Src *s);
 Value *eval_block(Src *s, Env *env);
 extern Value *eval_primary(Src *s, Env *env);
-static inline Value *binary_op(Value *a, MethodType op, Value *b);
+Value *binary_op(Value *a, MethodType op, Value *b);
 Value *binary_op_objects(Env* env, char right, Value* a, MethodType op, Value* b);
-static inline int precedence_of(MethodType op);
-static inline MethodType parse_op(Src *s);
+ int precedence_of(MethodType op);
+ MethodType parse_op(Src *s);
 Value *eval_expr_prec(Src *s, Env *env, int min_prec);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);
-static inline double to_double(Value *v);
-static inline long to_int(Value *v);
+ double to_double(Value *v);
+ long to_int(Value *v);
 
 // == Helpers
 void sleep_ms(uint64_t ms);
@@ -730,7 +714,9 @@ int invoke_file(char *name, Env *env);
 Value* invoke_file_keep_res(char *name, Env *env);
 double get_unix_timestamp();
 char *read_input(void);
+#ifndef ML_NO_DL
 int load_library(Env *env, const char *libpath);
+#endif // ML_NO_DL
 void mila_add_atexit(Value* fn);
 const char* skip_parse_block(Src* s);
 const char* skip_parse_statement(Src* s);
@@ -745,9 +731,11 @@ void mila_global_deinit(Env* env);
 Env* mila_init(void);
 void mila_deinit(Env* env);
 
-static inline void* mila_malloc(size_t size);
-static inline void* mila_realloc(void* ptr, size_t size);
-static inline void mila_free(void* ptr);
+char* substitute_text(const char* needle, Value* replacement, const char* text);
+
+void* mila_malloc(size_t size);
+void* mila_realloc(void* ptr, size_t size);
+void mila_free(void* ptr);
 
 // Misc
 unsigned long get_process_id(void);

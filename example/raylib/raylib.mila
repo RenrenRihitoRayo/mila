@@ -1,15 +1,10 @@
 
 load("./raylib.so");
 
-var start = get_time();
-Rectangle(0, 0, 100, 100);
-var end = get_time() - start;
-println(end+" Seconds");
+var screen_w = 1200;
+var screen_h = 600;
 
-var screen_w = 800;
-var screen_h = 400;
-
-InitWindow(800, 400, "Raylib in MiLa!");
+InitWindow(screen_w, screen_h, "Raylib in MiLa!");
 
 // yes Color(...) is a constructor for struct Color
 // auto generated!
@@ -32,6 +27,8 @@ var player = Rectangle(
 
 var food_size = 20.0;
 
+var player_speed = 50;
+
 // own tells MiLa it can free this pointer!
 var texture = own(LoadTexture("wall.png"));
 
@@ -45,7 +42,7 @@ var start_x = Rectangle.get_x(player);
 var start_y = Rectangle.get_y(player);
 
 var fps = 100;
-// SetTargetFPS(fps);
+SetTargetFPS(fps);
 var new = 0;
 var old = 0;
 
@@ -78,7 +75,7 @@ fn step(v1, v2, speed) {
     Vector2.set_y(v1, Vector2.get_y(v1) + (dy / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
 }
 
-var food_num = 10000;
+var food_num = 10;
 var foods = list();
 
 foreach i : range(food_num) {
@@ -99,15 +96,13 @@ var auto = false;
 // 1500 FPS spike is 1700 FPSw
 while (not(WindowShouldClose()))
 {
-    set screen_w = GetScreenWidth();
-    set screen_h = GetScreenHeight();
-    var speedX = screen_w * 0.5;
-    var speedY = screen_h * 1;
-
     set old = new ?? 0; // FIX: big delta spike at first frame
     set new = get_time();
 
     var delta = new - old; // We calculate the delta
+    
+    set screen_w = GetScreenWidth();
+    set screen_h = GetScreenHeight();
 
     BeginDrawing();
     ClearBackground(RAYWHITE);
@@ -159,7 +154,8 @@ while (not(WindowShouldClose()))
            "FPS: " + GetFPS() +
          "\nPeak FPS: " + peak_fps +
          "\nDelta: " + delta +
-         "\nPos: " + Rectangle.get_x(player) + " " + Rectangle.get_y(player)
+         "\nPos: " + Rectangle.get_x(player) + " " + Rectangle.get_y(player) +
+         "\nPlayer Speed: " + ceil(player_speed * delta)
           , 10, 10, 15, BLACK
     );
 
@@ -171,16 +167,16 @@ while (not(WindowShouldClose()))
     );
 
     if (IsKeyDown(KeyboardKey.KEY_D)) {
-        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) + ceil(speedX * delta), 0, screen_w - 180.0));
+        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) + ceil(player_speed * delta), 0, screen_w - 180.0));
     }
     elif (IsKeyDown(KeyboardKey.KEY_W)) {
-        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) - ceil(speedY * delta), 0, screen_h));
+        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) - ceil(player_speed * delta), 0, screen_h));
     } 
     elif (IsKeyDown(KeyboardKey.KEY_A)) {
-        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) - ceil(speedX * delta), 0, screen_w));
+        Rectangle.set_x(player, Clamp(Rectangle.get_x(player) - ceil(player_speed * delta), 0, screen_w));
     }
     elif (IsKeyDown(KeyboardKey.KEY_S)) {
-        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) + ceil(speedY * delta), 0, screen_h - 60.0));
+        Rectangle.set_y(player, Clamp(Rectangle.get_y(player) + ceil(player_speed * delta), 0, screen_h - 60.0));
     }
     elif (IsKeyDown(KeyboardKey.KEY_E)) {
         Rectangle.set_x(player, start_x);
@@ -194,12 +190,10 @@ while (not(WindowShouldClose()))
     // Allow user to change FPS realtime
     elif (IsKeyPressed(KeyboardKey.KEY_C)) {
         set fps = fps + 10;
-        set speed = speed - 1;
         SetTargetFPS(fps);
     }
     elif (IsKeyPressed(KeyboardKey.KEY_B)) {
         set fps = fps - 10;
-        set speed = speed + 1;
         SetTargetFPS(fps);
     }
     elif (IsKeyPressed(KeyboardKey.KEY_V)) {

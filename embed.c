@@ -1,9 +1,9 @@
 // tell MiLa to not be standalone
 #define ML_LIB
 // so we dont need -lm
-#define ML_NO_MATH
-// HTTP extention
-#define EXT_HTTP
+#define ML_NO_LIBM
+// no dl mechanisms
+#define ML_NO_DL
 // Yes the C file not header
 #include "mila.c"
 
@@ -15,9 +15,7 @@ int main() {
     Env* globals = mila_init();
     // Run the following code (yup this easy)
     Value* v = eval_str(
-        "http.init();"
-        "println(json.dumps(http.post(\"example.com\", \"{\\\"test\\\":90\")));"
-        "http.cleanup();",
+            "println(\"Hello, world!\");",
     globals);
     // Free what ever eval returns (for this example this should be null)
     val_release(v);

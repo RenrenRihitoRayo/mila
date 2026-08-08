@@ -21,4 +21,11 @@ forget a;
 // and freed
 forget b;
 
+/*
+    If b is freed first before a it does indeed not
+    free the weakref, BUT then when a is freed it
+    does the none substitution, thus we need to track
+    if b still owns the weakref
+*/
+
 println("If you see this MiLa did not double free. HOORAY!!!");

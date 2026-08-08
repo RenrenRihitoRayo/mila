@@ -6,6 +6,11 @@
         {
             "name": "Run",
             "cmd": ["mila", "$file"]
+        },
+        {
+            "name": "Check",
+            "cmd": ["mila", "--check", "$file"]
         }
+
     ]
 }

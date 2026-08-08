@@ -9,11 +9,8 @@
 #include "mila.h"
 #include "ml_ll.c"
 #include "ml_dict.h"
-#include <stdlib.h>
-#ifndef ML_NO_THREADING
-    #include "ml_threading.c"
-#endif
 #include "ml_string.h"
+#include <string.h>
 
 // Define meta tables
 
@@ -65,8 +62,8 @@ Value *list_str(Value *self)
         mila_free(repr);
     }
     malloc_sprintf(&buffer, "]");
-    mila_free(iter);
     val_release(iter[0]);
+    mila_free(iter);
     return vstring_take(buffer);
 }
 
@@ -303,9 +300,6 @@ Value *array_to_str(Value *self)
         return vstring_take(buffer);
     }
 
-    if (arr->size > MAX_ITEMS_DISPLAYED)
-        return vstring_fmt("array(%i items)", arr->size);
-
     malloc_sprintf(&buffer, "array.from(");
     for (int i = 0; i < arr->size; i++)
     {
@@ -387,7 +381,7 @@ void array_iter_cleanup(ArrayIterState* state) {
   free(state);
 }
 
-size_t range_len(long start, long stop, long step)
+long range_len(long start, long stop, long step)
 {
     if (step == 0)
         return 0;
@@ -427,7 +421,35 @@ Value *range_to_str(Value *self)
                        data->step);
 }
 
-Value *range_free(Value *self)
+typedef struct {
+    long start, end, step, current;
+} RangeState;
+
+RangeState* range_iter_init(Value* self)
+{
+    Range* data = (Range*)GET_OPAQUE(self);
+    RangeState* state = (RangeState*)malloc(sizeof(RangeState));
+    state->start = data->start;
+    state->end = data->end;
+    state->step = data->step;
+    state->current = 0;
+    return state;
+}
+
+Value* range_iter_next(RangeState* self)
+{
+    long result = self->start + (self->step * self->current);
+    if (result >= self->end) return NULL;
+    self->current++;
+    return vint(result);
+}
+
+void range_iter_free(RangeState* self)
+{
+    free(self);
+}
+
+Value* range_free(Value *self)
 {
     mila_free(self->v);
     return NULL;
@@ -783,6 +805,19 @@ Value *native_str_copy(Env *env, int argc, Value **argv)
     if (!match_types(argv, T_STRING, T_ARG_END))
         return vnull();
     return vstring_dup(GET_STRING(argv[0]));
+}
+
+Value *native_str_substitute(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    (void)argc;
+    char* text = mila_strdup(GET_STRING(argv[argc-1]));
+    for (int i=0; i < argc-1; i += 2) {
+        char* new_text = substitute_text(GET_STRING(argv[i]), argv[i+1], text);
+        free(text);
+        text = new_text;
+    }
+    return vstring_take(text);
 }
 
 Value *native_str_index(Env *env, int argc, Value **argv)

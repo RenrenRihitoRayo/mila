@@ -44,10 +44,10 @@ all documented, in a interpreter as small as a picture.
 * fn (5 variants)
 * return
 * catch (2 variants)
-* block
-* namespace
 * set (3 variants)
 * var
+* alias
+* const
 * contextual
 * sync
 * object (2 variants)
@@ -265,3 +265,51 @@ const NativeEntry lib_function_entries[] = {
     {NULL, NULL}
 };
 ```
+
+## MiLa Syntax Rules
+
+* Expressions return something
+
+    `<expr>`
+
+    They can contain:
+    
+    * Binary Operations `<expr> <op> <expr>`
+
+    * Unary Operations `<op> <expr>`
+
+    * Literals `<lit>`
+
+* Binary operations
+
+    `<expr> <op> <expr>`
+    
+    Operations are:
+
+    * `+`, `-`, `*`, `/`, and `%` like in C
+
+    * `&&`, and `||`, similar to C BUT does NOT shortcircuit
+
+* Unary operations
+
+    `<op> <expr>` or `<expr> <op>`
+    
+    * `!<expr>` not operation
+
+    * `<expr>?` weakref operator
+
+* Literals
+
+    `<lit>`
+
+    * in regex `-?[0-9]+` integers, also `<int>`
+
+    * in regex `-?[0-9]+u` unsigned intergers, also `<uint>`
+
+    * in regex `-?[0-9]+\.[0-9]+` floats, also `<float>`
+
+    * in regex `"[^"]+"` strings, also `<string>`
+
+    * `fn(<param list>)[<contextuals list>]:[<closures list>] -> <string> {<block>}` lambda, also `<lambda>`
+
+

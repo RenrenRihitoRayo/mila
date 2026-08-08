@@ -2,7 +2,9 @@
 " Save as ~/.vim/syntax/mila.vim
 
 " Keywords
-syntax keyword milaKeyword if elif else while fn set var export return break continue contextual forget foreach
+syntax keyword milaKeyword if elif else while fn set var export return break continue contextual forget foreach alias const catch
+
+syntax match milaKeyword "\v\@[a-zA-Z0-9._]+"
 
 syntax keyword keyword_indent "{"
 syntax keyword keyword_dedent "}"

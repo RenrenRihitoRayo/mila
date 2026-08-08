@@ -56,7 +56,7 @@ Value *array_to_iter(Value *self);
 ArrayIterState* array_iter_init(Value* self);
 Value* array_iter_next(ArrayIterState* state);
 void array_iter_cleanup(ArrayIterState* state);
-size_t range_len(long start, long stop, long step);
+long range_len(long start, long stop, long step);
 Value *range_to_iter(Value *self);
 Value* range_genth_worker(CGenData* cgen_data);
 Value *range_to_gen(Value *self);

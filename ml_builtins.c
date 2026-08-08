@@ -727,8 +727,9 @@ Value *native_fprint_bytes(Env *env, int argc, Value **argv)
         fwrite(&c, 1, 1, f);
         val_release(list[i]);
     }
+    Value* res = vuint(GET_UINTEGER(list[0])-1);
     free(list);
-    return vuint(GET_UINTEGER(list[0])-1);
+    return res;
 }
 
 Value *native_fread(Env *env, int argc, Value **argv)
@@ -997,7 +998,7 @@ Value *native_time_sleep_ms(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-#ifndef SAFE_BUILD
+#ifndef ML_NO_ACE
 Value *native_run(Env *env, int argc, Value **argv)
 {
     if (argc != 1 || argv[0]->type != T_STRING)
@@ -1126,26 +1127,6 @@ Value *native_invoke(Env *env, int argc, Value **argv)
     return vnull();
 }
 
-Value *native_load(Env *env, int argc, Value **argv)
-{
-    (void)env;
-    if (argc != 1 || (!argv[0]) || argv[0]->type != T_STRING)
-    {
-        return verror("load(file): invalid number of arguments given or incorrect types.");
-    }
-
-    char *new_path = path_list_find(mila_search_path, GET_STRING(argv[0]));
-    if (!new_path)
-        return verror("load(file): problem loading file %s", GET_STRING(argv[0]));
-    if (load_library(env, new_path))
-    {
-        mila_free(new_path);
-        return verror("load(file): problem loading file %s", GET_STRING(argv[0]));
-    }
-    mila_free(new_path);
-    return vnull();
-}
-
 Value *native_eval(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -1166,9 +1147,32 @@ Value *native_system(Env *env, int argc, Value **argv)
     }
     return vint(system(GET_STRING(argv[0])));
 }
-#endif
+#endif // ML_NO_ACE
 
-#ifndef ML_NO_MATH
+#ifndef ML_NO_DL
+Value *native_load(Env *env, int argc, Value **argv)
+{
+    (void)env;
+    if (argc != 1 || (!argv[0]) || argv[0]->type != T_STRING)
+    {
+        return verror("load(file): invalid number of arguments given or incorrect types.");
+    }
+
+    char *new_path = path_list_find(mila_search_path, GET_STRING(argv[0]));
+    if (!new_path)
+        return verror("load(file): problem loading file %s", GET_STRING(argv[0]));
+    if (load_library(env, new_path))
+    {
+        mila_free(new_path);
+        return verror("load(file): problem loading file %s", GET_STRING(argv[0]));
+    }
+    mila_free(new_path);
+    return vnull();
+}
+#endif // ML_NO_DL
+
+
+#ifndef ML_NO_LIBM
 Value *native_floor(Env *env, int argc, Value **argv)
 {
     (void)env;
@@ -1263,7 +1267,7 @@ Value *native_abs(Env *e, int argc, Value **argv)
         return verror("abs(num): argument must be an integer!");
     return vint(abs((int)GET_INTEGER(argv[0])));
 }
-#endif // ML_NO_MATH
+#endif // ML_NO_LIBM
 
 Value *native_repr(Env *env, int argc, Value **argv)
 {
@@ -1579,7 +1583,6 @@ Value *native_copy(Env *env, int argc, Value **argv)
     {
         return verror("copy(value): requires 1 arg");
     }
-
     return val_copy(argv[0]);
 }
 
@@ -1830,7 +1833,8 @@ void env_register_builtins(Env *g)
 
     dict_meta = val_make_table();
 
-    val_set_method_table(dict_meta, UMethodToString, dict_display);
+    val_set_method_table(dict_meta, UMethodToString, dict_str);
+    val_set_method_table(dict_meta, UMethodToRepr, dict_repr);
     val_set_method_table(dict_meta, UMethodFree, free_dict);
     val_set_method_table(dict_meta, BMethodGetItem, get_dict);
     val_set_method_table(dict_meta, TMethodSetItem, set_dict);
@@ -1850,7 +1854,6 @@ void env_register_builtins(Env *g)
 
     array_meta = val_make_table();
 
-    // val_set_method_table(array_meta, UMethodToIter, array_to_iter);
     val_set_method_table(array_meta, UMethodToString, array_to_str);
     val_set_method_table(array_meta, UMethodToRepr, array_to_repr);
     val_set_method_table(array_meta, BMethodGetItem, get_array);
@@ -1862,9 +1865,12 @@ void env_register_builtins(Env *g)
 
     range_meta = val_make_table();
 
-    val_set_method_table(range_meta, UMethodToIter, range_to_iter);
-    val_set_method_table(range_meta, UMethodToString, range_to_str);
+    // val_set_method_table(range_meta, UMethodToIter, range_to_iter);
+    val_set_method_table(range_meta, UMethodStepIterInit, range_iter_init);
+    val_set_method_table(range_meta, UMethodStepIter, range_iter_next);
+    val_set_method_table(range_meta, UMethodStepIterClean, range_iter_free);
     val_set_method_table(range_meta, UMethodFree, range_free);
+    val_set_method_table(range_meta, UMethodToString, range_to_str);
 
     istring_meta = val_make_table();
 
@@ -1874,7 +1880,7 @@ void env_register_builtins(Env *g)
 
     // canonical builtins reports version
     env_set_raw(g, "__mila_version", make_list(vint(MILA_EDITION), vint(MILA_VERSION), vint(MILA_PATCH), NULL));
-#ifdef SAFE_BUILD
+#ifdef RESTRICTED_BUILD
     env_set_raw(g, "__mila_codename", vstring_dup("mila:safe_canon"));
 #else
     env_set_raw(g, "__mila_codename", vstring_dup("mila:canon"));
@@ -1975,7 +1981,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "is_numeric", native_is_numeric);
     env_register_native(g, "own", native_own);
     env_register_native(g, "unown", native_unown);
-#ifndef ML_NO_C_CAST
+#if defined(ML_NO_C_CAST) && !defined(ML_ALLOW_CAST)
     env_register_native(g, "as_opaque", native_as_opaque);
     env_register_native(g, "from_opaque", native_from_opaque);
 #endif
@@ -2011,13 +2017,14 @@ void env_register_builtins(Env *g)
     env_register_native(g, "str.match_findx", native_str_match_findx);
     env_register_native(g, "str.toupper", native_str_toupper);
     env_register_native(g, "str.tolower", native_str_tolower);
+    env_register_native(g, "str.substitute", native_str_substitute);
 
     env_register_native(g, "istring", native_istring);
     // === ASCII
     env_register_native(g, "ascii.from_int", native_ascii_from_int);
     env_register_native(g, "ascii.from_string", native_ascii_from_string);
     // === Math
-#ifndef ML_NO_MATH
+#ifndef ML_NO_LIBM
     env_register_native(g, "floor", native_floor);
     env_register_native(g, "ceil", native_ceil);
     env_register_native(g, "sqrt", native_sqrt);
@@ -2032,7 +2039,7 @@ void env_register_builtins(Env *g)
     env_register_native(g, "abs", native_abs);
     env_set_raw(g, "INF", vfloat(INFINITY));
     env_set_raw(g, "NINF", vfloat(-INFINITY));
-#endif // ML_NO_MATH
+#endif // ML_NO_LIBM
     env_set_raw(g, "RAND_MAX", vint(RAND_MAX));
     // === Error handling
     env_register_native(g, "report", native_report);
@@ -2070,13 +2077,15 @@ void env_register_builtins(Env *g)
     env_register_native(g, "sys.getenv", native_sys_getenv);
 #endif
     // === Modules and Libs
-#ifndef ML_NO_EXECUTABLES
+#ifndef ML_NO_ACE
     env_register_native(g, "run", native_run);         // runs file
     env_register_native(g, "require", native_require); // runs file if not cached
     env_register_native(g, "invoke", native_run);      // invokes file
-    env_register_native(g, "load", native_load);       // loads dlls or so file
     env_register_native(g, "eval", native_eval);       // runs string
-#endif
+#endif // ML_NO_ACE
+#ifndef ML_NO_DL
+    env_register_native(g, "load", native_load);       // loads dlls or so file
+#endif // ML_NO_DL
     // === Threading
 #ifndef ML_NO_THREADING
     env_register_native(g, "thread.make", native_thread_create);

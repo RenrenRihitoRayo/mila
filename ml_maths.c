@@ -12,18 +12,18 @@
 #include <stdlib.h>
 #include "mila.h"
 
-static inline void two_sum(double a, double b, double* s, double* err) {
+ void two_sum(double a, double b, double* s, double* err) {
     *s = a + b;
     double v = *s - a;
     *err = (a - (*s - v)) + (b - v);
 }
 
-static inline void quick_two_sum(double a, double b, double* s, double* err) {
+ void quick_two_sum(double a, double b, double* s, double* err) {
     *s = a + b;
     *err = b - (*s - a);
 }
 
-static inline void two_prod(double a, double b, double* p, double* err) {
+ void two_prod(double a, double b, double* p, double* err) {
     *p = a * b;
     const double split = 134217729.0;
     double a_hi = a * split;

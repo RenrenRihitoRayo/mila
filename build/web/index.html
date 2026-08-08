@@ -54,17 +54,19 @@
         
         function runMiLa(code) {
             // If WASM isn't ready yet, queue the script
-            if (!moduleReady) {
-                console.log('WASM not ready, queueing script');
-                pendingScripts.push(code);
-                return;
-            }
+            // if (!moduleReady) {
+            //     console.log('WASM not ready, queueing script');
+            //     pendingScripts.push(code);
+            //     return;
+            // }
+
+            var module = ModuleFactory();
             
             try {
                 console.log('Running MiLa script');
-                Module.FS.writeFile('/tmp/script.mila', code);
-                Module.arguments = ['/tmp/script.mila'];
-                Module.callMain(['/tmp/script.mila']);
+                module.FS.writeFile('/tmp/script.mila', code);
+                module.arguments = ['/tmp/script.mila'];
+                module.callMain(['/tmp/script.mila']);
             } catch (e) {
                 console.error('Exception:', e);
                 output.push('\n[EXCEPTION] ' + e.message);
@@ -107,12 +109,12 @@ dom.setText("#header", "test");
         
         // Wait for WASM to be ready, then process scripts
         function waitForWasm() {
-            if (moduleReady) {
+            // if (moduleReady) {
                 processMiLaScripts();
-            } else {
-                // Check again in 100ms
-                setTimeout(waitForWasm, 100);
-            }
+            // } else {
+            //     // Check again in 100ms
+            //     setTimeout(waitForWasm, 100);
+            // }
         }
         
         // Start waiting

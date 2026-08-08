@@ -9,13 +9,15 @@ contexts:
     - include: comment-block
     - include: comment-line
     - include: string
-    - include: keyword
+    - include: statements
     - include: builtins
     - include: constant
     - include: number
     - include: operator
 
   comment-line:
+    - match: '#!.*$'
+      scope: comment.line.mila
     - match: '//.*$'
       scope: comment.line.mila
 
@@ -37,10 +39,11 @@ contexts:
         - match: '"'
           pop: true
 
-  keyword:
-    - match: '\b(namespace|block|catch|if|elif|else|while|fn|set|var|sync|forget|return|break|continue|foreach)\b'
+  statements:
+    - match: '\b(alias|catch|if|elif|const|else|object|while|fn|set|var|sync|forget|return|break|continue|foreach)\b'
       scope: keyword.control.mila
-
+    - match: '@[\w_.]+'
+      scope: keyword.control.mila
   
   builtins:
     - match: '\b(dump_mila_search_paths|thread\.get_pthread_id|str\.caseless_contains|thread\.check_cancel|_debug\.get_weakrefs|thread\.mutex_unlock|str\.caseless_find|str\.match_replace|ascii\.from_string|thread\.set_daemon)\b'

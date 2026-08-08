@@ -126,6 +126,7 @@ Value *parse_expr_unified(Src *s, int parse_fn) {
             FunctionParameters *params = parse_param_list(s);
             char **contextuals = parse_context_list(s);
             Env *closure = env_new(NULL);
+            char* ret = NULL;
             
             if (match_char(s, ':')) {
                 char **names = parse_context_list(s);
@@ -137,13 +138,19 @@ Value *parse_expr_unified(Src *s, int parse_fn) {
                 s->pos += 2;
                 skip_ws(s);
                 if (src_peek(s) == '"') {
-                    val_kill(parse_string(s));
+                    Value* ret_type = parse_string(s);
+                    ret = mila_strdup(GET_STRING(ret_type));
+                    val_kill(ret_type);
                 } else {
                     env_free(closure);
                     for (int i = 0; params->params[i]; ++i) {
                         mila_free(params->params[i]);
                         mila_free(params->defaults[i]);
+                        mila_free(params->types[i]);
                     }
+                    mila_free(params->params);
+                    mila_free(params->defaults);
+                    mila_free(params->types);
                     mila_free(params);
                     return vtagged_error(E_SYNTAX_ERROR,
                         "Expected a string literal for the return type.");
@@ -179,7 +186,7 @@ Value *parse_expr_unified(Src *s, int parse_fn) {
             body[blen] = 0;
             s->pos = i;
             
-            Value *fn = vfunction(params->params, params->defaults, contextuals, closure, body);
+            Value *fn = vfunction(params, ret, contextuals, closure, body);
             free(params);
             GET_FUNCTION(fn)->name = mila_strdup("[lambda]");
             return fn;

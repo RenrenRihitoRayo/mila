@@ -1,10 +1,10 @@
 // This project is licensed under the GNU Affero General Public License
 #pragma once
-#include <stdlib.h>
 #include "mila.h"
 #include "ml_string.h"
 #include <ctype.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
@@ -23,34 +23,28 @@
 #define PATH_GETCWD getcwd
 #endif
 
-int file_exists(const char *p)
-{
+int file_exists(const char *p) {
     struct stat st;
     return stat(p, &st) == 0;
 }
 
-int is_file(const char *p)
-{
+int is_file(const char *p) {
     struct stat st;
-    if (stat(p, &st) != 0)
-    {
+    if (stat(p, &st) != 0) {
         return 0;
     }
     return S_ISREG(st.st_mode);
 }
 
-int is_dir(const char *p)
-{
+int is_dir(const char *p) {
     struct stat st;
-    if (stat(p, &st) != 0)
-    {
+    if (stat(p, &st) != 0) {
         return 0;
     }
     return S_ISDIR(st.st_mode);
 }
 
-void normalize_slashes(char *buf)
-{
+void normalize_slashes(char *buf) {
 #ifdef _WIN32
     const char from = '/', to = '\\';
 #else
@@ -60,22 +54,18 @@ void normalize_slashes(char *buf)
     char *src = buf, *dst = buf;
     int last_sep = 0;
 
-    while (*src)
-    {
+    while (*src) {
         char c = *src++;
 
         if (c == from)
             c = to;
 
         // collapse duplicate separators
-        if (c == to)
-        {
+        if (c == to) {
             if (last_sep)
                 continue;
             last_sep = 1;
-        }
-        else
-        {
+        } else {
             last_sep = 0;
         }
 
@@ -84,8 +74,7 @@ void normalize_slashes(char *buf)
     *dst = '\0';
 }
 
-const char *get_env(const char *name, size_t len)
-{
+const char *get_env(const char *name, size_t len) {
     char var[1024];
     if (len >= sizeof(var))
         return NULL;
@@ -95,38 +84,30 @@ const char *get_env(const char *name, size_t len)
 }
 
 // Expand ${VAR} and ${VAR:default}
-void expand_env(char **bufptr)
-{
+void expand_env(char **bufptr) {
     char *in = *bufptr;
     size_t outcap = strlen(in) + 64;
     char *out = mila_malloc(outcap);
     size_t o = 0;
 
-#define ENSURE(n)                            \
-    do                                       \
-    {                                        \
-        while (o + (n) + 1 > outcap)         \
-        {                                    \
-            outcap *= 2;                     \
-            out = mila_realloc(out, outcap); \
-        }                                    \
+#define ENSURE(n)                                                              \
+    do {                                                                       \
+        while (o + (n) + 1 > outcap) {                                         \
+            outcap *= 2;                                                       \
+            out = mila_realloc(out, outcap);                                   \
+        }                                                                      \
     } while (0)
 
-    for (size_t i = 0; in[i];)
-    {
-        if (in[i] == '$' && in[i + 1] == '{')
-        {
+    for (size_t i = 0; in[i];) {
+        if (in[i] == '$' && in[i + 1] == '{') {
             size_t j = i + 2;
             while (in[j] && in[j] != '}')
                 j++;
 
-            if (in[j] == '}')
-            {
+            if (in[j] == '}') {
                 size_t colon = j;
-                for (size_t k = i + 2; k < j; k++)
-                {
-                    if (in[k] == ':')
-                    {
+                for (size_t k = i + 2; k < j; k++) {
+                    if (in[k] == ':') {
                         colon = k;
                         break;
                     }
@@ -134,13 +115,10 @@ void expand_env(char **bufptr)
 
                 const char *val = NULL;
 
-                if (colon == j)
-                {
+                if (colon == j) {
                     // ${VAR}
                     val = get_env(in + i + 2, j - (i + 2));
-                }
-                else
-                {
+                } else {
                     // ${VAR:default}
                     val = get_env(in + i + 2, colon - (i + 2));
 
@@ -148,20 +126,15 @@ void expand_env(char **bufptr)
                         val = in + colon + 1;
                 }
 
-                if (val)
-                {
+                if (val) {
                     size_t len;
 
-                    if (colon == j)
-                    {
+                    if (colon == j) {
                         len = strlen(val);
-                    }
-                    else if (!get_env(in + i + 2, colon - (i + 2)) || !*get_env(in + i + 2, colon - (i + 2)))
-                    {
+                    } else if (!get_env(in + i + 2, colon - (i + 2)) ||
+                               !*get_env(in + i + 2, colon - (i + 2))) {
                         len = j - (colon + 1);
-                    }
-                    else
-                    {
+                    } else {
                         len = strlen(val);
                     }
 
@@ -185,8 +158,7 @@ void expand_env(char **bufptr)
     *bufptr = out;
 }
 
-void path_join(char *out, size_t outsize, int count, ...)
-{
+void path_join(char *out, size_t outsize, int count, ...) {
     if (!out || outsize == 0)
         return;
 
@@ -195,16 +167,14 @@ void path_join(char *out, size_t outsize, int count, ...)
     va_list args;
     va_start(args, count);
 
-    for (int i = 0; i < count; i++)
-    {
+    for (int i = 0; i < count; i++) {
         const char *part = va_arg(args, const char *);
         if (!part || !*part)
             continue;
 
         // Remove trailing slash from out
         size_t len = strlen(out);
-        while (len > 0 && (out[len - 1] == '/' || out[len - 1] == '\\'))
-        {
+        while (len > 0 && (out[len - 1] == '/' || out[len - 1] == '\\')) {
             out[len - 1] = '\0';
             len--;
         }
@@ -215,8 +185,7 @@ void path_join(char *out, size_t outsize, int count, ...)
             start++;
 
         // Append slash if needed
-        if (len > 0 && (out[len - 1] != '/' && out[len - 1] != '\\'))
-        {
+        if (len > 0 && (out[len - 1] != '/' && out[len - 1] != '\\')) {
 #ifdef _WIN32
             strncat(out, "\\", outsize - strlen(out) - 1);
 #else
@@ -233,13 +202,11 @@ void path_join(char *out, size_t outsize, int count, ...)
     normalize_slashes(out);
 }
 
-char *path_join_alloc(char *path, ...)
-{
+char *path_join_alloc(char *path, ...) {
     va_list args;
     va_start(args, path);
     char *out = mila_strdup(path);
-    while (1)
-    {
+    while (1) {
         const char *part = va_arg(args, const char *);
         if (!part)
             break;
@@ -255,8 +222,7 @@ char *path_join_alloc(char *path, ...)
 }
 
 // Expand `~` → HOME or USERPROFILE
-void expand_home(char **bufptr)
-{
+void expand_home(char **bufptr) {
     char *in = *bufptr;
 
     if (in[0] != '~')
@@ -284,8 +250,7 @@ void expand_home(char **bufptr)
 }
 
 // full transform
-char *transform_path(const char *input)
-{
+char *transform_path(const char *input) {
     if (!input)
         return NULL;
 
@@ -298,16 +263,14 @@ char *transform_path(const char *input)
     return buf;
 }
 
-path_list *path_list_new(void)
-{
+path_list *path_list_new(void) {
     path_list *p = mila_malloc(sizeof(path_list));
     if (!p)
         return NULL;
     p->count = 0;
     p->capacity = 4;
     p->items = mila_malloc(sizeof(char *) * p->capacity);
-    if (!p->items)
-    {
+    if (!p->items) {
         free(p);
         return NULL;
     }
@@ -315,10 +278,8 @@ path_list *path_list_new(void)
 }
 
 // Get the directory part of a path
-void path_dirname(const char *path, char *out, size_t outsize)
-{
-    if (!path || !*path)
-    {
+void path_dirname(const char *path, char *out, size_t outsize) {
+    if (!path || !*path) {
         strncpy(out, ".", outsize);
         out[outsize - 1] = '\0';
         return;
@@ -332,8 +293,7 @@ void path_dirname(const char *path, char *out, size_t outsize)
 
     // remove trailing slashes
     size_t len = strlen(tmp);
-    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
-    {
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
         tmp[len - 1] = '\0';
         len--;
     }
@@ -345,18 +305,13 @@ void path_dirname(const char *path, char *out, size_t outsize)
         slash = strrchr(tmp, '\\');
 #endif
 
-    if (!slash)
-    {
+    if (!slash) {
         // no slash found
         strncpy(out, ".", outsize);
-    }
-    else if (slash == tmp)
-    {
+    } else if (slash == tmp) {
         // path like "/foo"
         strncpy(out, tmp, outsize);
-    }
-    else
-    {
+    } else {
         *slash = '\0';
         strncpy(out, tmp, outsize);
     }
@@ -365,10 +320,8 @@ void path_dirname(const char *path, char *out, size_t outsize)
 }
 
 // Get the file/base name part of a path
-void path_basename(const char *path, char *out, size_t outsize)
-{
-    if (!path || !*path)
-    {
+void path_basename(const char *path, char *out, size_t outsize) {
+    if (!path || !*path) {
         strncpy(out, ".", outsize);
         out[outsize - 1] = '\0';
         return;
@@ -382,8 +335,7 @@ void path_basename(const char *path, char *out, size_t outsize)
 
     // remove trailing slashes
     size_t len = strlen(tmp);
-    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
-    {
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
         tmp[len - 1] = '\0';
         len--;
     }
@@ -403,11 +355,10 @@ void path_basename(const char *path, char *out, size_t outsize)
     out[outsize - 1] = '\0';
 }
 
-// Get the directory part of a path. Returns mila_malloc'd string, caller must free.
-char *path_dirname_alloc(const char *path)
-{
-    if (!path || !*path)
-    {
+// Get the directory part of a path. Returns mila_malloc'd string, caller must
+// free.
+char *path_dirname_alloc(const char *path) {
+    if (!path || !*path) {
         return mila_strdup(".");
     }
 
@@ -419,8 +370,7 @@ char *path_dirname_alloc(const char *path)
 
     // remove trailing slashes
     size_t len = strlen(tmp);
-    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
-    {
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
         tmp[len - 1] = '\0';
         len--;
     }
@@ -432,27 +382,20 @@ char *path_dirname_alloc(const char *path)
         slash = strrchr(tmp, '\\');
 #endif
 
-    if (!slash)
-    {
+    if (!slash) {
         // no slash found
         return mila_strdup(".");
-    }
-    else if (slash == tmp)
-    {
+    } else if (slash == tmp) {
         // path like "/foo"
         return mila_strdup(tmp);
-    }
-    else
-    {
+    } else {
         *slash = '\0';
         return mila_strdup(tmp);
     }
 }
 
-char *path_basename_alloc(const char *path)
-{
-    if (!path || !*path)
-    {
+char *path_basename_alloc(const char *path) {
+    if (!path || !*path) {
         return mila_strdup(".");
     }
 
@@ -463,8 +406,7 @@ char *path_basename_alloc(const char *path)
     normalize_slashes(tmp);
 
     size_t len = strlen(tmp);
-    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
-    {
+    while (len > 1 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
         tmp[len - 1] = '\0';
         len--;
     }
@@ -481,13 +423,10 @@ char *path_basename_alloc(const char *path)
         return mila_strdup(slash + 1);
 }
 
-char *path_basename_id_alloc(const char *path)
-{
+char *path_basename_id_alloc(const char *path) {
     char *base = path_basename_alloc(path);
-    for (char *p = base; *p; p++)
-    {
-        if (!isalpha((unsigned char)*p))
-        {
+    for (char *p = base; *p; p++) {
+        if (!isalpha((unsigned char)*p)) {
             *p = '\0';
             break;
         }
@@ -495,8 +434,7 @@ char *path_basename_id_alloc(const char *path)
     return base;
 }
 
-void path_list_free(path_list *pl)
-{
+void path_list_free(path_list *pl) {
     if (!pl)
         return;
     for (int i = 0; i < pl->count; i++)
@@ -505,25 +443,21 @@ void path_list_free(path_list *pl)
     free(pl);
 }
 
-int path_list_add(path_list *pl, const char *path)
-{
+int path_list_add(path_list *pl, const char *path) {
 #ifndef ML_NO_THREADING
     pthread_mutex_lock(&mila_search_path_lock);
 #endif
-    if (!pl || !path)
-    {
+    if (!pl || !path) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock);
 #endif
         return 0;
     }
 
-    if (pl->count == pl->capacity)
-    {
+    if (pl->count == pl->capacity) {
         pl->capacity *= 2;
         char **ni = realloc(pl->items, sizeof(char *) * pl->capacity);
-        if (!ni)
-        {
+        if (!ni) {
 #ifndef ML_NO_THREADING
             pthread_mutex_unlock(&mila_search_path_lock);
 #endif
@@ -533,8 +467,7 @@ int path_list_add(path_list *pl, const char *path)
     }
 
     char *t = transform_path(path);
-    if (!t)
-    {
+    if (!t) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock);
 #endif
@@ -548,25 +481,21 @@ int path_list_add(path_list *pl, const char *path)
     return 1;
 }
 
-int path_list_add_top(path_list *pl, const char *path)
-{
+int path_list_add_top(path_list *pl, const char *path) {
 #ifndef ML_NO_THREADING
     pthread_mutex_lock(&mila_search_path_lock);
 #endif
-    if (!pl || !path)
-    {
+    if (!pl || !path) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock);
 #endif
         return 0;
     }
 
-    if (pl->count == pl->capacity)
-    {
+    if (pl->count == pl->capacity) {
         pl->capacity *= 2;
         char **ni = realloc(pl->items, sizeof(char *) * pl->capacity);
-        if (!ni)
-        {
+        if (!ni) {
 #ifndef ML_NO_THREADING
             pthread_mutex_unlock(&mila_search_path_lock);
 #endif
@@ -576,8 +505,7 @@ int path_list_add_top(path_list *pl, const char *path)
     }
 
     char *t = transform_path(path);
-    if (!t)
-    {
+    if (!t) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock);
 #endif
@@ -595,13 +523,11 @@ int path_list_add_top(path_list *pl, const char *path)
     return 1;
 }
 
-int path_list_remove(path_list *pl, const char *path)
-{
+int path_list_remove(path_list *pl, const char *path) {
 #ifndef ML_NO_THREADING
     pthread_mutex_lock(&mila_search_path_lock);
 #endif
-    if (!pl || !path)
-    {
+    if (!pl || !path) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock);
 #endif
@@ -609,18 +535,15 @@ int path_list_remove(path_list *pl, const char *path)
     }
 
     char *t = transform_path(path);
-    if (!t)
-    {
+    if (!t) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock);
 #endif
         return 0;
     }
 
-    for (int i = 0; i < pl->count; i++)
-    {
-        if (strcmp(pl->items[i], t) == 0)
-        {
+    for (int i = 0; i < pl->count; i++) {
+        if (strcmp(pl->items[i], t) == 0) {
             free(pl->items[i]);
             for (int j = i; j < pl->count - 1; j++)
                 pl->items[j] = pl->items[j + 1];
@@ -640,13 +563,11 @@ int path_list_remove(path_list *pl, const char *path)
     return 0;
 }
 
-char *path_list_find(path_list *pl, const char *file)
-{
+char *path_list_find(path_list *pl, const char *file) {
 #ifndef ML_NO_THREADING
     pthread_mutex_lock(&mila_search_path_lock_read);
 #endif
-    if (!pl || !file)
-    {
+    if (!pl || !file) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
@@ -654,8 +575,7 @@ char *path_list_find(path_list *pl, const char *file)
     }
 
     char *tfile = transform_path(file);
-    if (!tfile)
-    {
+    if (!tfile) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
@@ -668,10 +588,8 @@ char *path_list_find(path_list *pl, const char *file)
         is_absolute = 1;
 #endif
 
-    if (is_absolute)
-    {
-        if (file_exists(tfile))
-        {
+    if (is_absolute) {
+        if (file_exists(tfile)) {
 #ifndef ML_NO_THREADING
             pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
@@ -684,8 +602,7 @@ char *path_list_find(path_list *pl, const char *file)
         return NULL;
     }
 
-    for (int i = 0; i < pl->count; ++i)
-    {
+    for (int i = 0; i < pl->count; ++i) {
         const char *root = pl->items[i];
         size_t rl = strlen(root);
         size_t fl = strlen(tfile);
@@ -703,8 +620,7 @@ char *path_list_find(path_list *pl, const char *file)
         if (rl > 0 && root[rl - 1] != sep)
             full[rl] = sep, full[rl + 1] = '\0';
         strcat(full, tfile);
-        if (file_exists(full))
-        {
+        if (file_exists(full)) {
             free(tfile);
 #ifndef ML_NO_THREADING
             pthread_mutex_unlock(&mila_search_path_lock_read);
@@ -721,13 +637,11 @@ char *path_list_find(path_list *pl, const char *file)
 }
 
 // just return the highest path (this case the first one)
-char *path_list_find_alternative(path_list *pl, const char *file)
-{
+char *path_list_find_alternative(path_list *pl, const char *file) {
 #ifndef ML_NO_THREADING
     pthread_mutex_lock(&mila_search_path_lock_read);
 #endif
-    if (!pl || !file)
-    {
+    if (!pl || !file) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
@@ -735,8 +649,7 @@ char *path_list_find_alternative(path_list *pl, const char *file)
     }
 
     char *tfile = transform_path(file);
-    if (!tfile)
-    {
+    if (!tfile) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
@@ -749,10 +662,8 @@ char *path_list_find_alternative(path_list *pl, const char *file)
         is_absolute = 1;
 #endif
 
-    if (is_absolute)
-    {
-        if (file_exists(tfile))
-        {
+    if (is_absolute) {
+        if (file_exists(tfile)) {
 #ifndef ML_NO_THREADING
             pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
@@ -770,8 +681,7 @@ char *path_list_find_alternative(path_list *pl, const char *file)
     size_t fl = strlen(tfile);
     size_t need = rl + 1 + fl + 1;
     char *full = mila_malloc(need);
-    if (!full)
-    {
+    if (!full) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
@@ -794,8 +704,7 @@ char *path_list_find_alternative(path_list *pl, const char *file)
     return full;
 }
 
-char *path_get_cwd(void)
-{
+char *path_get_cwd(void) {
     char *cwd = PATH_GETCWD(NULL, 0);
     if (!cwd)
         return NULL;

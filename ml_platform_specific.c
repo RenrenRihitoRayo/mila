@@ -3,7 +3,7 @@
 
 #include "mila.h"
 
-Value* native_sys_get_platform(Env* env, int argc, Value** argv) {
+Value *native_sys_get_platform(Env *env, int argc, Value **argv) {
 // Supported and managed platforms
 #ifdef __ANDROID__
     return vstring_dup("android");
@@ -34,7 +34,7 @@ Value* native_sys_get_platform(Env* env, int argc, Value** argv) {
 #endif
 }
 
-Value* native_sys_get_arch(Env* env, int argc, Value** argv) {
+Value *native_sys_get_arch(Env *env, int argc, Value **argv) {
 // Architectures that ARE supported
 #if defined(__x86_64__) || defined(_M_X64)
     return vstring_dup("x86_64");
@@ -61,21 +61,19 @@ Value* native_sys_get_arch(Env* env, int argc, Value** argv) {
 #endif
 }
 
-Value* native_sys_getenv(Env* env, int argc, Value** argv)
-{
-    if (argc != 1 && GET_TYPE(argv[0]) != T_STRING)
-    {
+Value *native_sys_getenv(Env *env, int argc, Value **argv) {
+    if (argc != 1 && GET_TYPE(argv[0]) != T_STRING) {
         return verror("sys.getenv(name): Invalid arguments.");
     }
-    char* value = getenv(GET_STRING(argv[0]));
-    if (!value) return vnull();
+    char *value = getenv(GET_STRING(argv[0]));
+    if (!value)
+        return vnull();
     return vstring_dup(value);
 }
 
-Value* native_sys_setenv(Env* env, int argc, Value** argv)
-{
-    if (argc != 2 && GET_TYPE(argv[0]) != T_STRING && GET_TYPE(argv[1]) != T_STRING)
-    {
+Value *native_sys_setenv(Env *env, int argc, Value **argv) {
+    if (argc != 2 && GET_TYPE(argv[0]) != T_STRING &&
+        GET_TYPE(argv[1]) != T_STRING) {
         return verror("sys.setenv(name, value): Invalid arguments.");
     }
     int err = setenv(GET_STRING(argv[0]), GET_STRING(argv[1]), 1);

@@ -2,39 +2,40 @@
     Minimal MiLa library
 */
 
-// ML_LIB tells mila to provide only the implementation necessary for the runtime
-// Allows to compile with its own implementation
-// Without needing to link with mila
+// ML_LIB tells mila to provide only the implementation necessary for the
+// runtime Allows to compile with its own implementation Without needing to link
+// with mila
 #define ML_LIB
 #include "mila.c"
 #include <stdio.h>
 
 // Simple function
 Value *hello(Env *e, int argc, Value **argv) {
-  printf("Hello from C!\n");
-  return vnull();
+    printf("Hello from C!\n");
+    return vnull();
 }
 
 Value *greet(Env *e, int argc, Value **argv) {
-  if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) {
-    return vtagged_error(E_TYPE_ERROR,
-                         "Expected first argument to be a string but got %s!",
-                         GET_TYPENAME(argv[0]));
-  }
-  printf("%s", GET_STRING(argv[0])); puts("");
-  return vnull();
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) {
+        return vtagged_error(
+            E_TYPE_ERROR, "Expected first argument to be a string but got %s!",
+            GET_TYPENAME(argv[0]));
+    }
+    printf("Hello %s!", GET_STRING(argv[0]));
+    puts("");
+    return vnull();
 }
 
 // This fuction is optional
 void _mila_lib_init(Env *e) {
-  printf("Lib init!\n");
-  return;
+    printf("Lib init!\n");
+    return;
 }
 
 // This fuction is optional
 void _mila_lib_deinit(Env *e) {
-  printf("Lib deinit!\n");
-  return;
+    printf("Lib deinit!\n");
+    return;
 }
 
 // Enter functions we want to export

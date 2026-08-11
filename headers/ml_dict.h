@@ -4,31 +4,29 @@
 #include <stddef.h>
 
 typedef struct DictEntry {
-  ValueType key_type;
-  char *key;
-  Value *value;
-  struct DictEntry *next;
+    ValueType key_type;
+    char *key;
+    Value *value;
+    struct DictEntry *next;
 } DictEntry;
 
 typedef struct {
-  DictEntry **buckets;
-  size_t capacity;
-  size_t size;
+    DictEntry **buckets;
+    size_t capacity;
+    size_t size;
 } Dict;
 
 typedef struct {
-  char *key;
-  Value *value;
+    char *key;
+    Value *value;
 } KVPair;
 
 #define INITIAL_CAPACITY 16
 #define LOAD_FACTOR 0.75
 
-#define ITERATE_DICT(dict)                         \
-    for (size_t _i = 0; _i < (dict)->capacity; ++_i)\
-        for (DictEntry *entry = (dict)->buckets[_i];\
-             entry;                                \
-             entry = entry->next)
+#define ITERATE_DICT(dict)                                                     \
+    for (size_t _i = 0; _i < (dict)->capacity; ++_i)                           \
+        for (DictEntry *entry = (dict)->buckets[_i]; entry; entry = entry->next)
 
 void hash_set_seed(unsigned long seed);
 static unsigned long hash_string(const char *str);
@@ -37,7 +35,7 @@ static DictEntry *dict_entry_create(const char *key, Value *value);
 static void dict_entry_free(DictEntry *entry);
 Dict *dict_create();
 static void dict_resize(Dict *dict);
-char* substitute_text(const char* needle, Value* replacement, const char* text);
+char *substitute_text(const char *needle, Value *replacement, const char *text);
 int dict_set(Dict *dict, Value *key, Value *value);
 int dict_set_raw(Dict *dict, char *key, Value *value);
 Value *dict_get_str(Dict *dict, const char *key);
@@ -48,5 +46,5 @@ void dict_free(Dict *dict);
 Value *dict_repr(Value *self);
 Value *dict_str(Value *self);
 Value *dict_copy(Value *self);
-Value** dict_keys(Dict* dict);
-void dict_free_keys(char** entries);
+Value **dict_keys(Dict *dict);
+void dict_free_keys(char **entries);

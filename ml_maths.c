@@ -5,25 +5,25 @@
 #pragma once
 
 #include "ml_maths.h"
+#include "mila.h"
 #include "ml_string.h"
+#include <ctype.h>
 #include <math.h>
 #include <stdint.h>
-#include <ctype.h>
 #include <stdlib.h>
-#include "mila.h"
 
- void two_sum(double a, double b, double* s, double* err) {
+void two_sum(double a, double b, double *s, double *err) {
     *s = a + b;
     double v = *s - a;
     *err = (a - (*s - v)) + (b - v);
 }
 
- void quick_two_sum(double a, double b, double* s, double* err) {
+void quick_two_sum(double a, double b, double *s, double *err) {
     *s = a + b;
     *err = b - (*s - a);
 }
 
- void two_prod(double a, double b, double* p, double* err) {
+void two_prod(double a, double b, double *p, double *err) {
     *p = a * b;
     const double split = 134217729.0;
     double a_hi = a * split;
@@ -39,7 +39,8 @@
     *err = ((a_hi * b_hi - *p) + a_hi * b_lo + a_lo * b_hi) + a_lo * b_lo;
 }
 
-mila_float128_internal b_ff_add(mila_float128_internal a, mila_float128_internal b) {
+mila_float128_internal b_ff_add(mila_float128_internal a,
+                                mila_float128_internal b) {
     mila_float128_internal res;
     double s = a.hi + b.hi;
     double v = s - a.hi;
@@ -50,7 +51,8 @@ mila_float128_internal b_ff_add(mila_float128_internal a, mila_float128_internal
     return res;
 }
 
-mila_float128_internal b_ff_sub(mila_float128_internal a, mila_float128_internal b) {
+mila_float128_internal b_ff_sub(mila_float128_internal a,
+                                mila_float128_internal b) {
     mila_float128_internal r;
     double s, e;
 
@@ -61,7 +63,8 @@ mila_float128_internal b_ff_sub(mila_float128_internal a, mila_float128_internal
     return r;
 }
 
-mila_float128_internal b_ff_mul(mila_float128_internal a, mila_float128_internal b) {
+mila_float128_internal b_ff_mul(mila_float128_internal a,
+                                mila_float128_internal b) {
     mila_float128_internal r;
     double p, e;
 
@@ -72,12 +75,13 @@ mila_float128_internal b_ff_mul(mila_float128_internal a, mila_float128_internal
     return r;
 }
 
-mila_float128_internal b_ff_div(mila_float128_internal a, mila_float128_internal b) {
+mila_float128_internal b_ff_div(mila_float128_internal a,
+                                mila_float128_internal b) {
     mila_float128_internal r;
 
     double approx = a.hi / b.hi;
 
-    mila_float128_internal q = { approx, 0.0 };
+    mila_float128_internal q = {approx, 0.0};
     mila_float128_internal prod = b_ff_mul(b, q);
     mila_float128_internal diff = b_ff_sub(a, prod);
 
@@ -92,44 +96,52 @@ mila_float128_internal b_ff_div(mila_float128_internal a, mila_float128_internal
 }
 
 mila_float128_internal b_ff_neg(mila_float128_internal a) {
-    return (mila_float128_internal){ -a.hi, -a.lo };
+    return (mila_float128_internal){-a.hi, -a.lo};
 }
 
 mila_float128_internal b_ff_from_long(long x) {
-    return (mila_float128_internal){ (double)x, 0.0 };
+    return (mila_float128_internal){(double)x, 0.0};
 }
 
 mila_float128_internal b_ff_from_ulong(unsigned long x) {
-    return (mila_float128_internal){ (double)x, 0.0 };
+    return (mila_float128_internal){(double)x, 0.0};
 }
 
 mila_float128_internal b_ff_from_double(double x) {
-    if (isinf(x))
-    {
-        if (x == INFINITY) return INFINITY128;
-        else return NINFINITY128;
-    } else if (isnan(x)) return (mila_float128_internal){ 0.0, 0.0 };
-    return (mila_float128_internal){ x, 0.0 };
+    if (isinf(x)) {
+        if (x == INFINITY)
+            return INFINITY128;
+        else
+            return NINFINITY128;
+    } else if (isnan(x))
+        return (mila_float128_internal){0.0, 0.0};
+    return (mila_float128_internal){x, 0.0};
 }
 
-double b_ff_to_double(mila_float128_internal a) {
-    return a.hi + a.lo;
-}
+double b_ff_to_double(mila_float128_internal a) { return a.hi + a.lo; }
 
 int b_ff_cmp(mila_float128_internal a, mila_float128_internal b) {
-    if (a.hi < b.hi) return -1;
-    if (a.hi > b.hi) return 1;
-    if (a.lo < b.lo) return -1;
-    if (a.lo > b.lo) return 1;
+    if (a.hi < b.hi)
+        return -1;
+    if (a.hi > b.hi)
+        return 1;
+    if (a.lo < b.lo)
+        return -1;
+    if (a.lo > b.lo)
+        return 1;
     return 0;
 }
 
-mila_float128_internal b_ff_from_string(const char* s) {
-    while (isspace(*s)) s++;
+mila_float128_internal b_ff_from_string(const char *s) {
+    while (isspace(*s))
+        s++;
     int sign = 1;
-    if (*s == '-') { sign = -1; s++; }
-    else if (*s == '+') s++;
-    
+    if (*s == '-') {
+        sign = -1;
+        s++;
+    } else if (*s == '+')
+        s++;
+
     if (*s == 'i' || *s == 'I') {
         if ((s[1] == 'n' || s[1] == 'N') && (s[2] == 'f' || s[2] == 'F')) {
             return sign < 0 ? NINFINITY128 : INFINITY128;
@@ -140,17 +152,17 @@ mila_float128_internal b_ff_from_string(const char* s) {
             return (mila_float128_internal){NAN, NAN};
         }
     }
-    
+
     mila_float128_internal result = {0.0, 0.0};
     int has_digits = 0;
-    
+
     while (isdigit(*s)) {
         has_digits = 1;
         int digit = *s++ - '0';
         result = b_ff_add(b_ff_mul(result, b_ff_from_double(10.0)),
-                        b_ff_from_double((double)digit));
+                          b_ff_from_double((double)digit));
     }
-    
+
     if (*s == '.') {
         s++;
         mila_float128_internal scale = b_ff_from_double(0.1);
@@ -159,22 +171,26 @@ mila_float128_internal b_ff_from_string(const char* s) {
             has_digits = 1;
             int digit = *s++ - '0';
             result = b_ff_add(result,
-                            b_ff_mul(b_ff_from_double((double)digit), scale));
+                              b_ff_mul(b_ff_from_double((double)digit), scale));
             scale = b_ff_mul(scale, b_ff_from_double(0.1));
         }
     }
-    
+
     if ((*s == 'e' || *s == 'E') && has_digits) {
         s++;
         int exp_sign = 1;
-        if (*s == '-') { exp_sign = -1; s++; }
-        else if (*s == '+') s++;
+        if (*s == '-') {
+            exp_sign = -1;
+            s++;
+        } else if (*s == '+')
+            s++;
         int exp = 0;
         int exp_has_digits = 0;
         while (isdigit(*s)) {
             exp_has_digits = 1;
             exp = exp * 10 + (*s++ - '0');
-            if (exp > 308) exp = 308;
+            if (exp > 308)
+                exp = 308;
         }
         if (exp_has_digits) {
             exp *= exp_sign;
@@ -194,19 +210,15 @@ mila_float128_internal b_ff_from_string(const char* s) {
                 result = b_ff_div(result, factor);
         }
     }
-    
+
     if (sign < 0)
         result = b_ff_neg(result);
     return result;
 }
 
-__int128 b_ff_to_i128(mila_float128_internal x) {
-    return (__int128)(x.hi);
-}
+__int128 b_ff_to_i128(mila_float128_internal x) { return (__int128)(x.hi); }
 
-FN_UNUSED long b_ff_to_long(mila_float128_internal x) {
-    return (long)(x.hi);
-}
+FN_UNUSED long b_ff_to_long(mila_float128_internal x) { return (long)(x.hi); }
 
 unsigned long b_ff_to_ulong(mila_float128_internal x) {
     return (unsigned long)(x.hi);
@@ -224,11 +236,11 @@ mila_float128_internal b_ff_from_i128(__int128 v) {
     __int128 tmp = (__int128)hi;
     double lo = (double)(v - tmp);
 
-    return (mila_float128_internal){ hi, lo };
+    return (mila_float128_internal){hi, lo};
 }
 
 FN_UNUSED mila_float128_internal b_ff_from_i128_quick(__int128 v) {
-    return (mila_float128_internal){ (double)v, 0.0 };
+    return (mila_float128_internal){(double)v, 0.0};
 }
 
 int b_ff_is_zero(mila_float128_internal x) {
@@ -236,7 +248,8 @@ int b_ff_is_zero(mila_float128_internal x) {
 }
 
 int b_ff_sign(mila_float128_internal x) {
-    if (x.hi != 0.0) return x.hi < 0.0 ? -1 : 1;
+    if (x.hi != 0.0)
+        return x.hi < 0.0 ? -1 : 1;
     return x.lo < 0.0 ? -1 : 1;
 }
 
@@ -248,32 +261,31 @@ mila_float128_internal b_ff_abs(mila_float128_internal x) {
     return x;
 }
 
-int b_ff_is_inf(mila_float128_internal x) {
-    return isinf(x.hi) || isinf(x.lo);
-}
+int b_ff_is_inf(mila_float128_internal x) { return isinf(x.hi) || isinf(x.lo); }
 
-char* b_ff_to_string(mila_float128_internal x) {
+char *b_ff_to_string(mila_float128_internal x) {
     int neg = 0;
     if (b_ff_is_inf(x)) {
-        if (b_ff_cmp(x, INFINITY128)==0)
+        if (b_ff_cmp(x, INFINITY128) == 0)
             return mila_strdup("inf");
         else
             return mila_strdup("-inf");
     }
-    
+
     if (b_ff_sign(x) < 0) {
         neg = 1;
         x = b_ff_abs(x);
     }
 
     int bufcap = 256;
-    char *buf = (char*)malloc(bufcap);
+    char *buf = (char *)malloc(bufcap);
     int pos = 0;
 
-    if (neg) buf[pos++] = '-';
+    if (neg)
+        buf[pos++] = '-';
 
     long long ip = (long long)x.hi;
-    
+
     if (ip == 0) {
         buf[pos++] = '0';
     } else {
@@ -307,10 +319,12 @@ char* b_ff_to_string(mila_float128_internal x) {
     while (!b_ff_is_zero(frac) && digits < max_digits) {
         frac = b_ff_mul(frac, b_ff_from_double(10.0));
         int digit = (int)frac.hi;
-        
-        if (digit < 0) digit = 0;
-        if (digit > 9) digit = 9;
-        
+
+        if (digit < 0)
+            digit = 0;
+        if (digit > 9)
+            digit = 9;
+
         buf[pos++] = '0' + digit;
         frac = b_ff_sub(frac, b_ff_from_double((double)digit));
         digits++;
@@ -323,7 +337,7 @@ char* b_ff_to_string(mila_float128_internal x) {
 
         if (pos >= bufcap - 10) {
             bufcap *= 2;
-            buf = (char*)realloc(buf, bufcap);
+            buf = (char *)realloc(buf, bufcap);
         }
     }
 
@@ -335,6 +349,4 @@ char* b_ff_to_string(mila_float128_internal x) {
     return buf;
 }
 
-int b_ff_is_nan(mila_float128_internal x) {
-    return isnan(x.hi) || isnan(x.lo);
-}
+int b_ff_is_nan(mila_float128_internal x) { return isnan(x.hi) || isnan(x.lo); }

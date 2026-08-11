@@ -1,30 +1,28 @@
 // This project is licensed under the GNU Affero General Public License
 #pragma once
 
-#include <pthread.h>
 #include "../mila.h"
+#include <pthread.h>
 
 typedef struct CGenData CGenData;
-typedef Value*(*Generator)(CGenData*);
+typedef Value *(*Generator)(CGenData *);
 
 typedef long MThreadID;
 
 /* Thread context for language-level threads */
-typedef struct
-{
-    Value *func;           /* Source code to execute */
-    Value *on_kill;       /* ran when thread dies */
-    Value *result;       /* Result value */
-    pthread_t thread_id; /* POSIX thread ID */
+typedef struct {
+    Value *func;                /* Source code to execute */
+    Value *on_kill;             /* ran when thread dies */
+    Value *result;              /* Result value */
+    pthread_t thread_id;        /* POSIX thread ID */
     MThreadID public_thread_id; /* MiLa visible thread ID */
-    int status;          /* 0 = pending, 1 = running, 2 = done */
-    int is_daemon;       /* Doesnt keep MiLa awake */
-    int is_cancelled;    /* True if thread is cancelled. */
+    int status;                 /* 0 = pending, 1 = running, 2 = done */
+    int is_daemon;              /* Doesnt keep MiLa awake */
+    int is_cancelled;           /* True if thread is cancelled. */
 } ThreadContext;
 
 // Note: this stays as is
-typedef struct
-{
+typedef struct {
     ThreadContext **threads;
     // we use MThreadID to ensure IDs are in bounds ie Max IDs = Max Cap/Count
     MThreadID count;

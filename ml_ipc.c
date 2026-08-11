@@ -4,21 +4,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <unistd.h>
 
 #define MIPC_PREFIX "/tmp/mipc-"
 
-static void make_path(char *path, const char *name)
-{
+static void make_path(char *path, const char *name) {
     strcpy(path, MIPC_PREFIX);
     strcat(path, name);
     strcat(path, ".sock");
 }
 
-static int read_all(int fd, void *buf, size_t len)
-{
+static int read_all(int fd, void *buf, size_t len) {
     char *p = buf;
 
     while (len) {
@@ -33,8 +31,7 @@ static int read_all(int fd, void *buf, size_t len)
     return 0;
 }
 
-static int write_all(int fd, const void *buf, size_t len)
-{
+static int write_all(int fd, const void *buf, size_t len) {
     const char *p = buf;
 
     while (len) {
@@ -49,8 +46,7 @@ static int write_all(int fd, const void *buf, size_t len)
     return 0;
 }
 
-int mipc_server_open(mipc_server *server, const char *name)
-{
+int mipc_server_open(mipc_server *server, const char *name) {
     char path[108];
     struct sockaddr_un addr;
 
@@ -75,18 +71,13 @@ int mipc_server_open(mipc_server *server, const char *name)
     return 0;
 }
 
-int mipc_server_accept(mipc_server *server)
-{
+int mipc_server_accept(mipc_server *server) {
     return accept(server->fd, NULL, NULL);
 }
 
-void mipc_server_close(mipc_server *server)
-{
-    close(server->fd);
-}
+void mipc_server_close(mipc_server *server) { close(server->fd); }
 
-int mipc_client_connect(mipc_client *client, const char *name)
-{
+int mipc_client_connect(mipc_client *client, const char *name) {
     char path[108];
     struct sockaddr_un addr;
 
@@ -103,13 +94,9 @@ int mipc_client_connect(mipc_client *client, const char *name)
     return connect(client->fd, (struct sockaddr *)&addr, sizeof(addr));
 }
 
-void mipc_client_close(mipc_client *client)
-{
-    close(client->fd);
-}
+void mipc_client_close(mipc_client *client) { close(client->fd); }
 
-int mipc_send(int fd, const void *data, size_t size)
-{
+int mipc_send(int fd, const void *data, size_t size) {
     uint32_t len = (uint32_t)size;
 
     if (write_all(fd, &len, sizeof(len)))
@@ -121,8 +108,7 @@ int mipc_send(int fd, const void *data, size_t size)
     return 0;
 }
 
-int mipc_recv(int fd, void **data)
-{
+int mipc_recv(int fd, void **data) {
     uint32_t len;
     char *buf;
 

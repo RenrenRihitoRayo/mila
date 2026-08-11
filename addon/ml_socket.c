@@ -3,11 +3,11 @@
 #define MILA_PROTO
 #include "../mila.h"
 
-#include <sys/socket.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 Value *native_socket(Env *env, int argc, Value **argv) {
     int domain = argc > 0 ? GET_INTEGER(argv[0]) : AF_INET;
@@ -28,7 +28,7 @@ Value *native_bind(Env *env, int argc, Value **argv) {
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = ip ? inet_addr(ip) : INADDR_ANY;
 
-    return vbool(bind(fd, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+    return vbool(bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
 }
 
 Value *native_listen(Env *env, int argc, Value **argv) {
@@ -54,7 +54,7 @@ Value *native_connect(Env *env, int argc, Value **argv) {
     addr.sin_port = htons(port);
     inet_pton(AF_INET, ip, &addr.sin_addr);
 
-    return vbool(connect(fd, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+    return vbool(connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
 }
 
 Value *native_send(Env *env, int argc, Value **argv) {
@@ -85,8 +85,7 @@ Value *native_close(Env *env, int argc, Value **argv) {
     return vbool(close(fd) == 0);
 }
 
-void env_register_socket_ext(Env* g) 
-{
+void env_register_socket_ext(Env *g) {
     env_register_native(g, "socket.socket", native_socket);
     env_register_native(g, "socket.bind", native_bind);
     env_register_native(g, "socket.listen", native_listen);

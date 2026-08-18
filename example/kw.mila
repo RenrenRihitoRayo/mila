@@ -1,0 +1,15 @@
+
+object Person {
+	fn new(self, name, age) {
+		var tmp = copy(self);
+		set tmp["name"] = name;
+		set tmp["age"] = age;
+		return tmp;
+	}
+	fn display(self) {
+		return "Person(" + repr(self["name"]) + ", " + self["age"] + ")";
+	}
+}
+
+var test = Person:new(age=17);
+println(test:display());

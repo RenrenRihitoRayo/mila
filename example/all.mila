@@ -28,9 +28,6 @@ println(
     1u,        typeof(1u),       // "uint"       c unsigned long
     0x1,       typeof(0x1),      // "int"        c long
     0x1u,      typeof(0x1u),     // "uint"       c unsigned long
-    1~,        typeof(1~),       // "bint"       c 128 bit int
-    0x1~,      typeof(0x1~),     // "bint"       c 128 bit int
-    1.0~,      typeof(1.0~),     // "bfloat"     c 128 bit float
     BINF,      typeof(BINF),     // "bfloat"     c 128 bit float
     BNINF,     typeof(BNINF),    // "bfloat"     c 128 bit float
     "string",  typeof("string"), // "string"     c string

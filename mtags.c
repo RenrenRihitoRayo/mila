@@ -1,6 +1,6 @@
 #define ML_NO_MAIN
+#define RESTRICTED_BUILD
 #include "mila.c"
-#include "ml_commons.h"
 
 typedef struct {
     size_t line, col;
@@ -8,12 +8,10 @@ typedef struct {
 
 static Pos _get_pos(Src *s) {
     size_t line = 1, col = 0;
-    size_t line_start = 0;
 
     for (size_t i = 0; i < s->pos && i < s->len; ++i) {
         if (s->src[i] == '\n') {
             line++;
-            line_start = i + 1;
             col = 0;
         } else {
             col++;
@@ -22,8 +20,12 @@ static Pos _get_pos(Src *s) {
     return (Pos){line, col};
 }
 
-const char *_mtags(Src *s, char *file_name, char **buffer, int level);
+int sibling = 0;
+
+const char *_mtags(Src *s, char *file_name, char **buffer, int level,
+                   int sibling);
 const char *_process_block(Src *s, char *file_name, char **buffer, int level) {
+    int sibling_cur = sibling++;
     if (!match_char(s, '{'))
         return ERR_EXPECTED_BRACE;
 
@@ -31,7 +33,7 @@ const char *_process_block(Src *s, char *file_name, char **buffer, int level) {
         skip_ws(s);
         if (match_char(s, '}'))
             return ERR_SUCCESS;
-        const char *err = _mtags(s, file_name, buffer, level + 1);
+        const char *err = _mtags(s, file_name, buffer, level + 1, sibling_cur);
         if (err)
             return err;
     }
@@ -40,11 +42,14 @@ const char *_process_block(Src *s, char *file_name, char **buffer, int level) {
 
 const char *_process_body(Src *s, char *file_name, char **buffer, int level) {
     while (!src_eof(s)) {
-        const char *err = _mtags(s, file_name, buffer, level);
+        const char *err = _mtags(s, file_name, buffer, level, sibling);
+        if (err)
+            return err;
     }
     return ERR_SUCCESS;
 }
-const char *_mtags(Src *s, char *file_name, char **buffer, int level) {
+const char *_mtags(Src *s, char *file_name, char **buffer, int level,
+                   int sibling) {
     skip_ws(s);
     if (is_keyword_at(s, "var")) {
         s->pos += 3;
@@ -74,10 +79,48 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level) {
             assign = "";
             len = 0;
         }
+        malloc_sprintf(buffer,
+                       "%s:%zu:%zu %i %i var \"%s\" %s var %s: \"%s\" %.*s;\n",
+                       file_name, pos.line, pos.col, level, sibling,
+                       type_str ? type_str : "any", id, id,
+                       type_str ? type_str : "any", len, assign);
+        mila_free(id);
+        return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
+    }
+
+    if (is_keyword_at(s, "const")) {
+        s->pos += 3;
+        Pos pos = _get_pos(s);
+        char *id = parse_ident(s);
+        if (!id)
+            return ERR_INVALID_IDENT;
+        char *type_str = NULL;
+        size_t len = 0;
+        char *assign = NULL;
+        if (match_char(s, ':')) {
+            skip_ws(s);
+            if (src_peek(s) != '"')
+                return ERR_EXPECTED_TYPE_ANNOTATION;
+            Value *tmp = parse_string(s);
+            type_str = mila_strdup(GET_STRING(tmp));
+            val_release(tmp);
+        }
+        size_t start = s->pos;
+        assign = s->src + s->pos;
+        if (match_char(s, '=')) {
+            const char *err = skip_parse_expr_prec(s, 1);
+            if (err)
+                return err;
+            len = s->pos - start;
+        } else {
+            assign = "";
+            len = 0;
+        }
         malloc_sprintf(
-            buffer, "%s:%zu:%zu %i var \"%s\" %s var %s: \"%s\" %.*s;\n",
-            file_name, pos.line, pos.col, level, type_str ? type_str : "any",
-            id, id, type_str ? type_str : "any", len, assign);
+            buffer, "%s:%zu:%zu %i %i const \"%s\" %s const %s: \"%s\" %.*s;\n",
+            file_name, pos.line, pos.col, level, sibling,
+            type_str ? type_str : "any", id, id, type_str ? type_str : "any",
+            len, assign);
         mila_free(id);
         return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
@@ -97,8 +140,8 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level) {
             if (!match_char(s, ']'))
                 return ERR_BRACKET_UNCLOSED;
         }
-        size_t id_len = s->pos - id_start;
         skip_ws(s);
+        size_t id_len = s->pos - id_start;
         size_t start = s->pos;
         char *assign = s->src + s->pos;
         if (src_peek(s) == '+' || src_peek(s) == '-' || src_peek(s) == '*' ||
@@ -111,10 +154,10 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level) {
             return err;
         match_char(s, ';');
         size_t len = s->pos - start;
-        malloc_sprintf(buffer,
-                       "%s:%zu:%zu %i set \"any\" %s set %.*s: \"any\" %.*s\n",
-                       file_name, pos.line, pos.col, level, id, id_len,
-                       id_start + s->src, len, assign);
+        malloc_sprintf(
+            buffer, "%s:%zu:%zu %i %i set \"any\" %s set %.*s: \"any\" %.*s\n",
+            file_name, pos.line, pos.col, level, sibling, id, id_len - 1,
+            id_start + s->src, len, assign);
         mila_free(id);
         return ERR_SUCCESS;
     }
@@ -273,10 +316,11 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level) {
             }
         }
 
-        malloc_sprintf(
-            buffer, "%s:%zu:%zu %i fn \"%s\" %s fn %s(%s) -> \"%s\"\n",
-            file_name, pos.line, pos.col, level, ret_type ? ret_type : "any",
-            name, name, p_str, ret_type ? ret_type : "any");
+        malloc_sprintf(buffer,
+                       "%s:%zu:%zu %i %i fn \"%s\" %s fn %s(%s) -> \"%s\"\n",
+                       file_name, pos.line, pos.col, level, sibling,
+                       ret_type ? ret_type : "any", name, name, p_str,
+                       ret_type ? ret_type : "any");
         mila_free(name);
         mila_free(ret_type);
         mila_free(p_str);
@@ -319,6 +363,10 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level) {
             return ERR_INVALID_IDENT;
         match_char(s, ':');
         const char *expr_id = skip_parse_expr_prec(s, 1);
+        Pos pos = _get_pos(s);
+        fprintf(stderr,
+                "%s:%zu:%zu WARNING: Cant reliably report about alias here.\n",
+                file_name, pos.line, pos.col);
         mila_free(cid);
         return match_char(s, ';') ? expr_id : ERR_EXPECTED_SEMICOLON;
     }
@@ -406,6 +454,23 @@ const char *mtags(Src *s, char *file_name, char **buffer) {
 }
 
 int main(int argc, char *argv[]) {
+    if (argc == 1) {
+        printf("Usage: %s [FILE]...\n"
+               "  Parse and spit out assignments, declarations, and some "
+               "others of a script.\n"
+               "    * fn, set, var, const\n"
+               "  Format:\n"
+               "    file:line:col scope_depth scope_id statement_type "
+               "\"type_string\" name declaration_syn\n"
+               "    Clarifications:\n"
+               "      * declaration_syn is recreated and may not be source "
+               "accurate!\n"
+               "      * scope_depth how deeply nested a statement is\n"
+               "      * scope_id is a unique id per scope, useful for "
+               "differentiating scopes\n",
+               argv[0]);
+        return 0;
+    }
     char *buffer = NULL;
     for (int i = 1; i < argc; ++i) {
         char *tmp_buffer = NULL;

@@ -1,8 +1,8 @@
 
-fn fib(n) {
-    var a = 1;
-    var b = 0;
-    var c = 0;
+fn fib(n: "int") -> "int" {
+    var a: "int" = 1;
+    var b: "int" = 0;
+    var c: "int" = 0;
     while (n > 0) {
         set c = a + b;
         set b = a;
@@ -13,3 +13,4 @@ fn fib(n) {
 }
 
 println(fib(10));
+

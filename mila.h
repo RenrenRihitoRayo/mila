@@ -608,6 +608,7 @@ typedef Value *(*binary_method)(Value *self, Value *other);
 typedef Value *(*unary_method)(Value *self);
 
 typedef struct {
+    int argc;
     char **params;      // NULL-terminated
     char **types;       // NULL-terminated
     char **defaults;    // NULL-terminated

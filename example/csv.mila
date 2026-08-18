@@ -35,7 +35,7 @@ foreach batch_start :
     str.pop_f(str);
     str.pop_b(str);
     str.pop_b(str);
-    var str = str + ",\n"
+    var str = str + ",\n";
     fprint(file_out, str);
 }
 fseek(file_out, -2, SEEK_CUR);

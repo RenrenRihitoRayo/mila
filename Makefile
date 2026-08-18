@@ -104,14 +104,22 @@ test-lib: hello.c
 
 install:
 	make release
-	cp mila /usr/bin
+	sudo cp mila /usr/bin
+	cp mila mila.release
+
+install-debug:
+	make
+	sudo cp mila /usr/bin
 	cp mila mila.release
 
 clean:
 	rm mila *.so test.* *.a mtags
 
 mtags: $(files)
-	gcc -o mtags mtags.c -Iheaders -DRESTRICTED_BUILD
+	gcc -o mtags mtags.c -Iheaders -O3 -Wextra -Wall -Wno-nonnull\
+         -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
+         $(eflags) -Iheaders -Wno-overflow -flto -ffunction-sections -fdata-sections -Wl,-s\
+         -Wl,--gc-sections -fno-stack-protector
 
 clang-format:
 	clang-format -i -style="{BasedOnStyle: LLVM, BreakBeforeBraces: Attach, IndentWidth: 4, UseTab: Never}" *.[ch] **/*.[ch]

@@ -1,0 +1,9 @@
+# currently in example/fib.mila
+example/fib.mila:2:2 0 0 fn "int" fib fn fib(n: "int") -> "int"
+example/fib.mila:3:7 1 0 var "int" a var a: "int"  = 1;
+example/fib.mila:4:7 1 0 var "int" b var b: "int"  = 0;
+example/fib.mila:5:7 1 0 var "int" c var c: "int"  = 0;
+example/fib.mila:7:11 2 1 set "any" c set c: "any" = a + b;
+example/fib.mila:8:11 2 1 set "any" b set b: "any" = a;
+example/fib.mila:9:11 2 1 set "any" a set a: "any" = c;
+example/fib.mila:10:11 2 1 set "any" n set n: "any" -= 1;

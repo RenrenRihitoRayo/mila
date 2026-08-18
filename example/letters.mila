@@ -1,5 +1,5 @@
 
-var letters_ascii = !{ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789()"!,}; //"
+var letters_ascii = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789()\"!,";
 var letters = [
 "\
  #

@@ -11,10 +11,12 @@ Some constructs may feel natural while some not so much.
 * [Declarations and Assignments](#decl)
 	* [Usual Stuff](#decl-usual)
 	* [References](#decl-ref)
+	* [Aliases](#decl-alias)
 * [Functions](#func)
 	* [Defining a Function](#func-def)
 		* [Function Closures](#func-closure)
 		* [Function Contextuals](#func-context)
+		* [RTS-Functions](#func-rts)
 * [Loops](#loops)
 * [Objects](#obj)
 * [Weak Referencing](#weakref)
@@ -22,6 +24,7 @@ Some constructs may feel natural while some not so much.
 * [Catching Errors](#error)
 * [Blocks](#blocks)
 * [Parameterized Scripts](#param)
+* [RT-Statements](#rts)
 
 Comments in MiLa are just C-style comments.
 
@@ -120,6 +123,7 @@ MiLa only has binary operations.
 | L Shift        | `<<`   | BMethodLShift     | `:<<` or `<=:`    |
 | Globbing       | `=>`   | BMethodGlob       | Not Exposed       |
 | Default Op     | `??`   | BMethodDefault    | Not Exposed       |
+| Not Op         | `!`    | Not Exposed       | Not Exposed       |
 
 OIOO Methods are read this way.
 The colon represents the operand that owns the overload.
@@ -145,6 +149,8 @@ Function calls are the same as in C (yes we don't allow keyword arguments.)
 * Comparisons are also like in C
 
 * `||` and `&&` do NOT short circuit
+
+* `!` has the highest precedence
 
 ## <a id="decl"></a>Declarations and Assignments
 
@@ -190,8 +196,8 @@ references.
 
 * `sync` keyword.
 
-`sync` is similar to set, but it sets underlying value instance' value to the provided value.
-In C `set` would be `var = value;`, `sync` would be `*var = value;`
+	`sync` is similar to set, but it sets underlying value instance' value to the provided value.
+	In C `set` would be `var = value;`, `sync` would be `*var = value;`
 
 ```MiLa
 fn fn_ref(int) {
@@ -207,6 +213,20 @@ fn_set(my_int);
 println(my_int); // 0
 fn_ref(my_int);
 println(my_int); // 90
+```
+
+### <a id="decl-alias"></a>Aliases
+
+* `alias` keyword.
+
+	It allows the user to set a variable name by giving a string name.
+	This allows for flexible logic when creating RT-Statements
+
+```MiLa
+var value="Some value";
+// Any string value must be in the right hand
+alias value : "new_name";
+println(new_name);
 ```
 
 ## <a id="func">Functions
@@ -299,6 +319,23 @@ fn some_function()[_allocator?]
 ```
 
 Notable differences is that in MiLa you cannot pass these contextuals explicitly.
+
+#### <a id="func-rts"></a>RTS-Functions
+
+* RTS-Functions
+
+	or Runtime Statement Functions are Functions that allows the user
+	to define statement like function calls by providing the interpreter
+	a minimal way of parsing said statement.
+
+```MiLa
+fn print_expr(expr: "@expr") {
+	println(expr + " => " + eval(expr));
+}
+
+// Prints `90 + 90 => 180`
+@print_expr 90 + 90;
+```
 
 ### Contextuals and Closure Lists
 
@@ -435,3 +472,42 @@ if present, if not then it must be at the first line.
 Blank lines before thid notation is acceptable.
 
 Note: MiLa will ignore shebangs when present.
+
+## <a id="rts"></a>Parameterized Scripts
+
+RT Statements (also RTS) are statements that are defined on runtime.
+The general syntax is `@rt_name ...;`
+
+Example:
+```MiLa
+fn print_block(blk: "@block") {
+	println(blk);
+}
+
+@print_block {
+	do_something();
+};
+```
+
+There are 5 types of arguments of which you can capture.
+
+* `@id`
+
+	returns the captured identifier as a string.
+	If invalid the value is `invalid!`.
+
+* `@expr`
+
+	returns the captured expression as a string.
+
+* `@expr-run`
+
+	returns the evaluated expression.
+
+* `@block`
+
+	returns the captured block as a string.
+
+* `@block-run`
+
+	returns the evaluated block.

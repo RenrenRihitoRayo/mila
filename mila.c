@@ -1510,10 +1510,12 @@ Value *vfunction(FunctionParameters *params, char *return_type,
         function->params = params->params;
         function->defaults = params->defaults;
         function->types = params->types;
+        for (size_t i=0; function->params[i]; ++i) function->argc++;
     } else {
         function->params = NULL;
         function->defaults = NULL;
         function->types = NULL;
+        function->argc = 0;
     }
     function->contextuals = contextuals;
     function->body_src = body_src;
@@ -3112,7 +3114,7 @@ const char *skip_fn_call_args(Src *s) {
 const char *skip_parse_block(Src *s) {
     if (!match_char(s, '{'))
         return ERR_EXPECTED_BRACE;
-
+    size_t start = s->pos;
     while (!src_eof(s)) {
         skip_ws(s);
         if (match_char(s, '}'))
@@ -3121,6 +3123,7 @@ const char *skip_parse_block(Src *s) {
         if (err)
             return err;
     }
+    s->pos = start;
     return ERR_BLOCK_UNCLOSED;
 }
 
@@ -3500,12 +3503,36 @@ const char *skip_parse_statement(Src *s) {
         match_char(s, ';');
         return ERR_SUCCESS;
     }
+    
+    if (is_keyword_at(s, "sync")) {
+        s->pos += strlen("sync");
+        char *id = parse_ident(s);
+        if (!id)
+            return ERR_INVALID_IDENT;
+        if (match_char(s, '=')) {
+            const char* err = skip_parse_expr_prec(s, 0);
+            if (err) return err;
+        }
+        mila_free(id);
+        match_char(s, ';');
+        return ERR_SUCCESS;
+    }
 
     if (is_keyword_at(s, "return")) {
         s->pos += 6;
         const char *err = skip_parse_expr_prec(s, 1);
         if (err)
             return err;
+        return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
+    }
+
+    if (is_keyword_at(s, "alias")) {
+        s->pos += strlen("alias");
+        char *from = parse_ident(s);
+        match_char(s, ':');
+        const char *to = skip_parse_expr_prec(s, 0);
+        if (to) return to;
+        mila_free(from);
         return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
 
@@ -4963,6 +4990,7 @@ Value *eval_primary(Src *s, Env *env) {
         size_t start = s->pos;
         src_get(s); // consume '('
         Value *expr = eval_expr(s, env);
+        if (IS_ERROR(expr)) return expr;
         skip_ws(s);
         if (src_peek(s) == ')')
             src_get(s);
@@ -5081,11 +5109,11 @@ Value *eval_primary(Src *s, Env *env) {
                     function =
                         ((binary_method)obj->method_table[BMethodGetItem])(
                             obj, attr);
-                    val_release(attr);
                     if (!function) {
                         Value *err =
                             verror("Attribute %s didnt exist in expression",
                                    GET_STRING(attr));
+                        val_release(attr);
                         return err;
                     }
                 } else {
@@ -5146,6 +5174,7 @@ Value *eval_primary(Src *s, Env *env) {
                     for (int i = 0; i < argc; i++)
                         val_release(args[i]);
                     mila_free(args);
+                    val_release(obj);
                     HANDLE_RETURN(res);
                     return res;
                 } else {
@@ -5168,13 +5197,21 @@ Value *eval_primary(Src *s, Env *env) {
                     function =
                         ((binary_method)obj->method_table[BMethodGetItem])(
                             obj, attr);
-                    val_release(attr);
                     if (!function) {
                         Value *err =
-                            verror("Attribute %s didnt exist in expression",
+                            verror("Attribute %s didnt exist in expression!",
                                    GET_STRING(attr));
+                        val_release(attr);
                         return err;
                     }
+                    if (GET_TYPE(function) != T_FUNCTION) {
+                        Value *err =
+                            verror("Attribute %s is not a function!",
+                                   GET_STRING(attr));
+                        val_release(attr);
+                        return err;
+                    }
+                    val_release(attr);
                 } else {
                     val_release(attr);
                     return verror("Type %s does not support BMethodGetItem!",
@@ -5185,7 +5222,7 @@ Value *eval_primary(Src *s, Env *env) {
                     // parse args
                     src_get(s); // consume '('
                     // parse comma separated expressions
-                    Value **args = mila_malloc(sizeof(Value *));
+                    Value **args = mila_malloc(sizeof(Value *) * (GET_FUNCTION(function)->argc + 1));
                     args[0] = val_retain(obj);
                     int argc = 1;
                     skip_ws(s);
@@ -5200,8 +5237,6 @@ Value *eval_primary(Src *s, Env *env) {
                                 mila_free(args);
                                 return a;
                             }
-                            args = mila_realloc(args,
-                                                sizeof(Value *) * (argc + 1));
                             args[argc++] = a;
                             if (match_char(s, ','))
                                 continue;
@@ -5499,6 +5534,8 @@ Value *eval_primary(Src *s, Env *env) {
             return val_retain(obj);
         } else if (src_peek(s) == ':') {
             src_get(s); // skip the colon
+
+            // Object namespace
             if (src_peek(s) == ':') {
                 src_get(s);
                 char *method = parse_ident(s);
@@ -5538,7 +5575,7 @@ Value *eval_primary(Src *s, Env *env) {
                     // parse args
                     src_get(s); // consume '('
                     // parse comma separated expressions
-                    Value **args = NULL;
+                    Value **args = mila_malloc(sizeof(Value*) * GET_FUNCTION(function)->argc);
                     int argc = 0;
                     skip_ws(s);
 
@@ -5553,8 +5590,6 @@ Value *eval_primary(Src *s, Env *env) {
                                 mila_free(args);
                                 return a;
                             }
-                            args = mila_realloc(args,
-                                                sizeof(Value *) * (argc + 1));
                             args[argc++] = a;
                             if (match_char(s, ','))
                                 continue;
@@ -5599,6 +5634,7 @@ Value *eval_primary(Src *s, Env *env) {
                 char *method = parse_ident(s);
 
                 Value *obj = env_get(env, id);
+                mila_free(id);
                 Value *attr = vstring_take(method);
                 Value *function = NULL;
 
@@ -5618,12 +5654,10 @@ Value *eval_primary(Src *s, Env *env) {
                             verror("Attribute %s didnt exist in value %s",
                                    GET_STRING(attr), id);
                         val_release(attr);
-                        mila_free(id);
                         return err;
                     }
                     val_release(attr);
                 } else {
-                    mila_free(id);
                     val_release(attr);
                     return verror("Type %s does not support BMethodGetItem!",
                                   GET_TYPENAME(obj));
@@ -5633,7 +5667,7 @@ Value *eval_primary(Src *s, Env *env) {
                     // parse args
                     src_get(s); // consume '('
                     // parse comma separated expressions
-                    Value **args = mila_malloc(sizeof(Value *));
+                    Value **args = mila_malloc(sizeof(Value *) * (GET_FUNCTION(function)->argc + 1));
                     args[0] = val_retain(obj);
                     int argc = 1;
                     skip_ws(s);
@@ -5643,20 +5677,17 @@ Value *eval_primary(Src *s, Env *env) {
                         for (;;) {
                             Value *a = eval_expr(s, env);
                             if (IS_ERROR(a)) {
-                                mila_free(id);
                                 for (int i = 0; i < argc; i++)
                                     val_release(args[i]);
                                 mila_free(args);
                                 return a;
                             }
-                            args = mila_realloc(args,
-                                                sizeof(Value *) * (argc + 1));
+                            if (args[argc]) val_release(args[argc]);
                             args[argc++] = a;
                             if (match_char(s, ','))
                                 continue;
                             if (match_char(s, ')'))
                                 break;
-                            mila_free(id);
                             for (int i = 0; i < argc; i++)
                                 val_release(args[i]);
                             mila_free(args);
@@ -5679,7 +5710,6 @@ Value *eval_primary(Src *s, Env *env) {
                         // empty
                         src_get(s); // consume ')'
                     }
-                    mila_free(id);
                     // callp
                     Value *res = call_function(function, env, argc, args);
                     for (int i = 0; i < argc; i++)
@@ -6780,8 +6810,7 @@ Value *eval_statement(Src *s, Env *env) {
         char *from = parse_ident(s);
         match_char(s, ':');
         Value *to = eval_expr(s, env);
-        Value *res = NULL;
-        env_set_local(env, GET_STRING(to), res = env_get(env, from));
+        env_set_local(env, GET_STRING(to), env_get(env, from));
         val_release(to);
         mila_free(from);
         return vnull();

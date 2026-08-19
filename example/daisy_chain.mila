@@ -1,0 +1,13 @@
+object iter_pipeline {
+	var _iter: "<iterable>" = none;
+	fn new(self, iter) {
+		var new = copy(self);
+		set new["_iter"] = iter;
+		return new;
+	}
+	fn sort(self) { println("iter_pipeline:sort("+ repr(self["_iter"]) +")"); return self; }
+	fn shuffle(self) { println("iter_pipeline:shuffle("+ repr(self["_iter"]) +")"); return self; }
+	fn map(self, fun) { println("iter_pipeline:map("+ repr(self["_iter"]) +", "+ repr(fun) +")"); return self; }
+}
+
+iter_pipeline:new([1, 2, 3]):sort():shuffle():map(println);

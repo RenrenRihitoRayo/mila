@@ -2,6 +2,7 @@
 #pragma once
 #include "mila.h"
 #include "ml_primitives.h"
+#include "ml_string.c"
 #include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -223,6 +224,7 @@ Value *ll_copy(Value *self) {
     }
 
     Value *result = val_new_raw(T_OPAQUE);
+    result->type_name = mila_strdup(ML("list"));
     result->v = (void *)copy;
     val_set_table(result, list_meta);
     return result;

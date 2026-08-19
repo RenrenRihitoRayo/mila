@@ -353,6 +353,7 @@ Value *dict_copy(Value *self) {
     }
 
     Value *result = val_new_raw(T_OPAQUE);
+    result->type_name = mila_strdup(ML("dict"));
     result->v = (void *)copy;
     val_set_table(result, dict_meta);
     return result;

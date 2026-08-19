@@ -5089,192 +5089,6 @@ Value *eval_primary(Src *s, Env *env) {
             }
 
             return obj;
-        } else if (src_peek(s) == ':') {
-            src_get(s); // skip the colon
-            if (src_peek(s) == ':') {
-                src_get(s);
-                char *method = parse_ident(s);
-
-                Value *obj = expr;
-                Value *attr = vstring_take(method);
-                Value *function = NULL;
-
-                if (!obj) {
-                    val_release(attr);
-                    Value *ret = verror("cannot be subscripted as it is cnull");
-                    return ret;
-                }
-
-                if (obj->method_table && obj->method_table[BMethodGetItem]) {
-                    function =
-                        ((binary_method)obj->method_table[BMethodGetItem])(
-                            obj, attr);
-                    if (!function) {
-                        Value *err =
-                            verror("Attribute %s didnt exist in expression",
-                                   GET_STRING(attr));
-                        val_release(attr);
-                        return err;
-                    }
-                } else {
-                    val_release(attr);
-                    return verror("Type %s does not support BMethodGetItem!",
-                                  GET_TYPENAME(obj));
-                }
-
-                if (src_peek(s) == '(') {
-                    // parse args
-                    src_get(s); // consume '('
-                    // parse comma separated expressions
-                    Value **args = NULL;
-                    int argc = 0;
-                    skip_ws(s);
-
-                    // handle (value)(...) calls
-                    if (src_peek(s) != ')') {
-                        for (;;) {
-                            Value *a = eval_expr(s, env);
-                            if (IS_ERROR(a)) {
-                                for (int i = 0; i < argc; i++)
-                                    val_release(args[i]);
-                                mila_free(args);
-                                return a;
-                            }
-                            args = mila_realloc(args,
-                                                sizeof(Value *) * (argc + 1));
-                            args[argc++] = a;
-                            if (match_char(s, ','))
-                                continue;
-                            if (match_char(s, ')'))
-                                break;
-                            for (int i = 0; i < argc; i++)
-                                val_release(args[i]);
-                            mila_free(args);
-                            int k = 1;
-                            while (k) {
-                                if (src_peek(s) == '(')
-                                    k++;
-                                if (src_peek(s) == ')')
-                                    k--;
-                                s->pos++;
-                            }
-                            size_t end = s->pos;
-                            int len = end - start + 1;
-                            return vtagged_error(E_SYNTAX_ERROR,
-                                                 "Expected a comma or closing "
-                                                 "parenthesis!\nAt call `%.*s`",
-                                                 len, s->src + start);
-                        }
-                    } else {
-                        // empty
-                        src_get(s); // consume ')'
-                    }
-                    // callp
-                    Value *res = call_function(function, env, argc, args);
-                    for (int i = 0; i < argc; i++)
-                        val_release(args[i]);
-                    mila_free(args);
-                    val_release(obj);
-                    HANDLE_RETURN(res);
-                    return res;
-                } else {
-                    return obj;
-                }
-            } else {
-                char *method = parse_ident(s);
-
-                Value *obj = expr;
-                Value *attr = vstring_take(method);
-                Value *function = NULL;
-
-                if (!obj) {
-                    val_release(attr);
-                    Value *ret = verror("cannot be subscripted as it is cnull");
-                    return ret;
-                }
-
-                if (obj->method_table && obj->method_table[BMethodGetItem]) {
-                    function =
-                        ((binary_method)obj->method_table[BMethodGetItem])(
-                            obj, attr);
-                    if (!function) {
-                        Value *err =
-                            verror("Attribute %s didnt exist in expression!",
-                                   GET_STRING(attr));
-                        val_release(attr);
-                        return err;
-                    }
-                    if (GET_TYPE(function) != T_FUNCTION) {
-                        Value *err =
-                            verror("Attribute %s is not a function!",
-                                   GET_STRING(attr));
-                        val_release(attr);
-                        return err;
-                    }
-                    val_release(attr);
-                } else {
-                    val_release(attr);
-                    return verror("Type %s does not support BMethodGetItem!",
-                                  GET_TYPENAME(obj));
-                }
-
-                if (src_peek(s) == '(') {
-                    // parse args
-                    src_get(s); // consume '('
-                    // parse comma separated expressions
-                    Value **args = mila_malloc(sizeof(Value *) * (GET_FUNCTION(function)->argc + 1));
-                    args[0] = val_retain(obj);
-                    int argc = 1;
-                    skip_ws(s);
-
-                    // handle (value)(...) calls
-                    if (src_peek(s) != ')') {
-                        for (;;) {
-                            Value *a = eval_expr(s, env);
-                            if (IS_ERROR(a)) {
-                                for (int i = 0; i < argc; i++)
-                                    val_release(args[i]);
-                                mila_free(args);
-                                return a;
-                            }
-                            args[argc++] = a;
-                            if (match_char(s, ','))
-                                continue;
-                            if (match_char(s, ')'))
-                                break;
-                            for (int i = 0; i < argc; i++)
-                                val_release(args[i]);
-                            mila_free(args);
-                            int k = 1;
-                            while (k) {
-                                if (src_peek(s) == '(')
-                                    k++;
-                                if (src_peek(s) == ')')
-                                    k--;
-                                s->pos++;
-                            }
-                            size_t end = s->pos;
-                            int len = end - start + 1;
-                            return vtagged_error(E_SYNTAX_ERROR,
-                                                 "Expected a comma or closing "
-                                                 "parenthesis!\nAt call `%.*s`",
-                                                 len, s->src + start);
-                        }
-                    } else {
-                        // empty
-                        src_get(s); // consume ')'
-                    }
-                    // callp
-                    Value *res = call_function(function, env, argc, args);
-                    for (int i = 0; i < argc; i++)
-                        val_release(args[i]);
-                    mila_free(args);
-                    HANDLE_RETURN(res);
-                    return res;
-                } else {
-                    return obj;
-                }
-            }
         }
         return expr;
     }
@@ -5532,196 +5346,6 @@ Value *eval_primary(Src *s, Env *env) {
             }
 
             return val_retain(obj);
-        } else if (src_peek(s) == ':') {
-            src_get(s); // skip the colon
-
-            // Object namespace
-            if (src_peek(s) == ':') {
-                src_get(s);
-                char *method = parse_ident(s);
-
-                Value *obj = env_get(env, id);
-                Value *attr = vstring_take(method);
-                Value *function = NULL;
-
-                if (!obj) {
-                    val_release(attr);
-                    Value *ret = verror("cannot be subscripted as it is cnull");
-                    mila_free(id);
-                    return ret;
-                }
-
-                if (obj->method_table && obj->method_table[BMethodGetItem]) {
-                    function =
-                        ((binary_method)obj->method_table[BMethodGetItem])(
-                            obj, attr);
-                    if (!function) {
-                        Value *err =
-                            verror("Attribute %s didnt exist in value %s",
-                                   GET_STRING(attr), id);
-                        val_release(attr);
-                        mila_free(id);
-                        return err;
-                    }
-                    val_release(attr);
-                } else {
-                    mila_free(id);
-                    val_release(attr);
-                    return verror("Type %s does not support BMethodGetItem!",
-                                  GET_TYPENAME(obj));
-                }
-
-                if (src_peek(s) == '(') {
-                    // parse args
-                    src_get(s); // consume '('
-                    // parse comma separated expressions
-                    Value **args = mila_malloc(sizeof(Value*) * GET_FUNCTION(function)->argc);
-                    int argc = 0;
-                    skip_ws(s);
-
-                    // handle (value)(...) calls
-                    if (src_peek(s) != ')') {
-                        for (;;) {
-                            Value *a = eval_expr(s, env);
-                            if (IS_ERROR(a)) {
-                                mila_free(id);
-                                for (int i = 0; i < argc; i++)
-                                    val_release(args[i]);
-                                mila_free(args);
-                                return a;
-                            }
-                            args[argc++] = a;
-                            if (match_char(s, ','))
-                                continue;
-                            if (match_char(s, ')'))
-                                break;
-                            mila_free(id);
-                            for (int i = 0; i < argc; i++)
-                                val_release(args[i]);
-                            mila_free(args);
-                            int k = 1;
-                            while (k) {
-                                if (src_peek(s) == '(')
-                                    k++;
-                                if (src_peek(s) == ')')
-                                    k--;
-                                s->pos++;
-                            }
-                            size_t end = s->pos;
-                            int len = end - start + 1;
-                            return vtagged_error(E_SYNTAX_ERROR,
-                                                 "Expected a comma or closing "
-                                                 "parenthesis!\nAt call `%.*s`",
-                                                 len, s->src + start);
-                        }
-                    } else {
-                        // empty
-                        src_get(s); // consume ')'
-                    }
-                    mila_free(id);
-                    // callp
-                    Value *res = call_function(function, env, argc, args);
-                    for (int i = 0; i < argc; i++)
-                        val_release(args[i]);
-                    mila_free(args);
-                    HANDLE_RETURN(res);
-                    return res;
-                } else {
-                    mila_free(id);
-                    return val_retain(function);
-                }
-            } else {
-                char *method = parse_ident(s);
-
-                Value *obj = env_get(env, id);
-                mila_free(id);
-                Value *attr = vstring_take(method);
-                Value *function = NULL;
-
-                if (!obj) {
-                    val_release(attr);
-                    Value *ret = verror("cannot be subscripted as it is cnull");
-                    mila_free(id);
-                    return ret;
-                }
-
-                if (obj->method_table && obj->method_table[BMethodGetItem]) {
-                    function =
-                        ((binary_method)obj->method_table[BMethodGetItem])(
-                            obj, attr);
-                    if (!function) {
-                        Value *err =
-                            verror("Attribute %s didnt exist in value %s",
-                                   GET_STRING(attr), id);
-                        val_release(attr);
-                        return err;
-                    }
-                    val_release(attr);
-                } else {
-                    val_release(attr);
-                    return verror("Type %s does not support BMethodGetItem!",
-                                  GET_TYPENAME(obj));
-                }
-
-                if (src_peek(s) == '(') {
-                    // parse args
-                    src_get(s); // consume '('
-                    // parse comma separated expressions
-                    Value **args = mila_malloc(sizeof(Value *) * (GET_FUNCTION(function)->argc + 1));
-                    args[0] = val_retain(obj);
-                    int argc = 1;
-                    skip_ws(s);
-
-                    // handle (value)(...) calls
-                    if (src_peek(s) != ')') {
-                        for (;;) {
-                            Value *a = eval_expr(s, env);
-                            if (IS_ERROR(a)) {
-                                for (int i = 0; i < argc; i++)
-                                    val_release(args[i]);
-                                mila_free(args);
-                                return a;
-                            }
-                            if (args[argc]) val_release(args[argc]);
-                            args[argc++] = a;
-                            if (match_char(s, ','))
-                                continue;
-                            if (match_char(s, ')'))
-                                break;
-                            for (int i = 0; i < argc; i++)
-                                val_release(args[i]);
-                            mila_free(args);
-                            int k = 1;
-                            while (k) {
-                                if (src_peek(s) == '(')
-                                    k++;
-                                if (src_peek(s) == ')')
-                                    k--;
-                                s->pos++;
-                            }
-                            size_t end = s->pos;
-                            int len = end - start + 1;
-                            return vtagged_error(E_SYNTAX_ERROR,
-                                                 "Expected a comma or closing "
-                                                 "parenthesis!\nAt call `%.*s`",
-                                                 len, s->src + start);
-                        }
-                    } else {
-                        // empty
-                        src_get(s); // consume ')'
-                    }
-                    // callp
-                    Value *res = call_function(function, env, argc, args);
-                    for (int i = 0; i < argc; i++)
-                        val_release(args[i]);
-                    mila_free(args);
-                    HANDLE_RETURN(res);
-                    return res;
-                } else {
-                    mila_free(id);
-                    return val_retain(function);
-                }
-            }
         } else {
             // variable lookup
             Value *vv = env_get(env, id);
@@ -6155,6 +5779,8 @@ int precedence_of(MethodType op) {
         return 8;
     if (BMethodGlob == op)
         return 9;
+    if (BMethodCallMethod == op)
+        return 10;
     return 0;
 }
 
@@ -6205,6 +5831,10 @@ MethodType parse_op(Src *s) {
         s->pos += 2;
         return BMethodGlob;
     }
+    if (a == ':' && b == ':') {
+        s->pos += 2;
+        return BMethodCallNamespaceFunction;
+    }
     // single-char ops
     s->pos++;
     switch (a) {
@@ -6222,6 +5852,8 @@ MethodType parse_op(Src *s) {
         return BMethodLess;
     case '>':
         return BMethodGreat;
+    case ':':
+        return BMethodCallMethod;
     }
     s->pos--;
     return MethodNone;
@@ -6237,6 +5869,190 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
         MethodType op = parse_op(s);
         if (op == MethodNone)
             return lhs;
+        if (op == BMethodCallMethod) {
+method_start:;
+            size_t start = s->pos;
+            char *method = parse_ident(s);
+            if (!method) {
+                val_release(lhs);
+                Value *res = verror("Expected identifier after ':'");
+                return res;
+            }
+            if (strcmp(GET_TYPENAME(lhs), ML("dict")) != 0) {
+                char* str = as_c_string_repr(lhs);
+                Value* res = verror("Object from a method call (for %s) was not a dictionary but was %s (%s)", method, GET_TYPENAME(lhs), str);
+                mila_free(method);
+                val_release(lhs);
+                mila_free(str);
+                return res;
+            }
+            Value* function = dict_get_str((Dict*)GET_OPAQUE(lhs), method);
+            if (!function) {
+                val_release(lhs);
+                Value *res = verror("Method %s does not exist in object", method);
+                mila_free(method);
+                return res;
+            }
+            if (src_peek(s) != '(') {
+                mila_free(method);
+                val_release(lhs);
+                return verror("Malformed method call!");
+            }
+            // parse args
+            src_get(s); // consume '('
+            // parse comma separated expressions
+            Value **args = mila_malloc(sizeof(Value *) * (GET_FUNCTION(function)->argc + 1));
+            int cap = GET_FUNCTION(function)->argc + 1;
+            args[0] = val_retain(lhs);
+            int argc = 1;
+            skip_ws(s);
+
+            // handle (value)(...) calls
+            if (src_peek(s) != ')') {
+                for (;;) {
+                    Value *a = eval_expr(s, env);
+                    if (IS_ERROR(a)) {
+                        for (int i = 0; i < GET_FUNCTION(function)->argc; i++)
+                            val_release(args[i]);
+                        mila_free(args);
+                        return a;
+                    }
+                    if (argc >= cap) {
+                        args = realloc(args, sizeof(Value*) * (cap * 2));
+                    }
+                    args[argc++] = a;
+                    if (match_char(s, ','))
+                        continue;
+                    if (match_char(s, ')'))
+                        break;
+                    for (int i = 0; i < GET_FUNCTION(function)->argc; i++)
+                        val_release(args[i]);
+                    mila_free(args);
+                    int k = 1;
+                    while (k) {
+                        if (src_peek(s) == '(')
+                            k++;
+                        if (src_peek(s) == ')')
+                            k--;
+                        s->pos++;
+                    }
+                    size_t end = s->pos;
+                    int len = end - start + 1;
+                    return vtagged_error(E_SYNTAX_ERROR,
+                                         "Expected a comma or closing "
+                                         "parenthesis!\nAt call `%.*s`",
+                                         len, s->src + start);
+                }
+            } else {
+                // empty
+                src_get(s); // consume ')'
+            }
+            // callp
+            Value *res = call_function(function, env, argc, args);
+            for (int i = 0; i < argc; i++)
+                val_release(args[i]);
+            mila_free(args);
+            val_release(lhs);
+            mila_free(method);
+            if (src_peek(s) == ':') {
+                src_get(s);
+                lhs = res;
+                goto method_start;
+            }
+            HANDLE_RETURN(res);
+            return res;
+        } else if (op == BMethodCallNamespaceFunction) {
+namespace_fn_start:;
+            size_t start = s->pos;
+            char *namespaced_function = parse_ident(s);
+            if (!namespaced_function) {
+                val_release(lhs);
+                Value *res = verror("Expected identifier after ':'");
+                return res;
+            }
+            if (strcmp(GET_TYPENAME(lhs), ML("dict")) != 0) {
+                char* str = as_c_string_repr(lhs);
+                Value* res = verror("Object from a namespaced function call (for %s) was not a dictionary but was %s (%s)", namespaced_function, GET_TYPENAME(lhs), str);
+                mila_free(namespaced_function);
+                val_release(lhs);
+                mila_free(str);
+                return res;
+            }
+            Value* function = dict_get_str((Dict*)GET_OPAQUE(lhs), namespaced_function);
+            if (!function) {
+                val_release(lhs);
+                Value *res = verror("Namespaced function %s does not exist in object", namespaced_function);
+                mila_free(namespaced_function);
+                return res;
+            }
+            if (src_peek(s) != '(') {
+                mila_free(namespaced_function);
+                val_release(lhs);
+                return verror("Malformed namespaced function call!");
+            }
+            // parse args
+            src_get(s); // consume '('
+            // parse comma separated expressions
+            Value **args = mila_malloc(sizeof(Value *) * (GET_FUNCTION(function)->argc));
+            int cap = GET_FUNCTION(function)->argc;
+            int argc = 0;
+            skip_ws(s);
+
+            // handle (value)(...) calls
+            if (src_peek(s) != ')') {
+                for (;;) {
+                    Value *a = eval_expr(s, env);
+                    if (IS_ERROR(a)) {
+                        for (int i = 0; i < argc; i++)
+                            val_release(args[i]);
+                        mila_free(args);
+                        return a;
+                    }
+                    if (argc >= cap) {
+                        args = realloc(args, sizeof(Value*) * (cap * 2));
+                    }
+                    args[argc++] = a;
+                    if (match_char(s, ','))
+                        continue;
+                    if (match_char(s, ')'))
+                        break;
+                    for (int i = 0; i < argc; i++)
+                        val_release(args[i]);
+                    mila_free(args);
+                    int k = 1;
+                    while (k) {
+                        if (src_peek(s) == '(')
+                            k++;
+                        if (src_peek(s) == ')')
+                            k--;
+                        s->pos++;
+                    }
+                    size_t end = s->pos;
+                    int len = end - start + 1;
+                    return vtagged_error(E_SYNTAX_ERROR,
+                                         "Expected a comma or closing "
+                                         "parenthesis!\nAt call `%.*s`",
+                                         len, s->src + start);
+                }
+            } else {
+                // empty
+                src_get(s); // consume ')'
+            }
+            // callp
+            Value *res = call_function(function, env, argc, args);
+            for (int i = 0; i < argc; i++)
+                val_release(args[i]);
+            mila_free(args);
+            val_release(lhs);
+            mila_free(namespaced_function);
+            if (src_peek(s) == ':') {
+                src_get(s);
+                lhs = res;
+                goto namespace_fn_start;
+            }
+            HANDLE_RETURN(res);
+            return res;
+        }
         int prec = precedence_of(op);
         if (prec < min_prec) {
             s->pos = saved_pos;

@@ -135,6 +135,8 @@ typedef enum __attribute__((packed)) {
     TMethodBinop,
     BMethodGetItem, // name[...] syntax
     TMethodSetItem, // set name[...] syntax
+    BMethodCallMethod, // obj:method() syntax
+    BMethodCallNamespaceFunction, // obj::method() syntax
 
     // when converting objects into strings
     UMethodToString,

@@ -2,7 +2,7 @@
 " Save as ~/.vim/syntax/mila.vim
 
 " Keywords
-syntax keyword milaKeyword if elif else while fn set var export return break continue contextual forget foreach alias const catch
+syntax keyword milaKeyword if elif else while fn set var const return break continue contextual forget foreach alias const catch alias
 
 " RT-Statements
 syntax match milaKeyword "\v\@[a-zA-Z0-9._]+"

@@ -65,7 +65,7 @@ Value *native_sys_getenv(Env *env, int argc, Value **argv) {
     if (argc != 1 && GET_TYPE(argv[0]) != T_STRING) {
         return verror("sys.getenv(name): Invalid arguments.");
     }
-    char *value = getenv(GET_STRING(argv[0]));
+    const char *value = getenv(GET_STRING(argv[0]));
     if (!value)
         return vnull();
     return vstring_dup(value);

@@ -10,6 +10,8 @@ and doesnt require you to run an external file.
 * [Lists](#list)
 * [Dictionaries](#dict)
 * [Arrays](#arr)
+* [Sorting](#sort)
+* [Environments](#env)
 * [Strings](#str)
 * [Math](#math)
     * [Bitwise Logic](#math-bit)
@@ -264,6 +266,60 @@ typedef struct {
 
     Set an arrays item.
 
+## <a id="sort"></a>Sorting
+
+* `qsort(obj: "opaque:list", function: "<callable>") -> "opaque:list"`
+
+    Sort the given list, return the sorted list.
+    The function accepts two arguments a and b, the function needs to return these values
+    in correlation of which value is bigger. A positive value means a is greater than b, a negative value
+    means b is greater than a, 0 means they are equal. So in most cases function may just as well be:
+    ```MiLa
+    fn compare(a, b) { return a - b; }
+    ```
+    The qsort function works as it does in the GNU C standard library.
+
+## <a id="env"></a>Environments
+
+* `env.set(name: "string", value: "any") -> int`
+
+    Sets a variable in which scope has the pre-existing variable specified in `name`.
+    If there are no variables in any subsequent scope, it sets the variable in the current scope.
+    The function returns `1` when it fails to set the variable, this can happen if it finds a binding BUT is a constant,
+    otherwise it returns `0` on success.
+
+* `env.set_local(name: "string", value: "any") -> int`
+
+    Sets a variable in the local scope with the specified name `name`.
+    The function returns `1` if the variable `name` already exists and is constant otherwise 
+    on success it returns `0`.
+
+* `env.get(name: "string") -> "any"`
+
+    Return the variable specified in `name`.
+    Return `null` when the variable specified by `name` is not found or is not set.
+
+* `env.get_names() -> "opaque:list[str]"`
+
+    Returns a list of variable names found in the current scope.
+
+* `env.get_type(name: "string") -> "string"`
+
+    Returns a string representing the type of a variable.
+    It returns the most shallowest binding.
+    ```MiLa
+var num: "int"= 0;
+{
+    var num: "float" = 0.0;
+    println(env.get_type("num")); // float
+}
+    ```
+
+* `export(d: "opaque:dict[str, any]")`
+
+    Accepts a dictionary.
+    Exports to the surrounding scope.
+
 ## <a id="str"></a>Strings
 
 * `str.slice(str: "index", index: "int", len: "int") -> "string"`
@@ -499,12 +555,19 @@ Theres no date object shenanigans if theres no date object.
 * `sys.get_platform() -> "string"`
 
     May return the following strings:
+    
     * "win" (not tested yet)
+    
     * "android" (tested)
+    
     * "linux" (works on archlinux)
+    
     * "web" (tested)
+    
     * "mach" (not tested yet)
+    
     * "ios" (not tested yet)
+
     * "tvOS" (not tested yet)
     
         Added as a joke
@@ -522,18 +585,37 @@ Theres no date object shenanigans if theres no date object.
 * `sys.get_arch() -> "string"`
 
     May return the following strings:
-    * "x86_64"
+    
+    * "x86_64" (tested)
+    
     * "x86" (not tested yet)
-    * "arm64"
+    
+    * "arm64" (tested)
+    
     * "arm" (not tested yet)
+    
     * "riscv" (not tested yet)
+    
     * "ppc" (not tested yet)
+    
     * "mips" (not tested yet)
+    
     * "unknown" (good luck)
 
 * `sys.get_pid() -> "int"`
 
     Returns the interpreters PID.
+
+* `sys.getenv(name: "string") -> "int"`
+
+    Retrieves a environment variable and returns the string value.
+    If the environment variable is unset, the function returns null.
+
+* `sys.setenv(name: "string", value: "string") -> "int"`
+
+    Sets an environment variable, returns the error code.
+    Error code corresponds to `setenv` library function return codes.
+
 
 ## <a id="run"></a>Execution and Loading
 
@@ -622,27 +704,27 @@ Theres no date object shenanigans if theres no date object.
 
 ## <a id="json"></a>JSON and MJSON
 
-* `json.loads(json: "string") -> "list|dict"`
+* `json.loads(json: "string") -> "opaque:list|opaque:dict"`
 
     Loads a json string as MiLa types.
 
-* `json.dumps(mila: "list|dict") -> "string"`
+* `json.dumps(mila: "opaque:list|opaque:dict") -> "string"`
 
     Dumps a MiLa type as json.
 
-* `json.dumps_io(file: "opaque:file", mila: "list|dict") -> "string"`
+* `json.dumps_io(file: "opaque:file", mila: "opaque:list|opaque:dict") -> "string"`
 
     Dumps a MiLa type as json directly into a file.
 
-* `mjson.loads(mjson: "string") -> "list|dict"`
+* `mjson.loads(mjson: "string") -> "opaque:list|opaque:dict"`
 
     Loads an mjson string as MiLa types.
 
-* `mjson.dumps(mila: "list|dict") -> "string"`
+* `mjson.dumps(mila: "opaque:list|opaque:dict") -> "string"`
 
     Dumps a MiLa type as mjson.
 
-* `mjson.dumps_io(file: "opaque:file", mila: "list|dict") -> "string"`
+* `mjson.dumps_io(file: "opaque:file", mila: "opaque:list|opaque:dict") -> "string"`
 
     Dumps a MiLa type as mjson directly into a file.
 

@@ -1704,6 +1704,7 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "env.get", native_env_get);
     env_register_native(g, "env.get_names", native_env_get_names);
     env_register_native(g, "env.get_type", native_env_get_type);
+    env_register_native(g, "export", native_export);
     // === Text IO
     env_register_native(g, "print", native_print);
     env_register_native(g, "printr", native_printr);
@@ -1791,8 +1792,6 @@ void env_register_builtins(Env *g) {
      * _typeof differentiates between native and non native functions
      * this is for very specific use cases
      */
-    // === Exporting
-    env_register_native(g, "export", native_export);
     // === JSON
     env_register_native(g, "mjson.loads", native_mjson_loads);
     env_register_native(g, "mjson.dumps", native_mjson_dumps);

@@ -34,12 +34,12 @@ all documented, in a interpreter as small as a picture.
 
 |         Platform                |  Size  | Compiler     |  Build   |
 |---------------------------------|--------|--------------|----------|
-| Android (MagicOS Termux)        | 238KB  | clang 21.1.8 | release  |
+| Android (MagicOS Termux)        | 246KB  | clang 21.1.8 | release  |
+| Android (MagicOS Termux)        | 166KB  | clang 21.1.8 | smallest |
 | Linux 6.18.41-1-lts (Archlinux) | 252KB  | gcc 16.1.1   | release  |
 | Linux 6.18.41-1-lts (Archlinux) | 138KB  | gcc 16.1.1   | smallest |
 | Linux 6.18.41-1-lts (Archlinux) | 216KB  | clang 22.1.8 | release  |
 | Linux 6.18.41-1-lts (Archlinux) | 168KB  | clang 22.1.8 | smallest |
-
 
 ## Keywords (21 total)
 

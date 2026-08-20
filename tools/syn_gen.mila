@@ -40,7 +40,11 @@ if (isatty(stdin_fd))
 }
 
 if (for != "json") {
-    set names = qsort(names, fn(a,b):[str.len] {return str.len(b) - str.len(a);});
+    if (for == "vim") {
+        set names = qsort(names, fn(a,b):[str.len] {return str.len(a) - str.len(b);});
+    } else {
+        set names = qsort(names, fn(a,b):[str.len] {return str.len(b) - str.len(a);});
+    }
 }
 
 if (for == "vim")
@@ -66,8 +70,8 @@ elif (for == "sublime")
     println("  builtins:")
     var i = 0;
     while (i < list.len(names)) {
-        println("  - match: '\\b(" + str.join("|", list.slice(names, i, batch_size)) + ")\\b'");
-        println("    scope: support.function.mila");
+        println("    - match: '\\b(" + str.join("|", list.slice(names, i, batch_size)) + ")\\b'");
+        println("      scope: support.function.mila");
         set i += batch_size;
     }
 }

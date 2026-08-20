@@ -449,6 +449,8 @@ char *as_c_string_repr_raw(Value *v);
 int print_value(Value *v);
 // Debug print
 int print_value_debug(Value *v);
+// Debug print but uses the non safe format
+int print_value_debug_plus(Value *v);
 // Print a values representation
 int print_value_repr(Value *v);
 // Print the error

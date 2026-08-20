@@ -5,9 +5,22 @@ object iter_pipeline {
 		set new["_iter"] = iter;
 		return new;
 	}
-	fn sort(self: "<self>") -> "<self>" { println("iter_pipeline:sort("+ repr(self["_iter"]) +")"); return self; }
-	fn shuffle(self: "<self>") -> "<self>" { println("iter_pipeline:shuffle("+ repr(self["_iter"]) +")"); return self; }
-	fn map(self: "<self>", fun: "<callable>") -> "<self>" { println("iter_pipeline:map("+ repr(self["_iter"]) +", "+ repr(fun) +")"); return self; }
+    fn map(self: "<self>", fun: "<callable>") -> "<self>" {
+        foreach index : range(list.len(self["_iter"])) {
+            set self["_iter"][index] = fun(self["_iter"][index]);
+        }
+        return self;
+    }
+    fn ':display'(self):[print, repr] {
+        print("iter_pipeline(" + repr(self["_iter"]) + ")");
+    }
 }
 
-iter_pipeline:new([1, 2, 3]):sort():shuffle():map(println);
+fn add(a) {
+    return a + 3;
+}
+
+var test = iter_pipeline:new([1, 2, 3]);
+println(test);
+test:map(add);
+println(test);

@@ -1748,30 +1748,6 @@ int raw_print_value(Value *v) {
     }
     if (v->refcount == ML_WEAK_REF_TRIGGER)
         return printf("<weakref %p>", v->v);
-    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
-        Value *fn = dict_get_str((Dict *)v->v, ":display");
-        if (fn) {
-            val_release(call_function_with(NULL, fn, val_retain(v), NULL));
-            fflush(stdout);
-            return 0;
-        }
-    }
-    if (v->method_table && v->method_table[UMethodToString]) {
-        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
-        char *res = mila_strdup(GET_STRING(str));
-        val_kill(str);
-        int i = printf("%s", res);
-        mila_free(res);
-        return i;
-    }
-    if (v->method_table && v->method_table[UMethodToRepr]) {
-        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
-        char *res = mila_strdup(GET_STRING(str));
-        val_kill(str);
-        int i = printf("%s", res);
-        mila_free(res);
-        return i;
-    }
     switch (v->type) {
     case T_NULL:
         return printf("null");
@@ -1842,30 +1818,8 @@ int raw_print_value_repr(Value *v) {
     if (!v) {
         return printf("?null?");
     }
-
     if (v->refcount == ML_WEAK_REF_TRIGGER)
         return printf("<weakref %p>", v->v);
-    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
-        Value *fn = dict_get_str((Dict *)v->v, ":display");
-        if (fn)
-            val_release(call_function_with(NULL, fn, val_retain(v), NULL));
-    }
-    if (v->method_table && v->method_table[UMethodToRepr]) {
-        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
-        char *res = mila_strdup(GET_STRING(str));
-        val_kill(str);
-        int i = printf("%s", res);
-        mila_free(res);
-        return i;
-    }
-    if (v->method_table && v->method_table[UMethodToString]) {
-        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
-        char *res = mila_strdup(GET_STRING(str));
-        val_kill(str);
-        int i = printf("%s", res);
-        mila_free(res);
-        return i;
-    }
     switch (v->type) {
     case T_STRING:;
         int first = printf("\"");
@@ -2038,12 +1992,64 @@ int print_value(Value *v) {
     if (!v) {
         return printf("?null?");
     }
+    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
+        Value *fn = dict_get_str((Dict *)GET_OPAQUE(v), ":display");
+        if (fn) {
+            Value* res = call_function_with(NULL, fn, val_retain(v), NULL);
+            if (IS_ERROR(res)) print_error(res);
+            val_release(res);
+            fflush(stdout);
+            return 0;
+        }
+    }
+    if (v->method_table && v->method_table[UMethodToString]) {
+        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
+        char *res = mila_strdup(GET_STRING(str));
+        val_kill(str);
+        int i = printf("%s", res);
+        mila_free(res);
+        return i;
+    }
+    if (v->method_table && v->method_table[UMethodToRepr]) {
+        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
+        char *res = mila_strdup(GET_STRING(str));
+        val_kill(str);
+        int i = printf("%s", res);
+        mila_free(res);
+        return i;
+    }
     return raw_print_value(v);
 }
 
 int print_value_repr(Value *v) {
     if (!v) {
         return printf("?null?");
+    }
+    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
+        Value *fn = dict_get_str((Dict *)GET_OPAQUE(v), ":display");
+        if (fn) {
+            Value* res = call_function_with(NULL, fn, val_retain(v), NULL);
+            if (IS_ERROR(res)) print_error(res);
+            val_release(res);
+            fflush(stdout);
+            return 0;
+        }
+    }
+    if (v->method_table && v->method_table[UMethodToRepr]) {
+        Value *str = ((unary_method)v->method_table[UMethodToRepr])(v);
+        char *res = mila_strdup(GET_STRING(str));
+        val_kill(str);
+        int i = printf("%s", res);
+        mila_free(res);
+        return i;
+    }
+    if (v->method_table && v->method_table[UMethodToString]) {
+        Value *str = ((unary_method)v->method_table[UMethodToString])(v);
+        char *res = mila_strdup(GET_STRING(str));
+        val_kill(str);
+        int i = printf("%s", res);
+        mila_free(res);
+        return i;
     }
     return raw_print_value_repr(v);
 }
@@ -2053,6 +2059,17 @@ int print_value_debug(Value *v) {
         return printf("?null?");
     }
     char *txt = as_c_string_repr_raw(v);
+    int i = printf("%s", txt);
+    mila_free(txt);
+    printf(" (%i)\n", v->refcount);
+    return i;
+}
+
+int print_value_debug_plus(Value *v) {
+    if (!v) {
+        return printf("?null?");
+    }
+    char *txt = as_c_string_repr(v);
     int i = printf("%s", txt);
     mila_free(txt);
     printf(" (%i)\n", v->refcount);
@@ -3214,20 +3231,6 @@ const char *skip_primary(Src *s) {
                     return ERR_BRACKET_UNCLOSED;
             }
         }
-
-        // Method call on expression
-        if (src_peek(s) == ':') {
-            src_get(s);
-            if (src_peek(s) == ':')
-                src_get(s);
-            char *method = parse_ident(s);
-            if (!method)
-                return ERR_INVALID_IDENT;
-            mila_free(method);
-            if (src_peek(s) == '(')
-                return skip_fn_call_args(s);
-        }
-
         return ERR_SUCCESS;
     }
 
@@ -3311,19 +3314,6 @@ const char *skip_primary(Src *s) {
                 return ERR_BRACKET_UNCLOSED;
         }
 
-        // Method call
-        if (src_peek(s) == ':') {
-            src_get(s);
-            if (src_peek(s) == ':')
-                src_get(s);
-            char *method = parse_ident(s);
-            if (!method)
-                return ERR_INVALID_IDENT;
-            mila_free(method);
-            if (src_peek(s) == '(')
-                return skip_fn_call_args(s);
-        }
-
         return ERR_SUCCESS;
     }
     if (src_eof(s))
@@ -3344,79 +3334,89 @@ const char *skip_parse_expr_prec(Src *s, int min_prec) {
         if (a == '\0')
             return ERR_SUCCESS;
 
-        char b = s->pos + 1 < s->len ? s->src[s->pos + 1] : '\0';
-        MethodType op = MethodNone;
-        int prec = 0;
+        MethodType op = parse_op(s);
+        if (op == BMethodCallMethod) {
+method_start:;
+            char *method = parse_ident(s);
+            if (!method) {
+                return ERR_EXPECTED_COLON;
+            }
+            if (src_peek(s) != '(') {
+                mila_free(method);
+                return ERR_EXPECTED_PAREN;
+            }
+            // parse args
+            src_get(s); // consume '('
+            skip_ws(s);
 
-        if (a == '|' && b == '|') {
-            s->pos += 2;
-            op = BMethodOr;
-            prec = 2;
-        } else if (a == '&' && b == '&') {
-            s->pos += 2;
-            op = BMethodAnd;
-            prec = 1;
-        } else if (a == '=' && b == '=') {
-            s->pos += 2;
-            op = BMethodEq;
-            prec = 4;
-        } else if (a == '!' && b == '=') {
-            s->pos += 2;
-            op = BMethodNe;
-            prec = 4;
-        } else if (a == '<' && b == '=') {
-            s->pos += 2;
-            op = BMethodLE;
-            prec = 6;
-        } else if (a == '>' && b == '=') {
-            s->pos += 2;
-            op = BMethodGE;
-            prec = 6;
-        } else if (a == '>' && b == '>') {
-            s->pos += 2;
-            op = BMethodRShift;
-            prec = 5;
-        } else if (a == '<' && b == '<') {
-            s->pos += 2;
-            op = BMethodLShift;
-            prec = 5;
-        } else if (a == '?' && b == '?') {
-            s->pos += 2;
-            op = BMethodDefault;
-            prec = 3;
-        } else if (a == '=' && b == '>') {
-            s->pos += 2;
-            op = BMethodGlob;
-            prec = 9;
-        } else if (a == '+') {
-            s->pos++;
-            op = BMethodAdd;
-            prec = 7;
-        } else if (a == '-') {
-            s->pos++;
-            op = BMethodSub;
-            prec = 7;
-        } else if (a == '*') {
-            s->pos++;
-            op = BMethodMul;
-            prec = 8;
-        } else if (a == '/') {
-            s->pos++;
-            op = BMethodDiv;
-            prec = 8;
-        } else if (a == '%') {
-            s->pos++;
-            op = BMethodMod;
-            prec = 8;
-        } else if (a == '<') {
-            s->pos++;
-            op = BMethodLess;
-            prec = 6;
-        } else if (a == '>') {
-            s->pos++;
-            op = BMethodGreat;
-            prec = 6;
+            // handle (value)(...) calls
+            if (src_peek(s) != ')') {
+                for (;;) {
+                    const char *a = skip_parse_expr_prec(s, 1);
+                    if (a) {
+                        mila_free(method);
+                        return a;
+                    }
+                    if (match_char(s, ','))
+                        continue;
+                    if (match_char(s, ')'))
+                        break;
+                    mila_free(method);
+                    return ERR_INVALID_FN_CALL;
+                }
+            } else {
+                // empty
+                src_get(s); // consume ')'
+            }
+            // callp
+            mila_free(method);
+            if (src_peek(s) == ':') {
+                src_get(s);
+                goto method_start;
+            }
+            return ERR_SUCCESS;
+        } else if (op == BMethodCallNamespaceFunction) {
+namespace_fn_start:;
+            char *namespaced_function = parse_ident(s);
+            if (!namespaced_function) {
+                return ERR_EXPECTED_COLON;
+            }
+            if (src_peek(s) != '(') {
+                mila_free(namespaced_function);
+                return ERR_EXPECTED_PAREN;
+            }
+            // parse args
+            src_get(s); // consume '('
+            skip_ws(s);
+
+            // handle (value)(...) calls
+            if (src_peek(s) != ')') {
+                for (;;) {
+                    const char *a = skip_parse_expr_prec(s, 1);
+                    if (a) {
+                        mila_free(namespaced_function);
+                        return a;
+                    }
+                    if (match_char(s, ','))
+                        continue;
+                    if (match_char(s, ')'))
+                        break;
+                    mila_free(namespaced_function);
+                    return ERR_INVALID_FN_CALL;
+                }
+            } else {
+                // empty
+                src_get(s); // consume ')'
+            }
+            // callp
+            mila_free(namespaced_function);
+            if (src_peek(s) == ':') {
+                src_get(s);
+                goto namespace_fn_start;
+            }
+            return ERR_SUCCESS;
         }
+        int prec = precedence_of(op);
 
         if (op == MethodNone) {
             s->pos = saved_pos;

@@ -1,6 +1,11 @@
 
 load("./raylib.so");
 
+const food_size = 20.0;
+const player_speed = 500;
+const food_num = 10;
+const fps = 100;
+
 var screen_w = 1200;
 var screen_h = 600;
 
@@ -8,29 +13,25 @@ InitWindow(screen_w, screen_h, "Raylib in MiLa!");
 
 // yes Color(...) is a constructor for struct Color
 // auto generated!
-var RAYWHITE_TRANSLUCENT = Color(245u, 245u, 245u, 150u);
-var RAYWHITE = Color(245u, 245u, 245u, 255u);
-var WHITE = Color(255u, 255u, 255u, 255u);
-var BLACK = Color(0u, 0u, 0u, 255u);
-var RED = Color(255u, 0u, 0u, 255u);
-var MARIGOLD = Color(234u, 162u, 33u, 255u);
-var GREEN = Color(0u, 255u, 0u, 255u);
-var BLUE_TRANSLUCENT = Color(0u, 0u, 255u, 150u);
-var NONE = Color(255u, 255u, 255u, 255u);
+const RAYWHITE_TRANSLUCENT = Color(245u, 245u, 245u, 150u);
+const RAYWHITE = Color(245u, 245u, 245u, 255u);
+const WHITE = Color(255u, 255u, 255u, 255u);
+const BLACK = Color(0u, 0u, 0u, 255u);
+const RED = Color(255u, 0u, 0u, 255u);
+const MARIGOLD = Color(234u, 162u, 33u, 255u);
+const GREEN = Color(0u, 255u, 0u, 255u);
+const BLUE_TRANSLUCENT = Color(0u, 0u, 255u, 150u);
+const NONE = Color(255u, 255u, 255u, 255u);
 
-var player = Rectangle(
+const player = Rectangle(
     (screen_w / 2) - 90,
     (screen_h / 2) - 30,
     180.0,
     60.0
 );
 
-var food_size = 20.0;
-
-var player_speed = 50;
-
 // own tells MiLa it can free this pointer!
-var texture = own(LoadTexture("wall.png"));
+const texture = own(LoadTexture(file.resolve("wall.png")));
 
 fn random_place(rect) {
 
@@ -38,15 +39,13 @@ fn random_place(rect) {
     Rectangle.set_y(rect, cast.i2f(GetRandomValue(0, screen_h-cast.f2i(food_size))));
 }
 
-var start_x = Rectangle.get_x(player);
-var start_y = Rectangle.get_y(player);
-
-var fps = 100;
+const start_x = Rectangle.get_x(player);
+const start_y = Rectangle.get_y(player);
 SetTargetFPS(fps);
 var new = 0;
 var old = 0;
 
-var score = 0;
+const score = 0;
 
 fn Clamp(val, min, max) {
     if (val < min) {
@@ -75,7 +74,6 @@ fn step(v1, v2, speed) {
     Vector2.set_y(v1, Vector2.get_y(v1) + (dy / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
 }
 
-var food_num = 10;
 var foods = list();
 
 foreach i : range(food_num) {

@@ -79,6 +79,24 @@ const char *MILA_TYPE_NAMES[] = {
     "function", "native", "opaque",   "owned_opaque", "return",  "none",
     "error",    "break",  "continue", "tagged_error", "arg_end",
 };
+const char *MILA_OP_NAME[] = {
+    "Nop",
+    "TMethodBinop",
+    "BMethodGetItem",
+    "TMethodSetItem",
+    "UMethodToString",
+    "UMethodToRepr",
+    "UMethodToIter",
+    "UMethodStepIter",
+    "UMethodStepIterInit",
+    "UMethodStepIterClean",
+    "UMethodToGen",
+    "UMethodFree",
+    "UMethodKill",
+    "UMethodCopy",
+    "UMethodCopyShallow"
+};
+const int MILA_OP_COUNT = sizeof(MILA_OP_NAME)/sizeof(MILA_OP_NAME[0]);
 const int MILA_TYPE_COUNT = T_ARG_END;
 const int MILA_ERROR_COUNT = E_THREAD_HALT;
 
@@ -5864,6 +5882,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
     Value *lhs = eval_primary(s, env);
     if (!lhs)
         return vnull();
+    if (IS_ERROR(lhs)) return lhs;
     for (;;) {
         int saved_pos = s->pos;
         MethodType op = parse_op(s);

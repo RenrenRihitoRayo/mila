@@ -211,6 +211,27 @@ Value *native_qsort(Env *env, int argc, Value **argv) {
     return res;
 }
 
+Value *native_map(Env* env, int argc, Value** argv) {
+    if (argc != 2) 
+        return verror("map(lst, fun): Expected two arguments");
+    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0)
+        return verror("map(lst, fun): Expected first argument to be a list");
+    if (GET_TYPE(argv[1]) != T_FUNCTION && GET_TYPE(argv[1]) != T_NATIVE)
+        return verror("map(lst, fun): Expected second argument to be a function");
+    Value* list = make_list(NULL);
+    Value** source = ll_to_iter((LinkedList*)GET_OPAQUE(argv[0]));
+    // 1 because source[0] is the iter length.
+    for (unsigned long i=1; i<GET_UINTEGER(source[0]); ++i) {
+        Value* enumerated_val = call_function_with(env, argv[1], source[i], NULL);
+        val_release(call_native_with(NULL, native_list_append, val_retain(list), enumerated_val, NULL));
+    }
+    val_release(source[0]);
+    mila_free(source);
+    return list;
+}
+
+
+
 Value *native_cast_int(Env *env, int argc, Value **argv) {
     (void)env;
     long i = 0;
@@ -511,6 +532,16 @@ Value *native_file_is_dir(Env *env, int argc, Value **argv) {
     }
     free(file);
     return vbool(0);
+}
+
+Value *native_file_resolve(Env *env, int argc, Value **argv) {
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING)
+        verror("file.resolve(f: \"string\"): Expects a path!");
+    char *file = path_list_find(mila_search_path, GET_STRING(argv[0]));
+    if (file) {
+        return vstring_take(file);
+    }
+    return val_retain(argv[0]);
 }
 
 Value *native_file_list_dir(Env *e, int argc, Value **argv) {
@@ -1698,6 +1729,8 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "hash._get_seed", native_hash_get_seed);
     // === Organize
     env_register_native(g, "qsort", native_qsort);
+    // === Functional Shenanigans
+    env_register_native(g, "map", native_map);
     // === Scopes
     env_register_native(g, "env.set", native_env_set);
     env_register_native(g, "env.set_local", native_env_set_local);
@@ -1736,6 +1769,7 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "file.is_file", native_file_is_file);
     env_register_native(g, "file.is_dir", native_file_is_dir);
     env_register_native(g, "file.list_dir", native_file_list_dir);
+    env_register_native(g, "file.resolve", native_file_resolve);
     env_register_native(g, "isatty", native_isatty);
     env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
     env_set_raw(g, "SEEK_END", vint(SEEK_END));

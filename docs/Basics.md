@@ -24,7 +24,7 @@ Some constructs may feel natural while some not so much.
 * [Catching Errors](#error)
 * [Blocks](#blocks)
 * [Parameterized Scripts](#param)
-* [RT-Statements](#rts)
+* [Runtime Statements](#rts)
 
 Comments in MiLa are just C-style comments.
 
@@ -73,8 +73,8 @@ Primitives are:
 In MiLa there are two types of identifiers.
 Your normal identifiers with some twists `id.one.two`
 and string identifiers which are quoted `'this is a valid id!'`.
-String identifiers aim to allow users to name variables anything,
-aiding non english programmers, "but why not just support unicode",
+String identifiers aim to allow users to name variables in their own language,
+aiding non English programmers, "but why not just support unicode",
 I dont want to bloat my language with handling unicode characters.
 <br><br>
 Regular identifiers can be composed of any alphanumeric characters and
@@ -87,6 +87,10 @@ and is not an operator unlike in other languages. Dots in identifiers act as "na
 var '你好' = "hello";
 var 'this is a valid identifier' = 90;
 ```
+
+The reason this works even though MiLa only uses char* types, is because we can depend on delimiters.
+`'...'` is closed and balanced, as well as strings `"..."` and other kinds of strings and blocks thus giving us the
+bonus of partly supporting unicode.
 
 ### Field Access and Method Calls
 
@@ -101,10 +105,14 @@ Note when reading a function, but not calling it, won't save it as a binding.
 This is due to MiLa using reference counting and the possibility of cyclic
 references.
 
+`:` is often mentioned as method calls and `::` as namespaced calls (as they act like namespaced functions)
+
+Note you can chain method calls and namespaced calls but never mix the two.
+IE `a:b():c()` and `a::b()::c()`
+
 ## <a id="expr"></a>Expressions
 
-Expressions in MiLa are just like any other language's.
-MiLa only has binary operations.
+MiLa has most common binary and unary operations with certain caveats.
 
 | Operation      | Symbol | MiLa VIOO Methods | MiLa OIOO Methods |
 |----------------|--------|-------------------|-------------------|
@@ -144,7 +152,7 @@ Function calls are the same as in C (yes we don't allow keyword arguments.)
 
 * Arithmetic, and Shifting is like in C
 
-* Glob operator is `string => patterb`
+* Glob operator is `string => pattern`
 
 * Comparisons are also like in C
 
@@ -231,7 +239,7 @@ println(new_name);
 
 ## <a id="func">Functions
 
-Functions in MiLa is straightforward.
+Functions in MiLa are straightforward.
 
 ### <a id="func-def"></a>Defining Functions
 
@@ -268,7 +276,7 @@ being a one pass interpreter.
 // Classic counter example
 
 fn make_counter() {
-	var count = -1; // we dont have post fix operations
+	var count = -1; // we dont have postfix operations
 	return fn():[count] {
 		set count += 1;
 		return count;
@@ -409,18 +417,6 @@ Notes:
 
     It becomes none.
 
-## <a id="namespaces"></a>Namespaces
-
-Namespaces are simple in MiLa.
-All they do is mangle every name that starts
-with a dot.
-
-```MiLa
-namespace my_lib {
-    var .my_var = 90; // my_lib.my_var
-}
-```
-
 ## <a id="error"></a>Error Handling
 
 Catch blocks are straightforward in MiLa.
@@ -454,7 +450,7 @@ block block_name {
 ```
 
 If an error ever propagates, the error will be mangled to
-have tbe blocks name.
+have the blocks name.
 
 ## <a id="param"></a>Parameterized Scripts
 
@@ -462,18 +458,18 @@ have tbe blocks name.
 
 // gracefully capture argv
 // (argc is always the first argument,
-// argv gets expand to the rest of the parameters)
+// argv gets expanded to the rest of the parameters)
 !fn (argc, name, ...argv)
 ```
 
 This notation must come first before any
 statements. Specifically right after the shebang
 if present, if not then it must be at the first line.
-Blank lines before thid notation is acceptable.
+Blank lines before this notation is acceptable.
 
 Note: MiLa will ignore shebangs when present.
 
-## <a id="rts"></a>Parameterized Scripts
+## <a id="rts"></a>Runtime Statements
 
 RT Statements (also RTS) are statements that are defined on runtime.
 The general syntax is `@rt_name ...;`

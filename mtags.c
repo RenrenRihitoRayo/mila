@@ -1,3 +1,5 @@
+// This project is licensed under the GNU Affero General Public License
+
 #define ML_NO_MAIN
 #define RESTRICTED_BUILD
 #include "mila.c"
@@ -18,6 +20,29 @@ static Pos _get_pos(Src *s) {
         }
     }
     return (Pos){line, col};
+}
+
+static char *_normalize_assign(const char *assign, size_t len) {
+    char *result = malloc(len + 1);
+    size_t j = 0;
+    int last_was_space = 0;
+    
+    for (size_t i = 0; i < len; i++) {
+        char c = assign[i];
+        if (c == '\n' || c == '\t' || c == ' ') {
+            if (!last_was_space && j > 0) {
+                result[j++] = ' ';
+                last_was_space = 1;
+            }
+        } else {
+            result[j++] = c;
+            last_was_space = 0;
+        }
+    }
+    
+    if (j > 0 && result[j-1] == ' ') j--;
+    result[j] = '\0';
+    return result;
 }
 
 int sibling = 0;
@@ -79,17 +104,19 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
             assign = "";
             len = 0;
         }
+        char *norm_assign = len > 0 ? _normalize_assign(assign, len) : "";
         malloc_sprintf(buffer,
-                       "%s:%zu:%zu %i %i var \"%s\" %s var %s: \"%s\" %.*s;\n",
+                       "%s:%zu:%zu %i %i var \"%s\" %s var %s: \"%s\" %s;\n",
                        file_name, pos.line, pos.col, level, sibling,
                        type_str ? type_str : "any", id, id,
-                       type_str ? type_str : "any", len, assign);
+                       type_str ? type_str : "any", norm_assign);
+        if (len > 0) mila_free(norm_assign);
         mila_free(id);
         return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
 
     if (is_keyword_at(s, "const")) {
-        s->pos += 3;
+        s->pos += 5;
         Pos pos = _get_pos(s);
         char *id = parse_ident(s);
         if (!id)
@@ -116,11 +143,13 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
             assign = "";
             len = 0;
         }
+        char *norm_assign = len > 0 ? _normalize_assign(assign, len) : "";
         malloc_sprintf(
-            buffer, "%s:%zu:%zu %i %i const \"%s\" %s const %s: \"%s\" %.*s;\n",
+            buffer, "%s:%zu:%zu %i %i const \"%s\" %s const %s: \"%s\" %s;\n",
             file_name, pos.line, pos.col, level, sibling,
             type_str ? type_str : "any", id, id, type_str ? type_str : "any",
-            len, assign);
+            norm_assign);
+        if (len > 0) mila_free(norm_assign);
         mila_free(id);
         return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
@@ -154,10 +183,12 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
             return err;
         match_char(s, ';');
         size_t len = s->pos - start;
+        char *norm_assign = _normalize_assign(assign, len);
         malloc_sprintf(
-            buffer, "%s:%zu:%zu %i %i set \"any\" %s set %.*s: \"any\" %.*s\n",
+            buffer, "%s:%zu:%zu %i %i set \"any\" %s set %.*s: \"any\" %s\n",
             file_name, pos.line, pos.col, level, sibling, id, id_len - 1,
-            id_start + s->src, len, assign);
+            id_start + s->src, norm_assign);
+        mila_free(norm_assign);
         mila_free(id);
         return ERR_SUCCESS;
     }

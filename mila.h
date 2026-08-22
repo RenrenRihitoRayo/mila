@@ -118,6 +118,7 @@
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 
+#define GET_OP_NAME(x) (MILA_OP_NAME[1+x])
 #define GET_TYPENAME(v)                                                        \
     (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type]) : "???")
 #define GET_METHOD(v, m)                                                       \
@@ -135,8 +136,6 @@ typedef enum __attribute__((packed)) {
     TMethodBinop,
     BMethodGetItem, // name[...] syntax
     TMethodSetItem, // set name[...] syntax
-    BMethodCallMethod, // obj:method() syntax
-    BMethodCallNamespaceFunction, // obj::method() syntax
 
     // when converting objects into strings
     UMethodToString,
@@ -178,6 +177,8 @@ typedef enum __attribute__((packed)) {
     BMethodOr,
     BMethodGlob,
     BMethodDefault,
+    BMethodCallMethod, // obj:method() syntax
+    BMethodCallNamespaceFunction, // obj::method() syntax
 } MethodType_Internal; // used by VIOO instances and true primitives (internal
                        // representation)
 
@@ -558,7 +559,9 @@ typedef Value *(*VPrinter)(Value *self);
 #ifndef MILA_PROTO
 // Simple trick (use GET_TYPENAME rather than use this directly)
 extern const char *MILA_TYPE_NAMES[];
+extern const char *MILA_OP_NAME[];
 
+extern const int MILA_OP_COUNT;
 extern const int MILA_TYPE_COUNT;
 extern const int MILA_ERROR_COUNT;
 extern path_list *mila_search_path;

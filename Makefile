@@ -86,12 +86,6 @@ release: $(files)
 	$(cc) $(cflags) -O3 -o mila mila.c
 	strip mila
 
-web $(targets_web): $(files_web)
-	mkdir -p build/web;:
-	emcc -O3 -s WASM=1 -s EXPORTED_FUNCTIONS='["_main"]' -s EXPORTED_RUNTIME_METHODS='["FS","callMain"]' mila.c addon/ml_web.c -o ./build/web/mila.js \
-	-D EXT_WEB -Iheaders -Wextra -Wall -Wno-nonnull -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11 \
-	-s EXPORT_NAME="ModuleFactory" -s MODULARIZE=1 -s FORCE_FILESYSTEM
-
 test-embed: embed.c
 	gcc -o embed embed.c -Iheaders
 	./embed && ls -lh embed
@@ -116,10 +110,10 @@ clean:
 	rm mila *.so test.* *.a mtags
 
 mtags: $(files)
-	gcc -o mtags mtags.c -Iheaders -O3 -Wextra -Wall -Wno-nonnull\
-         -Wno-unused-parameter -Wno-enum-compare -Wno-enum-conversion -std=c11\
-         $(eflags) -Iheaders -Wno-overflow -flto -ffunction-sections -fdata-sections -Wl,-s\
+	gcc -o mtags mtags.c -Iheaders -O3 -std=c11\
+         $(eflags) -flto -ffunction-sections -fdata-sections -Wl,-s\
          -Wl,--gc-sections -fno-stack-protector
+
 
 clang-format:
 	clang-format -i -style="{BasedOnStyle: LLVM, BreakBeforeBraces: Attach, IndentWidth: 4, UseTab: Never}" *.[ch] **/*.[ch]

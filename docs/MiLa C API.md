@@ -398,6 +398,16 @@ Used internally:
 
 * `GET_ERROR_MESSAGE(e)`
 
+These functions casts a numerical type to another numerical type.
+These are helpful when your function takes in any numerical type
+but needs a specific C primitive.
+
+* `unsigned long to_uint(Value* value)`
+
+* `long to_int(Value* value)`
+
+* `double to_float(Value* value)`
+
 #### <a id="values-type"></a>Value Types
 
 MiLa has different enums for different kinds of types.

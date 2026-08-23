@@ -2409,6 +2409,9 @@ void val_kill_incomplete(Value *v) {
     if (v->type == T_RETURN) {
         val_kill((Value *)v->v);
     }
+    if (is_numeric(v)) {
+        mila_free(v->v);
+    }
 cleanup:;
     mila_free(v->type_name);
     v->type_name = NULL;
@@ -6577,33 +6580,29 @@ Value *eval_statement(Src *s, Env *env) {
             val = eval_expr(s, env);
             match_char(s, ';');
         }
+#ifdef ML_USE_REF_UINT
+        unsigned int
+#else
+        unsigned short
+#endif
+        refcount = a->refcount;
         val_kill_incomplete(a);
-        a->type = val->type;
-        switch (GET_TYPE(val)) {
-        case T_INT:
-            a->v->i = GET_INTEGER(val);
-            break;
-        case T_UINT:
-            a->v->ui = GET_UINTEGER(val);
-            break;
-        case T_OWNED_OPAQUE:
-        case T_OPAQUE:
-            a->v = (void *)GET_OPAQUE(val);
-            break;
-        case T_STRING:
-            a->v = (void *)GET_STRING(val);
-            break;
-        case T_FUNCTION:
-            a->v = (void *)val->v;
-            break;
-        case T_NATIVE:
-            a->v = (void *)val->v;
-            break;
-        default:
-            return vtagged_error(E_FATAL, "Type %s cannot be synced!",
-                                 GET_TYPENAME(val));
+        Wrefs *wrefs = NULL;
+        if (a->wrefs) {
+            wrefs = (Wrefs*)mila_malloc(sizeof(Wrefs));
+            memcpy(wrefs, a->wrefs, sizeof(Wrefs));
         }
-        mila_free(val);
+        a->wrefs = NULL;
+        memcpy(a, val, sizeof(Value));
+        a->refcount = refcount;
+        size_t size = sizeof(void*);
+        if (is_numeric(val) || GET_TYPE(val) == T_TAGGED_ERROR) {
+            size = sizeof(ValueValue);
+        }
+        memcpy(a->v, val->v, size);
+        a->wrefs = wrefs;
+        val->v = NULL;
+        val_release(val);
         mila_free(id);
         return vnull();
     }
@@ -8225,7 +8224,7 @@ int main(int argc, char **argv) {
                 if (GET_TYPE(res) != T_NULL && !IS_ERROR(res)) {
                     if (buffer[strlen(buffer) - 1] != ';') {
                         printf("  : ");
-                        raw_print_value_repr(res);
+                        print_value_repr(res);
                         putchar('\n');
                     }
                 } else {

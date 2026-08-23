@@ -16,11 +16,6 @@ object iter_pipeline {
     }
 }
 
-fn add(a) {
-    return a + 3;
-}
-
-var test = iter_pipeline:new([1, 2, 3]);
-println(test);
-test:map(add);
-println(test);
+export([@
+    "iter_pipeline"=iter_pipeline
+]);

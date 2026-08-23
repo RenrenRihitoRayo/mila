@@ -44,10 +44,6 @@
 #undef ML_LIB
 #endif
 
-#ifdef _WIN32
-#include <direct.h>
-#include <windows.h>
-#else
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -56,7 +52,6 @@
 #include <sys/time.h>
 #include <termios.h>
 #include <unistd.h>
-#endif
 
 #include <time.h>
 
@@ -229,8 +224,6 @@ Value *native_map(Env* env, int argc, Value** argv) {
     mila_free(source);
     return list;
 }
-
-
 
 Value *native_cast_int(Env *env, int argc, Value **argv) {
     (void)env;
@@ -597,7 +590,7 @@ Value *native_file_list_dir(Env *e, int argc, Value **argv) {
 
 Value *native_fprint(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_STRING) {
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_STRING) {
         return verror("fprint(file, string) expects (handle, string).");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -633,7 +626,7 @@ Value *native_fprint_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fread(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT) {
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_INT) {
         return verror("fread(file, num_bytes) expects (handle, int).");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -657,7 +650,7 @@ Value *native_fread(Env *env, int argc, Value **argv) {
 
 Value *native_fread_bytes(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT) {
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_INT) {
         return verror("fread_bytes(file, num_bytes) expects (handle, int).");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -687,7 +680,7 @@ Value *native_fread_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fread_all(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1 || argv[0]->type != T_OPAQUE) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0) {
         return verror("fread_all(file) expects handle.");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -710,7 +703,7 @@ Value *native_fread_all(Env *env, int argc, Value **argv) {
 
 Value *native_fread_all_bytes(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1 || argv[0]->type != T_OPAQUE) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0) {
         return verror("fread_all(file) expects handle.");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -739,7 +732,7 @@ Value *native_fread_all_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fseek(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 3 || argv[0]->type != T_OPAQUE || argv[1]->type != T_INT ||
+    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_INT ||
         argv[2]->type != T_INT) {
         return verror(
             "fseek(file, offset, whence) expects (handle, int, int).");
@@ -772,7 +765,7 @@ Value *native_fseek(Env *env, int argc, Value **argv) {
 
 Value *native_ftell(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1 || argv[0]->type != T_OPAQUE) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0) {
         return verror("ftell(file) expects 1 file handle arg.");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -858,10 +851,12 @@ Value *native_time_sleep_ms(Env *env, int argc, Value **argv) {
         return verror(
             "time_sleep_ms(time): invalid number of arguments given.");
     }
-    if (GET_TYPE(argv[0]) == T_INT)
-        sleep_micros(GET_INTEGER(argv[0]) * 1000);
-    else if (GET_TYPE(argv[0]) == T_UINT)
-        sleep_micros(GET_UINTEGER(argv[0]) * 1000);
+    if (!is_numeric(argv[0])) {
+        return verror(
+            "time_sleep_ms(time): expected argument to be numerical.");
+    }
+    unsigned long t = to_uint(argv[0]);
+    sleep_micros(t * 1000);
     return vnull();
 }
 

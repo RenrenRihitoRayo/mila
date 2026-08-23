@@ -271,50 +271,9 @@ const NativeEntry lib_function_entries[] = {
 };
 ```
 
-## MiLa Syntax Rules
+## MiLa dependencies
 
-* Expressions return something
-
-    `<expr>`
-
-    They can contain:
-    
-    * Binary Operations `<expr> <op> <expr>`
-
-    * Unary Operations `<op> <expr>`
-
-    * Literals `<lit>`
-
-* Binary operations
-
-    `<expr> <op> <expr>`
-    
-    Operations are:
-
-    * `+`, `-`, `*`, `/`, and `%` like in C
-
-    * `&&`, and `||`, similar to C BUT does NOT shortcircuit
-
-* Unary operations
-
-    `<op> <expr>` or `<expr> <op>`
-    
-    * `!<expr>` not operation
-
-    * `<expr>?` weakref operator
-
-* Literals
-
-    `<lit>`
-
-    * in regex `-?[0-9]+` integers, also `<int>`
-
-    * in regex `-?[0-9]+u` unsigned intergers, also `<uint>`
-
-    * in regex `-?[0-9]+\.[0-9]+` floats, also `<float>`
-
-    * in regex `"[^"]+"` strings, also `<string>`
-
-    * `fn(<param list>)[<contextuals list>]:[<closures list>] -> <string> {<block>}` lambda, also `<lambda>`
-
-
+* blr (my own readline implementation)
+* libc
+* libdl (if separate from libc)
+* libm (if separate from libc)

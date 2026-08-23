@@ -52,21 +52,21 @@ contexts:
       scope: support.function.mila
     - match: '\b(_debug\.get_mem|hash\.set_seed|env\.set_local|env\.get_names|file\.list_dir|list\.contains|json\.dumps_io|report_tagged|time_sleep_ms|thread\.cancel)\b'
       scope: support.function.mila
-    - match: '\b(thread\.status|fprint_bytes|file\.is_file|str\.endswith|str\.contains|get_tm_local|sys\.get_arch|thread\.mutex|fread_bytes|file\.exists)\b'
+    - match: '\b(thread\.status|env\.get_type|fprint_bytes|file\.is_file|file\.resolve|str\.endswith|str\.contains|get_tm_local|sys\.get_arch|thread\.mutex)\b'
       scope: support.function.mila
-    - match: '\b(file\.is_dir|list\.append|from_opaque|mjson\.loads|mjson\.dumps|str\.toupper|str\.tolower|_breakpoint|sys\.get_pid|thread\.make)\b'
+    - match: '\b(fread_bytes|file\.exists|file\.is_dir|list\.append|from_opaque|mjson\.loads|mjson\.dumps|str\.toupper|str\.tolower|_breakpoint)\b'
       scope: support.function.mila
-    - match: '\b(thread\.join|thread\.dump|fdredirect|list\.index|list\.slice|array\.from|cast\.float|is_numeric|json\.loads|json\.dumps)\b'
+    - match: '\b(sys\.get_pid|thread\.make|thread\.join|thread\.dump|fdredirect|list\.index|list\.slice|array\.from|cast\.float|is_numeric)\b'
       scope: support.function.mila
-    - match: '\b(time_sleep|get_tm_gmt|sys\.setenv|sys\.getenv|readch_nb|fread_all|array\.len|dict\.keys|as_opaque|str\.slice)\b'
+    - match: '\b(json\.loads|json\.dumps|time_sleep|get_tm_gmt|sys\.setenv|sys\.getenv|fread_all|array\.len|dict\.keys|as_opaque)\b'
       scope: support.function.mila
-    - match: '\b(str\.index|str\.patch|str\.pop_f|str\.pop_b|str\.split|repr_raw|list\.pop|list\.len|dict\.rem|cast\.int)\b'
+    - match: '\b(str\.slice|str\.index|str\.patch|str\.pop_f|str\.pop_b|str\.split|repr_raw|list\.pop|list\.len|dict\.rem)\b'
       scope: support.function.mila
-    - match: '\b(cast\.str|cast\.i2f|cast\.i2u|cast\.u2i|cast\.f2i|str\.copy|str\.join|str\.find|get_time|strftime)\b'
+    - match: '\b(cast\.int|cast\.str|cast\.i2f|cast\.i2u|cast\.u2i|cast\.f2i|str\.copy|str\.join|str\.find|get_time)\b'
       scope: support.function.mila
-    - match: '\b(srandom|crandom|env\.set|env\.get|println|str\.len|istring|require|random|printr)\b'
+    - match: '\b(strftime|srandom|crandom|env\.set|env\.get|println|str\.len|istring|require|random)\b'
       scope: support.function.mila
-    - match: '\b(readch|fdopen|fileno|fclose|fprint|fflush|isatty|typeof|export|report)\b'
+    - match: '\b(export|printr|fdopen|fileno|fclose|fprint|fflush|isatty|typeof|report)\b'
       scope: support.function.mila
     - match: '\b(assert|system|invoke|range|qsort|print|input|close|fread|fseek)\b'
       scope: support.function.mila
@@ -74,9 +74,9 @@ contexts:
       scope: support.function.mila
     - match: '\b(open|list|dict|ceil|sqrt|rand|fabs|exit|eval|load)\b'
       scope: support.function.mila
-    - match: '\b(and|xor|not|own|sin|cos|tan|pow|abs|run)\b'
+    - match: '\b(map|and|xor|not|own|sin|cos|tan|pow|abs)\b'
       scope: support.function.mila
-    - match: '\b(or)\b'
+    - match: '\b(run|or)\b'
       scope: support.function.mila
 
   constant:

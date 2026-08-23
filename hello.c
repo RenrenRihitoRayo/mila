@@ -19,10 +19,9 @@ Value *greet(Env *e, int argc, Value **argv) {
     if (argc != 1 || GET_TYPE(argv[0]) != T_STRING) {
         return vtagged_error(
             E_TYPE_ERROR, "Expected first argument to be a string but got %s!",
-            GET_TYPENAME(argv[0]));
+            argc != 0 ? GET_TYPENAME(argv[0]) : "no arguments!");
     }
-    printf("Hello %s!", GET_STRING(argv[0]));
-    puts("");
+    printf("Hello %s!\n", GET_STRING(argv[0]));
     return vnull();
 }
 

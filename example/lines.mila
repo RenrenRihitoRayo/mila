@@ -1,0 +1,6 @@
+
+fn test() {
+    report_tagged(2, "Huh");
+}
+
+test();

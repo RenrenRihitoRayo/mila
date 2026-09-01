@@ -112,7 +112,7 @@
 #define GET_OPAQUE(val) (val ? (void *)val->v : NULL)
 #define GET_FUNCTION(val) (val ? (FunctionV *)val->v : NULL)
 #define GET_NATIVE(val) (val ? (NativeFunctionV *)val->v : NULL)
-#define GET_ERROR_MESSAGE(val) (val ? (char *)val->v : NULL)
+#define GET_ERROR_MESSAGE(val) (val ? (val->type == T_ERROR ? (char *)val->v : GET_TAGGED_ERROR_MESSAGE(val)) : NULL)
 #define GET_TAGGED_ERROR_MESSAGE(val)                                          \
     (val ? val->v->tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
@@ -494,6 +494,14 @@ typedef struct {
     NativeFn func;
 } NativeEntry;
 
+typedef struct {
+    size_t line;
+    size_t column;
+} Pos;
+
+typedef struct Src Src;
+Pos get_pos(Src* s);
+
 double get_unix_timestamp(void);
 
 // ================= NOT SO PUBLIC APIS (or spicy api stuff, depends on your
@@ -626,6 +634,7 @@ typedef struct {
     char *name;
     char *return_type;
     Env *closure;
+    size_t line; // line the function was defined on
 } FunctionV;
 
 struct FunctionParameters {
@@ -649,6 +658,7 @@ typedef union {
         ErrorType type;
         int return_code; // -1 by default, if it remains -1 the error type is
                          // the error code.
+        Pos pos;
     } tagged_error;
 } ValueValue;
 

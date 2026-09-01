@@ -4,24 +4,6 @@
 #define RESTRICTED_BUILD
 #include "mila.c"
 
-typedef struct {
-    size_t line, col;
-} Pos;
-
-static Pos _get_pos(Src *s) {
-    size_t line = 1, col = 0;
-
-    for (size_t i = 0; i < s->pos && i < s->len; ++i) {
-        if (s->src[i] == '\n') {
-            line++;
-            col = 0;
-        } else {
-            col++;
-        }
-    }
-    return (Pos){line, col};
-}
-
 static char *_normalize_assign(const char *assign, size_t len) {
     char *result = malloc(len + 1);
     size_t j = 0;
@@ -78,7 +60,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
     skip_ws(s);
     if (is_keyword_at(s, "var")) {
         s->pos += 3;
-        Pos pos = _get_pos(s);
+        Pos pos = get_pos(s);
         char *id = parse_ident(s);
         if (!id)
             return ERR_INVALID_IDENT;
@@ -107,7 +89,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
         char *norm_assign = len > 0 ? _normalize_assign(assign, len) : "";
         malloc_sprintf(buffer,
                        "%s:%zu:%zu %i %i var \"%s\" %s var %s: \"%s\" %s;\n",
-                       file_name, pos.line, pos.col, level, sibling,
+                       file_name, pos.line, pos.column, level, sibling,
                        type_str ? type_str : "any", id, id,
                        type_str ? type_str : "any", norm_assign);
         if (len > 0) mila_free(norm_assign);
@@ -117,7 +99,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
 
     if (is_keyword_at(s, "const")) {
         s->pos += 5;
-        Pos pos = _get_pos(s);
+        Pos pos = get_pos(s);
         char *id = parse_ident(s);
         if (!id)
             return ERR_INVALID_IDENT;
@@ -146,7 +128,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
         char *norm_assign = len > 0 ? _normalize_assign(assign, len) : "";
         malloc_sprintf(
             buffer, "%s:%zu:%zu %i %i const \"%s\" %s const %s: \"%s\" %s;\n",
-            file_name, pos.line, pos.col, level, sibling,
+            file_name, pos.line, pos.column, level, sibling,
             type_str ? type_str : "any", id, id, type_str ? type_str : "any",
             norm_assign);
         if (len > 0) mila_free(norm_assign);
@@ -156,7 +138,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
 
     if (is_keyword_at(s, "set")) {
         s->pos += 3;
-        Pos pos = _get_pos(s);
+        Pos pos = get_pos(s);
         skip_ws(s);
         size_t id_start = s->pos;
         char *id = parse_ident(s);
@@ -186,7 +168,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
         char *norm_assign = _normalize_assign(assign, len);
         malloc_sprintf(
             buffer, "%s:%zu:%zu %i %i set \"any\" %s set %.*s: \"any\" %s\n",
-            file_name, pos.line, pos.col, level, sibling, id, id_len - 1,
+            file_name, pos.line, pos.column, level, sibling, id, id_len - 1,
             id_start + s->src, norm_assign);
         mila_free(norm_assign);
         mila_free(id);
@@ -292,7 +274,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
 
     if (is_keyword_at(s, "fn")) {
         s->pos += 2;
-        Pos pos = _get_pos(s);
+        Pos pos = get_pos(s);
         char *name = parse_ident(s);
         if (!name)
             return ERR_INVALID_IDENT;
@@ -349,7 +331,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
 
         malloc_sprintf(buffer,
                        "%s:%zu:%zu %i %i fn \"%s\" %s fn %s(%s) -> \"%s\"\n",
-                       file_name, pos.line, pos.col, level, sibling,
+                       file_name, pos.line, pos.column, level, sibling,
                        ret_type ? ret_type : "any", name, name, p_str,
                        ret_type ? ret_type : "any");
         mila_free(name);
@@ -394,10 +376,10 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
             return ERR_INVALID_IDENT;
         match_char(s, ':');
         const char *expr_id = skip_parse_expr_prec(s, 1);
-        Pos pos = _get_pos(s);
+        Pos pos = get_pos(s);
         fprintf(stderr,
                 "%s:%zu:%zu WARNING: Cant reliably report about alias here.\n",
-                file_name, pos.line, pos.col);
+                file_name, pos.line, pos.column);
         mila_free(cid);
         return match_char(s, ';') ? expr_id : ERR_EXPECTED_SEMICOLON;
     }

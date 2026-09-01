@@ -420,6 +420,20 @@ CleanupRegistryEntry *make_cleanup_entry(char *name, void (*fn)(Env *)) {
     return entry;
 }
 
+Pos get_pos(Src* s) {
+    size_t line = 1, col = 1;
+    for (size_t i = 0; i < s->pos && i < s->len; ++i) {
+        if (s->src[i] == '\n') {
+            line++;
+            col = 1;
+        } else {
+            if (s->src[i] == '\t') col += 4;
+            else col++;
+        }
+    }
+    return (Pos){.line=line, .column=col};
+}
+
 void free_cleanup_registry(CleanupRegistry *registry) {
     for (size_t index = 0; index < registry->count; ++index) {
         mila_free(registry->registry[index]->name);
@@ -1269,6 +1283,71 @@ __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
     Value *v = val_new(T_TAGGED_ERROR);
     v->v->tagged_error.message = buf;
     v->v->tagged_error.type = err;
+    v->v->tagged_error.pos = (Pos){0, 0};
+    v->v->tagged_error.return_code = -1;
+    return v;
+}
+
+__attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+
+    // First pass: find length
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int len = vsnprintf(NULL, 0, fmt, ap_copy);
+    va_end(ap_copy);
+
+    if (len < 0) {
+        va_end(ap);
+        return NULL;
+    }
+
+    char *buf = mila_malloc(len + 1);
+    if (!buf) {
+        va_end(ap);
+        Value *v = val_new_raw(T_ERROR);
+        v->v = (void *)mila_strdup("verror could not allocate memory!");
+        return v;
+    }
+
+    vsnprintf(buf, len + 1, fmt, ap);
+    va_end(ap);
+    Value *v = val_new_raw(T_ERROR);
+    v->v = (void *)buf;
+    return v;
+}
+
+__attribute__((format(printf, 3, 4))) Value *vtagged_error_pos(Pos pos, ErrorType err,
+                                                           char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+
+    // First pass: find length
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    int len = vsnprintf(NULL, 0, fmt, ap_copy);
+    va_end(ap_copy);
+
+    if (len < 0) {
+        va_end(ap);
+        return NULL;
+    }
+
+    char *buf = mila_malloc(len + 1);
+    if (!buf) {
+        va_end(ap);
+        Value *v = val_new_raw(T_ERROR);
+        v->v = (void *)mila_strdup("verror could not allocate memory!");
+        return v;
+    }
+
+    vsnprintf(buf, len + 1, fmt, ap);
+    va_end(ap);
+    Value *v = val_new(T_TAGGED_ERROR);
+    v->v->tagged_error.pos = pos;
+    v->v->tagged_error.message = buf;
+    v->v->tagged_error.type = err;
     v->v->tagged_error.return_code = -1;
     return v;
 }
@@ -1303,36 +1382,6 @@ vtagged_coded_error(ErrorType err, int ret_code, char *fmt, ...) {
     v->v->tagged_error.message = buf;
     v->v->tagged_error.type = err;
     v->v->tagged_error.return_code = ret_code;
-    return v;
-}
-
-__attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-
-    // First pass: find length
-    va_list ap_copy;
-    va_copy(ap_copy, ap);
-    int len = vsnprintf(NULL, 0, fmt, ap_copy);
-    va_end(ap_copy);
-
-    if (len < 0) {
-        va_end(ap);
-        return NULL;
-    }
-
-    char *buf = mila_malloc(len + 1);
-    if (!buf) {
-        va_end(ap);
-        Value *v = val_new_raw(T_ERROR);
-        v->v = (void *)mila_strdup("verror could not allocate memory!");
-        return v;
-    }
-
-    vsnprintf(buf, len + 1, fmt, ap);
-    va_end(ap);
-    Value *v = val_new_raw(T_ERROR);
-    v->v = (void *)buf;
     return v;
 }
 
@@ -3811,14 +3860,14 @@ const char *skip_parse_source(Src *s) {
 int syn_check(Src *s) {
     const char *err = skip_parse_source(s);
     if (err) {
-        size_t line = 1, col = 0;
+        size_t line = 1, col = 1;
         size_t line_start = 0;
 
         for (size_t i = 0; i < s->pos && i < s->len; ++i) {
             if (s->src[i] == '\n') {
                 line++;
                 line_start = i + 1;
-                col = 0;
+                col = 1;
             } else {
                 col++;
             }
@@ -4870,8 +4919,8 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
         Value *res = eval_source(child, frame);
         src_free(child);
         env_free(frame);
+        if (IS_ERROR_TAGGED(res)) res->v->tagged_error.pos.line += GET_FUNCTION(fnval)->line;
         HANDLE_CONTROL(res);
-        return res;
     } else {
         // not callable
         char *repr = as_c_string_repr_raw(fnval);
@@ -4890,6 +4939,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
 // parentheses, function literal
 Value *eval_primary(Src *s, Env *env) {
     skip_ws(s);
+    Pos expr_pos = get_pos(s);
     char c = src_peek(s);
     if (c == '\0')
         return vnull();
@@ -5139,9 +5189,10 @@ Value *eval_primary(Src *s, Env *env) {
         val_release(v);
         return res;
     }
-    // function literal
+    // function literal (lambda)
     if (is_keyword_at(s, "fn")) {
         // consume keyword
+        Pos fn_pos = get_pos(s);
         s->pos += strlen("fn");
         // parse params
         FunctionParameters *params = parse_param_list(s);
@@ -5232,6 +5283,7 @@ Value *eval_primary(Src *s, Env *env) {
         Value *fn = vfunction(params, ret, contextuals, closure, body);
         mila_free(params);
         GET_FUNCTION(fn)->name = mila_strdup("[lambda]");
+        GET_FUNCTION(fn)->line = fn_pos.line;
         return fn;
     }
     // identifier or keyword like 'null', 'true', 'false', or bare native name
@@ -5267,7 +5319,7 @@ Value *eval_primary(Src *s, Env *env) {
             int argc = 0;
             skip_ws(s);
 
-            // handle (value)(...) calls
+            // handle value(...) calls
             if (src_peek(s) != ')') {
                 for (;;) {
                     Value *a = eval_expr(s, env);
@@ -5319,7 +5371,6 @@ Value *eval_primary(Src *s, Env *env) {
                 mila_free(args);
                 return res;
             }
-            mila_free(id);
             // callp
 #ifdef MILA_DEBUG
             printf("  ?? Call to %s\n", ((NativeFunctionV *)(callee->v))->name);
@@ -5328,6 +5379,30 @@ Value *eval_primary(Src *s, Env *env) {
             for (int i = 0; i < argc; i++)
                 val_release(args[i]);
             mila_free(args);
+            if (IS_ERROR(res) && !IS_FATAL(res)) {
+                char* error = NULL;
+                ErrorType type = E_NO_ERROR;
+                if (IS_ERROR_TAGGED(res)) {
+                    malloc_sprintf(&error, "Error calling function '%s' (defined in line %zu) in line %zu column %zu\n  Error in function was in line %zu column %zu\n    %s",
+                        id,
+                        (GET_TYPE(callee) == T_FUNCTION ? GET_FUNCTION(callee)->line : 0),
+                        expr_pos.line,
+                        expr_pos.column,
+                        res->v->tagged_error.pos.line + (GET_TYPE(callee) == T_FUNCTION ? GET_FUNCTION(callee)->line : 0),
+                        res->v->tagged_error.pos.column,
+                        GET_ERROR_MESSAGE(res));
+                    type = res->v->tagged_error.type;
+                }
+                else malloc_sprintf(&error, "Error calling function '%s' (defined in line %zu) in line %zu column %zu\n  %s", id, (GET_TYPE(callee) == T_FUNCTION ? GET_FUNCTION(callee)->line : 0), expr_pos.line, expr_pos.column, GET_ERROR_MESSAGE(res));
+                val_release(res);
+                Value *res;
+                if (type == E_NO_ERROR) res = verror("%s", error);
+                else res = vtagged_error(type, "%s", error);
+                mila_free(error);
+                mila_free(id);
+                return res;
+            }
+            mila_free(id);
             HANDLE_RETURN(res);
             return res;
         } else if (src_peek(s) == '[') {
@@ -6385,13 +6460,14 @@ Value *eval_statement(Src *s, Env *env) {
                     val_release(v);
                     return err;
                 }
-                Value *res = NULL;
+                Value *res = v;
                 if (inplace)
-                    env_set_raw(env, id, res = binary_op(inplace, mt, v));
+                    env_set_raw(env, id, res = binary_op(inplace, mt, res));
+                else
+                    env_set_raw(env, id, res);
                 mila_free(id);
-                val_release(v);
                 match_char(s, ';');
-                return val_retain(res);
+                return res;
             }
         } else if (match_char(s, ':')) {
             v = eval_statement(s, env);
@@ -7093,8 +7169,10 @@ Value *eval_statement(Src *s, Env *env) {
         mila_free(id);
         return res;
     }
+    // function statement
     if (is_keyword_at(s, "fn")) {
         // consume keyword
+        Pos fn_pos = get_pos(s);
         s->pos += strlen("fn");
         char *name = parse_ident(s);
         char *type_string = NULL;
@@ -7185,6 +7263,7 @@ Value *eval_statement(Src *s, Env *env) {
         Value *fn = vfunction(params, type_string, contextuals, closure, body);
         if (!GET_FUNCTION(fn)->name)
             GET_FUNCTION(fn)->name = mila_strdup(name);
+        GET_FUNCTION(fn)->line = fn_pos.line;
         if (env_set_local(env, name, fn)) {
             env_free(closure);
             for (int i = 0; params->params[i]; ++i) {

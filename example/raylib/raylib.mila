@@ -110,19 +110,11 @@ while (not(WindowShouldClose()))
     if (auto) {
         var min = 1000.0;
         var min_food = none;
-        var player_v = Vector2(Rectangle.get_x(player), Rectangle.get_y(player));
         foreach food : foods {
-            var food_v = Vector2(Rectangle.get_x(food), Rectangle.get_y(food));
-            var dist = distance(player_v, food_v);
-            if (dist < min) {
-                set min = dist;
-                set min_food = food;
-            }
-        }
-        if (min_food) {
-            step(player_v, Vector2(Rectangle.get_x(min_food), Rectangle.get_y(min_food)), 2000 * delta);
-            Rectangle.set_x(player, Vector2.get_x(player_v));
-            Rectangle.set_y(player, Vector2.get_y(player_v));
+            var food_v = Vector2(0.0, 0.0);
+            step(food_v, Vector2(Rectangle.get_x(player), Rectangle.get_y(player)), 2000 * delta);
+            Rectangle.set_x(food, Rectangle.get_x(food_v));
+            Rectangle.set_y(food, Rectangle.get_y(food_v));
         }
     }
 
@@ -153,7 +145,8 @@ while (not(WindowShouldClose()))
          "\nPeak FPS: " + peak_fps +
          "\nDelta: " + delta +
          "\nPos: " + Rectangle.get_x(player) + " " + Rectangle.get_y(player) +
-         "\nPlayer Speed: " + ceil(player_speed * delta)
+         "\nPlayer Speed: " + ceil(player_speed * delta) +
+         "\nAuto: " + auto
           , 10, 10, 15, BLACK
     );
 

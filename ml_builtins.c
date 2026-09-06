@@ -386,20 +386,20 @@ Value *file_printer(Value *self) {
 
 Value *native_isatty(Env *env, int argc, Value **argv) {
     if (argc != 1 || !is_numeric(argv[0]))
-        return verror("istty(fd): Invalid arguments.");
+        return verror("istty(fd): Expected numeric type");
     return vbool(isatty((int)to_int(argv[0])));
 }
 
 Value *native_open(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc != 2 || argv[0]->type != T_STRING || argv[1]->type != T_STRING) {
-        return verror("open(filename, mode) expects 2 string args.");
+        return verror("open(filename, mode) expects 2 string args");
     }
     char *path = GET_STRING(argv[0]);
     if (!mila_search_path) {
         char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
         if (!path) {
-            return verror("open(filename, mode) did not find the file.");
+            return verror("open(filename, mode) did not find the file");
         }
     }
     char *res = NULL, *og_res = path_list_find(mila_search_path, path);
@@ -425,13 +425,13 @@ Value *native_open(Env *env, int argc, Value **argv) {
 Value *native_fdopen(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc != 2 || argv[0]->type != T_INT || argv[1]->type != T_STRING) {
-        return verror("fdopen(filedescriptor, mode) expects 2 string args.");
+        return verror("fdopen(filedescriptor, mode) expects 2 string args");
     }
     if (!mila_search_path) {
         char *path = path_list_find(mila_search_path, GET_STRING(argv[0]));
         if (!path) {
             return verror(
-                "fdopen(filedescriptor, mode) did not find the file.");
+                "fdopen(filedescriptor, mode) did not find the file");
         }
     }
 

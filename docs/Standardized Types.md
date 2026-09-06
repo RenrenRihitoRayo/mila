@@ -2,7 +2,7 @@
 
 * `type` just the type `type`
 
-* `type[i_type]` a colelction of type `type` with items of type `i_type`
+* `type[i_type]` a collection of type `type` with items of type `i_type`
 
 * `{type1, type2, type3}` is a union.
 
@@ -24,4 +24,31 @@
 
 ## Standard types
 
+* `int`, `float`, and `uint`
+
+    Standard numeric types.
+
+* `string`
+
+    Standard string type.
+
+* `dict`, `list`, and `array`
+
+    Standard collections
+
+* `bool`
+
+    Standard boolean
+
+* `file`
+
+    Standard file
+
+* `numeric`
+
+    For numeric types, shorthand for `{int, uint, float}` or any numeric acting type.
+
+* `callable`
+
+    For callable types, shorthand for `{function, native}`
 

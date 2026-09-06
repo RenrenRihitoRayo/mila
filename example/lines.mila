@@ -1,6 +1,10 @@
-
-fn test() {
-    report_tagged(2, "Huh");
+object t {
+    fn t(self) {
+        return self;
+    }
+    fn c(self) {
+        report_tagged("huh");
+    }
 }
 
-test();
+t:t():t():c();

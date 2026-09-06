@@ -42,7 +42,6 @@
 
 #define _GNU_SOURCE
 
-#include <ctype.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -112,13 +111,16 @@
 #define GET_OPAQUE(val) (val ? (void *)val->v : NULL)
 #define GET_FUNCTION(val) (val ? (FunctionV *)val->v : NULL)
 #define GET_NATIVE(val) (val ? (NativeFunctionV *)val->v : NULL)
-#define GET_ERROR_MESSAGE(val) (val ? (val->type == T_ERROR ? (char *)val->v : GET_TAGGED_ERROR_MESSAGE(val)) : NULL)
+#define GET_ERROR_MESSAGE(val)                                                 \
+    (val ? (val->type == T_ERROR ? (char *)val->v                              \
+                                 : GET_TAGGED_ERROR_MESSAGE(val))              \
+         : NULL)
 #define GET_TAGGED_ERROR_MESSAGE(val)                                          \
     (val ? val->v->tagged_error.message : NULL)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 
-#define GET_OP_NAME(x) (MILA_OP_NAME[1+x])
+#define GET_OP_NAME(x) (MILA_OP_NAME[1 + x])
 #define GET_TYPENAME(v)                                                        \
     (v ? (v->type_name ? v->type_name : MILA_TYPE_NAMES[v->type]) : "???")
 #define GET_METHOD(v, m)                                                       \
@@ -177,7 +179,7 @@ typedef enum __attribute__((packed)) {
     BMethodOr,
     BMethodGlob,
     BMethodDefault,
-    BMethodCallMethod, // obj:method() syntax
+    BMethodCallMethod,            // obj:method() syntax
     BMethodCallNamespaceFunction, // obj::method() syntax
 } MethodType_Internal; // used by VIOO instances and true primitives (internal
                        // representation)
@@ -500,7 +502,7 @@ typedef struct {
 } Pos;
 
 typedef struct Src Src;
-Pos get_pos(Src* s);
+Pos get_pos(Src *s);
 
 double get_unix_timestamp(void);
 
@@ -662,20 +664,14 @@ typedef union {
     } tagged_error;
 } ValueValue;
 
-typedef struct {
-    Value **items;
-    size_t size, count;
-} Wrefs;
-
 // Primitives are boxed, minimum size 48 bytes.
 // worst case is 100+ Bytes (especially if VIOO)
 struct Value {
-#ifndef ML_USE_REF_UINT
+#ifdef ML_USE_REF_SHORT
     unsigned short refcount; // simple refcount (2 bytes)
 #else
     unsigned int refcount;
 #endif
-    Wrefs *wrefs;              // for weak references
     char owns_table;           // check if table can be freed or not (1 byte)
     ValueType type;            // 4 bytes
     char *type_name;           // 8 bytes ptr
@@ -683,6 +679,7 @@ struct Value {
     ValueValue *v;             // around 8 bytes
 };
 
+// for future wref
 #ifndef ML_USE_REF_UINT
 #define ML_WEAK_REF_TRIGGER (unsigned short)-1
 #define ML_MAX_REFS (unsigned short)-2
@@ -704,6 +701,7 @@ typedef struct Src {
     char *src;    // full source string (null-terminated)
     uint64_t pos; // current position
     uint64_t len;
+    size_t line_offset;
 } Src;
 
 Src *src_new(const char *s);

@@ -3,6 +3,6 @@
 
 // Must be first statement
 // argc doesnt capture anything
-!fn (argc: "int", script_name: "str", ...argv: "list<str>"=[]) -> "int"
+!fn (argc: "int", script_name: "str", ...argv: "list[str]"=[]) -> "int"
 
 println(argc, script_name, argv);

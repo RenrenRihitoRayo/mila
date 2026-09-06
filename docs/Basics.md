@@ -19,7 +19,6 @@ Some constructs may feel natural while some not so much.
 		* [RTS-Functions](#func-rts)
 * [Loops](#loops)
 * [Objects](#obj)
-* [Weak Referencing](#weakref)
 * [Namespaces](#namespaces)
 * [Catching Errors](#error)
 * [Blocks](#blocks)
@@ -388,34 +387,6 @@ object Person {
 var carl = Person:new("Carl");
 println(carl);
 ```
-
-## <a id="weakref"></a>Weak Referencing
-
-Using the `?<expr>` syntax the value that is returned by the
-following expression will be weak referenced. This is useful
-for deliberately creating cycles in containers.
-<br><br>
-Notes:
-
-* The expression must NOT be a temporary value.
-
-    The value must be attached to a variable or a container
-    also attached to a variable.
-    The best pattern is
-    ```MiLa
-    var tmp = <temporary value here>;
-    some_fn(?tmp);
-    ```
-
-* "Why does it need to be attached to a variable"
-
-    The interpreter will not handle weak refs for you.
-    Any temporary value immediately passed to `?...` will
-    not be freed due to the value being weak referenced.
-
-* "What happens to weak references when the value it references is freed?"
-
-    It becomes none.
 
 ## <a id="error"></a>Error Handling
 

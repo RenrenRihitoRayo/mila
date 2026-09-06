@@ -10,6 +10,7 @@
 #include "ml_dict.h"
 #include "ml_ll.c"
 #include "ml_string.h"
+#include <ctype.h>
 #include <string.h>
 
 // Define meta tables
@@ -651,7 +652,7 @@ Value *native_str_pop_start(Env *env, int argc, Value **argv) {
     (void)env;
     (void)argc;
     if (!match_types(argv, T_STRING, T_ARG_END))
-        return vnull();
+        return verror("str.pop_f(str): Expected string.");
     char *raw_string = GET_STRING(argv[0]);
     char ch = *raw_string; // get first char
 
@@ -667,7 +668,7 @@ Value *native_str_pop_end(Env *env, int argc, Value **argv) {
     (void)env;
     (void)argc;
     if (!match_types(argv, T_STRING, T_ARG_END))
-        return vnull();
+        return verror("str.pop_b(str): Expected string.");
     char *raw_string = GET_STRING(argv[0]);
     char ch = *(raw_string + strlen(raw_string) - 1); // get last char
 
@@ -684,17 +685,18 @@ Value *native_str_pop_end(Env *env, int argc, Value **argv) {
 Value *native_ascii_from_int(Env *env, int argc, Value **argv) {
     (void)env;
     (void)argc;
-    if (!match_types(argv, T_INT, T_ARG_END))
-        return vnull();
-    return vstring_dup((char[]){(char)argv[0]->v->i, '\0'});
+    if (argc != 1 || !is_numeric(argv[1]))
+        return verror("ascii.from_int(n): Expected numeric argument.");
+    return vstring_dup((char[]){(char)to_int(argv[0]), '\0'});
 }
 
 Value *native_ascii_from_string(Env *env, int argc, Value **argv) {
     (void)env;
     (void)argc;
-    if ((!match_types(argv, T_STRING, T_ARG_END)) ||
-        strlen(GET_STRING(argv[0])) != 1)
-        return vnull();
+    if (!match_types(argv, T_STRING, T_ARG_END))
+        return verror("ascii.from_string(ch): Expected string.");
+    if (strlen(GET_STRING(argv[0])) != 1)
+        return verror("ascii.from_string(ch): Expected string of 1 char.");
     return vint(GET_STRING(argv[0])[0]);
 }
 

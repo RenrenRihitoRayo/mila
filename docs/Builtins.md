@@ -10,6 +10,7 @@ and doesnt require you to run an external file.
 * [Lists](#list)
 * [Dictionaries](#dict)
 * [Arrays](#arr)
+* [Functional Stuff](#func)
 * [Sorting](#sort)
 * [Environments](#env)
 * [Strings](#str)
@@ -278,6 +279,17 @@ typedef struct {
     fn compare(a, b) { return a - b; }
     ```
     The qsort function works as it does in the GNU C standard library.
+
+## <a id="func"></a>Functional Stuff
+
+* `map(lst: "opaque:list<T>", func: "function") -> "opaque:list<T>"`
+
+    Enumerate each item of the list `lst` with the function `func`.
+
+* `filter(lst: "opaque:list<T>", func: "function") -> "opaque:list<T>"`
+
+    Enumerate each item of the list `lst` with the function `func`,
+    the item will only get collected if `func` returns true for that item of `lst`.
 
 ## <a id="env"></a>Environments
 

@@ -8,7 +8,7 @@ static char *_normalize_assign(const char *assign, size_t len) {
     char *result = malloc(len + 1);
     size_t j = 0;
     int last_was_space = 0;
-    
+
     for (size_t i = 0; i < len; i++) {
         char c = assign[i];
         if (c == '\n' || c == '\t' || c == ' ') {
@@ -21,8 +21,9 @@ static char *_normalize_assign(const char *assign, size_t len) {
             last_was_space = 0;
         }
     }
-    
-    if (j > 0 && result[j-1] == ' ') j--;
+
+    if (j > 0 && result[j - 1] == ' ')
+        j--;
     result[j] = '\0';
     return result;
 }
@@ -92,7 +93,8 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
                        file_name, pos.line, pos.column, level, sibling,
                        type_str ? type_str : "any", id, id,
                        type_str ? type_str : "any", norm_assign);
-        if (len > 0) mila_free(norm_assign);
+        if (len > 0)
+            mila_free(norm_assign);
         mila_free(id);
         return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
@@ -131,7 +133,8 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
             file_name, pos.line, pos.column, level, sibling,
             type_str ? type_str : "any", id, id, type_str ? type_str : "any",
             norm_assign);
-        if (len > 0) mila_free(norm_assign);
+        if (len > 0)
+            mila_free(norm_assign);
         mila_free(id);
         return match_char(s, ';') ? ERR_SUCCESS : ERR_EXPECTED_SEMICOLON;
     }
@@ -166,10 +169,10 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
         match_char(s, ';');
         size_t len = s->pos - start;
         char *norm_assign = _normalize_assign(assign, len);
-        malloc_sprintf(
-            buffer, "%s:%zu:%zu %i %i set \"any\" %s set %.*s: \"any\" %s\n",
-            file_name, pos.line, pos.column, level, sibling, id, id_len - 1,
-            id_start + s->src, norm_assign);
+        malloc_sprintf(buffer,
+                       "%s:%zu:%zu %i %i set \"any\" %s set %.*s: \"any\" %s\n",
+                       file_name, pos.line, pos.column, level, sibling, id,
+                       id_len - 1, id_start + s->src, norm_assign);
         mila_free(norm_assign);
         mila_free(id);
         return ERR_SUCCESS;

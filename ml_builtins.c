@@ -206,19 +206,46 @@ Value *native_qsort(Env *env, int argc, Value **argv) {
     return res;
 }
 
-Value *native_map(Env* env, int argc, Value** argv) {
-    if (argc != 2) 
+Value *native_map(Env *env, int argc, Value **argv) {
+    if (argc != 2)
         return verror("map(lst, fun): Expected two arguments");
     if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0)
         return verror("map(lst, fun): Expected first argument to be a list");
     if (GET_TYPE(argv[1]) != T_FUNCTION && GET_TYPE(argv[1]) != T_NATIVE)
-        return verror("map(lst, fun): Expected second argument to be a function");
-    Value* list = make_list(NULL);
-    Value** source = ll_to_iter((LinkedList*)GET_OPAQUE(argv[0]));
+        return verror(
+            "map(lst, fun): Expected second argument to be a function");
+    Value *list = make_list(NULL);
+    Value **source = ll_to_iter((LinkedList *)GET_OPAQUE(argv[0]));
     // 1 because source[0] is the iter length.
-    for (unsigned long i=1; i<GET_UINTEGER(source[0]); ++i) {
-        Value* enumerated_val = call_function_with(env, argv[1], source[i], NULL);
-        val_release(call_native_with(NULL, native_list_append, val_retain(list), enumerated_val, NULL));
+    for (unsigned long i = 1; i < GET_UINTEGER(source[0]); ++i) {
+        Value *enumerated_val =
+            call_function_with(env, argv[1], source[i], NULL);
+        val_release(call_native_with(NULL, native_list_append, val_retain(list),
+                                     enumerated_val, NULL));
+    }
+    val_release(source[0]);
+    mila_free(source);
+    return list;
+}
+
+Value *native_filter(Env *env, int argc, Value **argv) {
+    if (argc != 2)
+        return verror("filter(lst, fun): Expected two arguments");
+    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0)
+        return verror("filter(lst, fun): Expected first argument to be a list");
+    if (GET_TYPE(argv[1]) != T_FUNCTION && GET_TYPE(argv[1]) != T_NATIVE)
+        return verror(
+            "filter(lst, fun): Expected second argument to be a callable");
+    Value *list = make_list(NULL);
+    Value **source = ll_to_iter((LinkedList *)GET_OPAQUE(argv[0]));
+    // 1 because source[0] is the iter length.
+    for (unsigned long i = 1; i < GET_UINTEGER(source[0]); ++i) {
+        Value *enumerated_val =
+            call_function_with(env, argv[1], val_retain(source[i]), NULL);
+        if (is_truthy(enumerated_val))
+            val_release(call_native_with(NULL, native_list_append,
+                                         val_retain(list), source[i], NULL));
+        val_release(enumerated_val);
     }
     val_release(source[0]);
     mila_free(source);
@@ -590,7 +617,8 @@ Value *native_file_list_dir(Env *e, int argc, Value **argv) {
 
 Value *native_fprint(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_STRING) {
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+        argv[1]->type != T_STRING) {
         return verror("fprint(file, string) expects (handle, string).");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -626,7 +654,8 @@ Value *native_fprint_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fread(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_INT) {
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+        argv[1]->type != T_INT) {
         return verror("fread(file, num_bytes) expects (handle, int).");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -650,7 +679,8 @@ Value *native_fread(Env *env, int argc, Value **argv) {
 
 Value *native_fread_bytes(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_INT) {
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+        argv[1]->type != T_INT) {
         return verror("fread_bytes(file, num_bytes) expects (handle, int).");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -732,8 +762,8 @@ Value *native_fread_all_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fseek(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 || argv[1]->type != T_INT ||
-        argv[2]->type != T_INT) {
+    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+        argv[1]->type != T_INT || argv[2]->type != T_INT) {
         return verror(
             "fseek(file, offset, whence) expects (handle, int, int).");
     }
@@ -1726,6 +1756,7 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "qsort", native_qsort);
     // === Functional Shenanigans
     env_register_native(g, "map", native_map);
+    env_register_native(g, "filter", native_filter);
     // === Scopes
     env_register_native(g, "env.set", native_env_set);
     env_register_native(g, "env.set_local", native_env_set_local);
@@ -1774,9 +1805,9 @@ void env_register_builtins(Env *g) {
 #else
     env_set_raw(g, "PATH_SEP", vstring_dup("/"));
 #endif
-    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "'stderr'"));
-    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "'stdout'"));
-    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "'stdin'"));
+    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, MILA_LPREFIX "file"));
+    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, MILA_LPREFIX "file"));
+    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, MILA_LPREFIX "file"));
     env_set_raw(g, "stderr_fd", vint(STDERR_FILENO));
     env_set_raw(g, "stdout_fd", vint(STDOUT_FILENO));
     env_set_raw(g, "stdin_fd", vint(STDIN_FILENO));

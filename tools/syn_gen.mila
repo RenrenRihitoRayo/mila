@@ -1,5 +1,4 @@
 
-
 !fn (argc, _, for="vim", bsize="10")
 // Generate syntax for vim or sublime files
 
@@ -13,7 +12,7 @@ if (isatty(stdin_fd)) {
 } else {
     set file = stdin;
 }
-
+println(stderr);
 fprint(stderr, "Parsing");
 
 var text = fread_all(file);

@@ -1,7 +1,0 @@
-
-// check dedent behavior of block strings
-println(repr_raw(!{
-    print("This is python code!")
-    if True:
-        print("Yup")
-}))

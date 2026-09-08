@@ -2273,9 +2273,6 @@ void val_release(Value *v) {
             if (v->v)
                 mila_free(v->v);
         }
-#ifdef MILA_DEBUG
-        printf("  ?? %p %s wrefs\n", v, v->wrefs ? "has" : "doesnt have");
-#endif
         mila_free(v);
     }
 }
@@ -5309,7 +5306,8 @@ Value *eval_primary(Src *s, Env *env) {
             }
             // callp
 #ifdef MILA_DEBUG
-            printf("  ?? Call to %s\n", ((NativeFunctionV *)(callee->v))->name);
+            if (GET_TYPE(callee) == T_FUNCTION) printf("  ?? Call to %s\n", GET_FUNCTION(callee)->name);
+            else printf("  ?? Call to %s\n", GET_NATIVE(callee)->name);
 #endif
             Value *res = call_function(callee, env, argc, args);
             for (int i = 0; i < argc; i++)
@@ -8239,7 +8237,7 @@ int main(int argc, char **argv) {
             array = call_function_str(g, "array", vint(argc - 1), NULL);
             for (int i = 2; i < argc; i++) {
                 Value *str = vstring_dup(argv[i]);
-                val_release(call_function_str(g, "array.set", val_retain(array),
+                val_release(call_native_with(g, native_set_array, val_retain(array),
                                               vint(i - 2), str, NULL));
             }
             env_set_raw(g, "argv", array);
@@ -8302,7 +8300,7 @@ int main(int argc, char **argv) {
         array = call_function_str(g, "array", vint(argc - 1), NULL);
         for (int i = 1; i < argc; i++) {
             Value *str = vstring_dup(argv[i]);
-            val_release(call_function_str(g, "array.set", val_retain(array),
+            val_release(call_native_with(g, native_set_array, val_retain(array),
                                           vint(i - 1), str, NULL));
         }
         env_set_raw(g, "argv", array);
@@ -8342,7 +8340,7 @@ int main(int argc, char **argv) {
             array = call_function_str(g, "array", vint(argc - 2), NULL);
             for (int i = 2; i < argc; i++) {
                 Value *str = vstring_dup(argv[i]);
-                val_release(call_function_str(g, "array.set", val_retain(array),
+                val_release(call_native_with(g, native_set_array, val_retain(array),
                                               vint(i - 2), str, NULL));
             }
             env_set_raw(g, "argv", array);

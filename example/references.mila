@@ -1,8 +1,0 @@
-
-fn test(int) {
-	sync int = 90;
-}
-
-var my_int = 0;
-test(my_int);
-println(my_int + " should be 90"); // 90

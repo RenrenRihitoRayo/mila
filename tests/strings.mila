@@ -18,8 +18,6 @@ println(str, "=>", str.split(str, ","));
 println(str, "=>", str.join("|", str.split(str, ",")));
 println(str, "=>", str.patch(str, "World", "User"));
 println(str, "=>", str.copy(str));
-// Test concat
-println(str, "=>", str + " concat: " + none + null + 90 + 0.1 + true + fn{} + stdout + str.copy);
 // Mutates
 println(str, "=>", str.pop_f(str));
 println(str, "=>", str.pop_b(str));

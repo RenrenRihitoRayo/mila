@@ -45,7 +45,7 @@ void da_append(void *arr, void *item) {
             (void **)mila_realloc(array->items, sizeof(void *) * new_size);
         if (!array->items)
             abort();
-        array->items[array->count++] = item;
         array->size = new_size;
     }
+    array->items[array->count++] = item;
 }

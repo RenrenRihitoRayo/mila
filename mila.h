@@ -49,9 +49,6 @@
 #include <stdlib.h>
 #include <sys/types.h>
 
-#define MILA_LPREFIX "mila:"
-#define ML(x) MILA_LPREFIX x
-
 #include "ml_paths.h"
 
 #define MAX_NUMBER_DIGITS 19

@@ -3,7 +3,7 @@ load("./raylib.so");
 
 const food_size = 20.0;
 const player_speed = 500;
-const food_num = 10;
+const food_num = 15;
 const fps = 100;
 
 var screen_w = 1200;
@@ -34,7 +34,6 @@ const player = Rectangle(
 const texture = own(LoadTexture(file.resolve("wall.png")));
 
 fn random_place(rect) {
-
     Rectangle.set_x(rect, cast.i2f(GetRandomValue(0, screen_w-cast.f2i(food_size))));
     Rectangle.set_y(rect, cast.i2f(GetRandomValue(0, screen_h-cast.f2i(food_size))));
 }
@@ -45,7 +44,7 @@ SetTargetFPS(fps);
 var new = 0;
 var old = 0;
 
-const score = 0;
+var score = 0;
 
 fn Clamp(val, min, max) {
     if (val < min) {
@@ -96,7 +95,6 @@ while (not(WindowShouldClose()))
 {
     set old = new ?? 0; // FIX: big delta spike at first frame
     set new = get_time();
-
     var delta = new - old; // We calculate the delta
     
     set screen_w = GetScreenWidth();
@@ -108,25 +106,22 @@ while (not(WindowShouldClose()))
     DrawTextureRec(texture, Rectangle(0.0, 0.0, 180.0, 60.0), Vector2(Rectangle.get_x(player), Rectangle.get_y(player)), NONE);
 
     if (auto) {
-        var min = 1000.0;
-        var min_food = none;
         foreach food : foods {
-            var food_v = Vector2(0.0, 0.0);
-            step(food_v, Vector2(Rectangle.get_x(player), Rectangle.get_y(player)), 2000 * delta);
+            var food_v = Vector2(Rectangle.get_x(food), Rectangle.get_y(food));
+            step(food_v, Vector2(Rectangle.get_x(player) + 90, Rectangle.get_y(player) + 30), 300 * delta);
             Rectangle.set_x(food, Rectangle.get_x(food_v));
             Rectangle.set_y(food, Rectangle.get_y(food_v));
         }
     }
 
     foreach food : foods {
-        // DrawRectangleRec(food, MARIGOLD); // faster
-        DrawCircle(cast.f2i(Rectangle.get_x(food)+10), cast.f2i(Rectangle.get_y(food)+10), 10.0, MARIGOLD);
+        DrawRectangleRec(food, MARIGOLD); // faster
+        // DrawCircle(cast.f2i(Rectangle.get_x(food)+10), cast.f2i(Rectangle.get_y(food)+10), 10.0, MARIGOLD);
         if (CheckCollisionRecs(player, food)) {
             random_place(food);
             set score += 1;
         }
     }
-
 
     DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, BLACK);
 

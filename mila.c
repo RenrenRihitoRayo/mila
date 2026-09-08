@@ -761,7 +761,7 @@ FN_UNUSED int is_truthy(Value *value) {
         return 1;
     case T_OPAQUE: {
         if (value->type_name &&
-            strcmp(value->type_name, MILA_LPREFIX "dict") == 0) {
+            strcmp(value->type_name, "dict") == 0) {
 #ifdef MILA_DEBUG
             printf("  ?? Recieved candidate for overloading!\n  `");
             print_value(value);
@@ -2057,7 +2057,7 @@ int print_value(Value *v) {
     if (!v) {
         return printf("?null?");
     }
-    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
+    if (v->type_name && strcmp(v->type_name, "dict") == 0) {
         Value *fn = dict_get_str((Dict *)GET_OPAQUE(v), ":display");
         if (fn) {
             Value *res = call_function_with(NULL, fn, val_retain(v), NULL);
@@ -2091,7 +2091,7 @@ int print_value_repr(Value *v) {
     if (!v) {
         return printf("?null?");
     }
-    if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
+    if (v->type_name && strcmp(v->type_name, "dict") == 0) {
         Value *fn = dict_get_str((Dict *)GET_OPAQUE(v), ":display");
         if (fn) {
             Value *res = call_function_with(NULL, fn, val_retain(v), NULL);
@@ -4945,7 +4945,7 @@ Value *eval_primary(Src *s, Env *env) {
                 args = mila_realloc(args, sizeof(Value *) * (argc + 1));
                 args[argc++] = a;
                 if (expand &&
-                    strcmp(GET_TYPENAME(a), MILA_LPREFIX "list") == 0) {
+                    strcmp(GET_TYPENAME(a), "list") == 0) {
                     Value **vl = ll_to_iter((LinkedList *)a->v);
                     unsigned long vl_len = GET_UINTEGER(vl[0]);
                     for (unsigned long i = 1; i < vl_len; i++) {
@@ -5147,15 +5147,7 @@ Value *eval_primary(Src *s, Env *env) {
             // parse closure bindings
             names = parse_context_list(s); // reused parse_context_list
             for (int i = 0; names[i]; ++i) {
-                if (strlen(names[i]) > 5 &&
-                    strncmp("@env:", names[i], 5) == 0) {
-                    Env *new_env = env_new(NULL);
-                    env_copy(new_env, env);
-                    env_set_local_raw(
-                        closure, names[i] + 5,
-                        vopaque_extra(new_env, NULL, ML("environment")));
-                } else
-                    env_set_local(closure, names[i], env_get(env, names[i]));
+                env_set_local(closure, names[i], env_get(env, names[i]));
                 mila_free(names[i]);
             }
             mila_free(names);
@@ -5334,9 +5326,7 @@ Value *eval_primary(Src *s, Env *env) {
                                        "in line %zu)\nError in function was in "
                                        "line %zu column %zu\n%s",
                                        id,
-                                       (GET_TYPE(callee) == T_FUNCTION
-                                            ? GET_FUNCTION(callee)->line
-                                            : 0),
+                                       GET_FUNCTION(callee)->line,
                                        res->v->tagged_error.pos.line,
                                        res->v->tagged_error.pos.column,
                                        text =
@@ -5346,28 +5336,41 @@ Value *eval_primary(Src *s, Env *env) {
                     } else {
                         malloc_sprintf(
                             &error,
-                            "Error calling function '%s' (native at %p)\n%s",
+                            "Error calling function '%s' (native at %p) at line %zu col %zu\n%s",
                             id, GET_NATIVE(callee)->fn,
+                            expr_pos.line, expr_pos.column,
                             text = indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
                         type = res->v->tagged_error.type;
                     }
                 } else {
                     char *text = NULL;
-                    malloc_sprintf(&error,
+                    if (GET_TYPE(callee) == T_FUNCTION)
+                        malloc_sprintf(&error,
                                    "Error calling function '%s' (defined in "
                                    "line %zu) in line %zu column %zu\n%s",
-                                   id, res->v->tagged_error.pos.line,
+                                   id, GET_FUNCTION(callee)->line,
+                                   expr_pos.line, expr_pos.column,
+                                   text = indent(GET_ERROR_MESSAGE(res), 2));
+                    else
+                        malloc_sprintf(&error,
+                                   "Error calling function '%s' (native at "
+                                   " %p) in line %zu column %zu\n%s",
+                                   id, GET_NATIVE(callee)->fn,
                                    expr_pos.line, expr_pos.column,
                                    text = indent(GET_ERROR_MESSAGE(res), 2));
                     mila_free(text);
+                }
+                int return_code = -1;
+                if (type != E_NO_ERROR) {
+                    return_code = res->v->tagged_error.return_code;
                 }
                 val_release(res);
                 Value *res;
                 if (type == E_NO_ERROR)
                     res = verror("%s", error);
                 else
-                    res = vtagged_error(type, "%s", error);
+                    res = vtagged_coded_error(type, return_code, "%s", error);
                 mila_free(error);
                 mila_free(id);
                 return res;
@@ -5585,8 +5588,8 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
             return vnull();
         }
     }
-    if (strcmp(GET_TYPENAME(a), ML("list")) == 0 &&
-        strcmp(GET_TYPENAME(b), ML("list")) == 0) {
+    if (strcmp(GET_TYPENAME(a), "list") == 0 &&
+        strcmp(GET_TYPENAME(b), "list") == 0) {
         if (!(op == BMethodGreat || op == BMethodLess || op == BMethodEq ||
               op == BMethodNe || op == BMethodGE || op == BMethodLE))
             return vnull();
@@ -5754,10 +5757,10 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
         else
             return vbool(0);
     }
-    if (a->type_name && strcmp(a->type_name, MILA_LPREFIX "dict") == 0) {
+    if (a->type_name && strcmp(a->type_name, "dict") == 0) {
         return binary_op_objects(NULL, 1, a, op, b);
     }
-    if (b->type_name && strcmp(b->type_name, MILA_LPREFIX "dict") == 0) {
+    if (b->type_name && strcmp(b->type_name, "dict") == 0) {
         return binary_op_objects(NULL, 0, b, op, a);
     }
     return vnull();
@@ -5765,7 +5768,7 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
 
 Value *binary_op_objects(Env *env, char right, Value *a, MethodType op,
                          Value *b) {
-    if (a->type_name && strcmp(a->type_name, MILA_LPREFIX "dict") != 0) {
+    if (a->type_name && strcmp(a->type_name, "dict") != 0) {
         char *repr = as_c_string_repr(a);
         Value *err =
             verror("%s\n of type %s does not support runtime overloading!",
@@ -5927,7 +5930,6 @@ MethodType parse_op(Src *s) {
 
 Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
     skip_ws(s);
-    uint64_t chain_start = s->pos;
     Value *lhs = eval_primary(s, env);
     if (!lhs)
         return vnull();
@@ -5948,7 +5950,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                 return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
                                          "Expected identifier after ':'");
             }
-            if (strcmp(GET_TYPENAME(lhs), ML("dict")) != 0) {
+            if (strcmp(GET_TYPENAME(lhs), "dict") != 0) {
                 char *str = as_c_string_repr(lhs);
                 Value *res =
                     vtagged_error_pos(get_pos(s), E_TYPE_ERROR,
@@ -6037,50 +6039,56 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                 if (IS_ERROR_TAGGED(res)) {
                     char *text = NULL;
                     if (GET_TYPE(function) == T_FUNCTION) {
-                        malloc_sprintf(
-                            &error,
-                            "Error calling method '%s' (defined in line %zu) "
-                            "from '%.*s'\nError in function was in line %zu "
-                            "column %zu\n%s",
-                            method,
-                            (GET_TYPE(function) == T_FUNCTION
-                                 ? GET_FUNCTION(function)->line
-                                 : 0),
-                            (start - chain_start) - 1, s->src + chain_start,
-                            res->v->tagged_error.pos.line,
-                            res->v->tagged_error.pos.column,
-                            text = indent(GET_ERROR_MESSAGE(res), 2));
+                        malloc_sprintf(&error,
+                                       "Error calling method '%s' (defined "
+                                       "in line %zu)\nError in method was in "
+                                       "line %zu column %zu\n%s",
+                                       method,
+                                       GET_FUNCTION(function)->line,
+                                       res->v->tagged_error.pos.line,
+                                       res->v->tagged_error.pos.column,
+                                       text =
+                                           indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
                         type = res->v->tagged_error.type;
                     } else {
                         malloc_sprintf(
                             &error,
-                            "Error calling method '%s' (defined in line %zu) "
-                            "from '%.*s' (native at %p)\n%s",
-                            method, (start - chain_start) - 1,
-                            s->src + chain_start, GET_NATIVE(function)->fn,
+                            "Error calling method '%s' (native at %p) at line %zu col %zu\n%s",
+                            method, GET_NATIVE(function)->fn,
+                            expr_pos.line, expr_pos.column,
                             text = indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
                         type = res->v->tagged_error.type;
                     }
                 } else {
                     char *text = NULL;
-                    malloc_sprintf(
-                        &error,
-                        "Error calling method '%s' (defined in line %zu) from "
-                        "'%.*s' in line %zu column %zu\n%s",
-                        method, res->v->tagged_error.pos.line,
-                        (start - chain_start) - 1, s->src + chain_start,
-                        expr_pos.line, expr_pos.column,
-                        text = indent(GET_ERROR_MESSAGE(res), 2));
+                    if (GET_TYPE(function) == T_FUNCTION)
+                        malloc_sprintf(&error,
+                                   "Error calling method '%s' (defined in "
+                                   "line %zu) in line %zu column %zu\n%s",
+                                   method, GET_FUNCTION(function)->line,
+                                   expr_pos.line, expr_pos.column,
+                                   text = indent(GET_ERROR_MESSAGE(res), 2));
+                    else
+                        malloc_sprintf(&error,
+                                   "Error calling method '%s' (native at "
+                                   " %zu) in line %zu column %zu\n%s",
+                                   method, GET_NATIVE(function)->fn,
+                                   expr_pos.line, expr_pos.column,
+                                   text = indent(GET_ERROR_MESSAGE(res), 2));
                     mila_free(text);
+                }
+                int return_code = -1;
+                if (type != E_NO_ERROR) {
+                    return_code = res->v->tagged_error.return_code;
                 }
                 val_release(res);
                 Value *res;
                 if (type == E_NO_ERROR)
                     res = verror("%s", error);
                 else
-                    res = vtagged_error(type, "%s", error);
+                    res = vtagged_coded_error(type, return_code, "%s", error);
                 mila_free(error);
                 mila_free(method);
                 return res;
@@ -6104,7 +6112,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                 return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
                                          "Expected identifier after ':'");
             }
-            if (strcmp(GET_TYPENAME(lhs), ML("dict")) != 0) {
+            if (strcmp(GET_TYPENAME(lhs), "dict") != 0) {
                 char *str = as_c_string_repr(lhs);
                 Value *res = vtagged_error_pos(
                     get_pos(s), E_TYPE_ERROR,
@@ -6195,47 +6203,56 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                 if (IS_ERROR_TAGGED(res)) {
                     char *text = NULL;
                     if (GET_TYPE(function) == T_FUNCTION) {
-                        malloc_sprintf(
-                            &error,
-                            "Error calling namespaced function '%s' (defined "
-                            "in line %zu)\nError in function was in line %zu "
-                            "column %zu\n%s",
-                            namespaced_function,
-                            (GET_TYPE(function) == T_FUNCTION
-                                 ? GET_FUNCTION(function)->line
-                                 : 0),
-                            res->v->tagged_error.pos.line,
-                            res->v->tagged_error.pos.column,
-                            text = indent(GET_ERROR_MESSAGE(res), 2));
+                        malloc_sprintf(&error,
+                                       "Error calling namespaced function '%s' (defined "
+                                       "in line %zu)\nError in namespaced function was in "
+                                       "line %zu column %zu\n%s",
+                                       namespaced_function,
+                                       GET_FUNCTION(function)->line,
+                                       res->v->tagged_error.pos.line,
+                                       res->v->tagged_error.pos.column,
+                                       text =
+                                           indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
                         type = res->v->tagged_error.type;
                     } else {
                         malloc_sprintf(
                             &error,
-                            "Error calling namespaced function '%s' (native at "
-                            "%p)\n%s",
+                            "Error calling namespaced function '%s' (native at %p) at line %zu col %zu\n%s",
                             namespaced_function, GET_NATIVE(function)->fn,
+                            expr_pos.line, expr_pos.column,
                             text = indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
                         type = res->v->tagged_error.type;
                     }
                 } else {
                     char *text = NULL;
-                    malloc_sprintf(
-                        &error,
-                        "Error calling namespaced function '%s' (defined in "
-                        "line %zu) in line %zu column %zu\n%s",
-                        namespaced_function, res->v->tagged_error.pos.line,
-                        expr_pos.line, expr_pos.column,
-                        text = indent(GET_ERROR_MESSAGE(res), 2));
+                    if (GET_TYPE(function) == T_FUNCTION)
+                        malloc_sprintf(&error,
+                                   "Error calling namespaced function '%s' (defined in "
+                                   "line %zu) in line %zu column %zu\n%s",
+                                   namespaced_function, GET_FUNCTION(function)->line,
+                                   expr_pos.line, expr_pos.column,
+                                   text = indent(GET_ERROR_MESSAGE(res), 2));
+                    else
+                        malloc_sprintf(&error,
+                                   "Error calling namespaced function '%s' (native at "
+                                   " %zu) in line %zu column %zu\n%s",
+                                   namespaced_function, GET_NATIVE(function)->fn,
+                                   expr_pos.line, expr_pos.column,
+                                   text = indent(GET_ERROR_MESSAGE(res), 2));
                     mila_free(text);
+                }
+                int return_code = -1;
+                if (type != E_NO_ERROR) {
+                    return_code = res->v->tagged_error.return_code;
                 }
                 val_release(res);
                 Value *res;
                 if (type == E_NO_ERROR)
                     res = verror("%s", error);
                 else
-                    res = vtagged_error(type, "%s", error);
+                    res = vtagged_coded_error(type, return_code, "%s", error);
                 mila_free(error);
                 mila_free(namespaced_function);
                 return res;
@@ -6258,6 +6275,10 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
         // handle right associativity? none needed
         int next_min = prec + 1;
         Value *rhs = eval_expr_prec(s, env, next_min);
+        if (IS_ERROR(rhs)) {
+            val_release(lhs);
+            return rhs;
+        }
         Value *newlhs = binary_op(lhs, op, rhs);
         val_release(lhs);
         val_release(rhs);
@@ -6559,8 +6580,9 @@ Value *eval_statement(Src *s, Env *env) {
         }
         if (mt != MethodNone)
             s->pos++;
-        if (__builtin_expect(!!match_char(s, '='), 1)) {
+        if (match_char(s, '=')) {
             v = eval_expr(s, env);
+            Value *res = v;
             if (mt != MethodNone) {
                 Value *inplace = env_get(env, id);
                 if (!inplace) {
@@ -6573,42 +6595,27 @@ Value *eval_statement(Src *s, Env *env) {
                     val_release(v);
                     return err;
                 }
-                Value *res = v;
-                if (inplace)
-                    env_set_raw(env, id, res = binary_op(inplace, mt, res));
-                else
-                    env_set_raw(env, id, res);
-                mila_free(id);
-                match_char(s, ';');
-                return res;
+                if (env_set(env, id, res = binary_op(inplace, mt, v))) {
+                    val_release(v);
+                    return vtagged_error_pos(get_pos(s), E_CONST_ERROR, "Tried to set a constant value: '%s'", id);
+                }
+                val_release(v);
+            } else {
+                if (env_set(env, id, v)) {
+                    val_release(v);
+                    return vtagged_error_pos(get_pos(s), E_CONST_ERROR, "Tried to set a constant value: '%s'", id);
+                }
             }
-        } else if (match_char(s, ':')) {
-            v = eval_statement(s, env);
+            if (!env_get_type(env, id))
+                env_set_type(env, id, "any");
+            mila_free(id);
+            match_char(s, ';');
+            return res;
         } else {
             return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
                                      "Expected a proper set statement!");
         }
-
-        if (v && v->type == T_RETURN) {
-            Value *tmp = v;
-            v = (Value *)tmp->v;
-            val_release(tmp);
-        } else if (v && v->type == T_FUNCTION && !GET_FUNCTION(v)->name) {
-            GET_FUNCTION(v)->name = mila_strdup(id);
-        }
-
-        if (env_set(env, id, v)) {
-            Value *res =
-                vtagged_error_pos(get_pos(s), E_CONST_ERROR,
-                                  "Tried to set constant value %s", id);
-            mila_free(id);
-            val_release(v);
-            return res;
-        }
-        if (!env_get_type(env, id))
-            env_set_type(env, id, "any");
-        mila_free(id);
-        return v ? v : vnull();
+        abort(); // UNREACHABLE
     }
     if (is_keyword_at(s, "var")) {
         s->pos += strlen("var");
@@ -6633,7 +6640,7 @@ Value *eval_statement(Src *s, Env *env) {
             if (env_set_local_raw(env, id, r)) {
                 Value *res =
                     vtagged_error_pos(get_pos(s), E_CONST_ERROR,
-                                      "Tried to set constant value %s", id);
+                                      "Tried to set constant value: '%s'", id);
                 mila_free(id);
                 val_release(r);
                 return res;
@@ -6645,8 +6652,6 @@ Value *eval_statement(Src *s, Env *env) {
         if (match_char(s, '=')) {
             v = eval_expr(s, env);
             match_char(s, ';');
-        } else if (match_char(s, ':')) {
-            v = eval_statement(s, env);
         } else {
             mila_free(id);
             return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
@@ -6664,7 +6669,7 @@ Value *eval_statement(Src *s, Env *env) {
         if (env_set_local(env, id, v)) {
             Value *res =
                 vtagged_error_pos(get_pos(s), E_CONST_ERROR,
-                                  "Tried to set constant value %s", id);
+                                  "Tried to set constant value '%s'", id);
             val_release(v);
             mila_free(id);
             return res;
@@ -6720,7 +6725,7 @@ Value *eval_statement(Src *s, Env *env) {
             mila_free(type_string);
             Value *res =
                 vtagged_error_pos(get_pos(s), E_CONST_ERROR,
-                                  "Tried to set constant value %s", id);
+                                  "Tried to set constant value '%s'", id);
             mila_free(id);
             val_release(v);
             return res;
@@ -7648,9 +7653,12 @@ void print_error(Value *v) {
     }
     if (v->type == T_TAGGED_ERROR) {
         if (v->v->tagged_error.type == E_EXIT) {
-            fprintf(stderr, "\n== Recieved Exit Signal [%d] ==\n%s\n",
+            if (v->v->tagged_error.return_code != 0)
+                fprintf(stderr, "\n== Recieved Exit Signal [%d] ==\n%s\n",
                     v->v->tagged_error.return_code,
                     GET_TAGGED_ERROR_MESSAGE(v));
+            else
+                fprintf(stderr, "\n== Recieved Exit Signal [Success] ==\n");
             return;
         }
         if (v->v->tagged_error.type == E_THREAD_HALT)

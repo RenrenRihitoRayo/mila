@@ -78,6 +78,10 @@ static: $(files)
 	$(cc) -o mila mila.c -static -DML_NO_DL $(cflags_generic)
 	strip mila
 
+mll: $(files)
+	$(cc) -o mila mila.c -static -DML_NO_DL -DML_LINUX $(cflags_generic)
+	strip mila
+
 smallest: $(files)
 	$(cc) $(cflags) -o mila -Os mila.c
 	strip mila

@@ -327,7 +327,7 @@ char *_mila_to_json_unified(Value *v, int level, int include_fn) {
     }
     case T_OPAQUE:
     case T_OWNED_OPAQUE: {
-        if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "list") == 0) {
+        if (v->type_name && strcmp(v->type_name, "list") == 0) {
             LinkedList *list = (LinkedList *)GET_OPAQUE(v);
             malloc_sprintf(&result, "[\n");
             for (size_t i = 0; i < list->size; ++i) {
@@ -339,7 +339,7 @@ char *_mila_to_json_unified(Value *v, int level, int include_fn) {
             }
             malloc_sprintf(&result, "\n%*s]", (level - 1) * 2, "");
         } else if (v->type_name &&
-                   strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
+                   strcmp(v->type_name, "dict") == 0) {
             Dict *dict = (Dict *)GET_OPAQUE(v);
             malloc_sprintf(&result, "{\n");
             int first = 1;
@@ -418,7 +418,7 @@ long _io_mila_to_json_unified(FILE *file, Value *v, int level, int include_fn) {
     }
     case T_OPAQUE:
     case T_OWNED_OPAQUE: {
-        if (v->type_name && strcmp(v->type_name, MILA_LPREFIX "list") == 0) {
+        if (v->type_name && strcmp(v->type_name, "list") == 0) {
             LinkedList *list = (LinkedList *)GET_OPAQUE(v);
             result += fprintf(file, "[\n");
             for (size_t i = 0; i < list->size; ++i) {
@@ -430,7 +430,7 @@ long _io_mila_to_json_unified(FILE *file, Value *v, int level, int include_fn) {
             }
             result += fprintf(file, "\n%*s]", (level - 1) * 2, "");
         } else if (v->type_name &&
-                   strcmp(v->type_name, MILA_LPREFIX "dict") == 0) {
+                   strcmp(v->type_name, "dict") == 0) {
             Dict *dict = (Dict *)GET_OPAQUE(v);
             result += fprintf(file, "{\n");
             int first = 1;

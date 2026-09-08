@@ -7,6 +7,9 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#define ITERATE_LIST(x) \
+    for (LLNode *current = (x)->head; current != NULL; current = current->next)
+
 typedef struct LLNode {
     Value *value;
     struct LLNode *next;
@@ -224,7 +227,7 @@ Value *ll_copy(Value *self) {
     }
 
     Value *result = val_new_raw(T_OPAQUE);
-    result->type_name = mila_strdup(ML("list"));
+    result->type_name = mila_strdup("list");
     result->v = (void *)copy;
     val_set_table(result, list_meta);
     return result;

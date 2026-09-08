@@ -41,7 +41,7 @@ all documented, in a interpreter as small as a picture.
 | Linux 6.18.41-1-lts (Archlinux) | 228KB  | clang 22.1.8 | release  |
 | Linux 6.18.41-1-lts (Archlinux) | 172KB  | clang 22.1.8 | smallest |
 
-## Keywords (21 total)
+## Keywords (20 total)
 
 * if
 * elif
@@ -56,7 +56,7 @@ all documented, in a interpreter as small as a picture.
 * contextual
 * sync
 * object (2 variants)
-* foreach (2 variants)
+* foreach
 * while
 * break
 * continue (2 variants)
@@ -65,7 +65,7 @@ all documented, in a interpreter as small as a picture.
 * null
 * none
 
-Total of 31 different constructs.
+Total of 30 different constructs.
 Less than most programming languages' number of keywords!
 (Python3.12 has 35 keywords)
 
@@ -113,22 +113,39 @@ on the syntax level is not enough to be considered a primitive in MiLa.), or bei
 part of the implementation that is critical.
 
 True Primitives in MiLa are (lowest possible level of abstraction):
+
 * Strings
+
 * Integer
+
 * Float
+
 * none
+
 * null
+
 * booleans
+
 * Functions
+
 * Opaque variants
+
 True Primitives that are hidden from the user:
+
 * Error values
+
 * Control values
+
 Second tier of abstraction:
+
 * Dictionaries
+
 * Lists (this is a half exception as it does have behavior the runtime itself dictates)
+
 * Arrays
+
 Last tier of abstraction, Non Primitves:
+
 * User defined objects
 
 ## VIOO vs OIOO
@@ -274,6 +291,10 @@ const NativeEntry lib_function_entries[] = {
 ## MiLa dependencies
 
 * blr (my own readline implementation)
+
 * libc
+
 * libdl (if separate from libc)
+
 * libm (if separate from libc)
+

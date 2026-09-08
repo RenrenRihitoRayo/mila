@@ -76,14 +76,14 @@ Value *native_make_mutex(Env *env, int argc, Value **argv) {
 
     pthread_mutex_t *mutex = malloc(sizeof(pthread_mutex_t));
     pthread_mutex_init(mutex, NULL);
-    return vowned_opaque_extra(mutex, NULL, MILA_LPREFIX "mutex");
+    return vowned_opaque_extra(mutex, NULL, "mutex");
 }
 
 Value *native_mutex_lock(Env *env, int argc, Value **argv) {
     if (argc != 1)
         return verror("thread.mutex_lock(mut): Expected 1 argument");
-    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "mutex") != 0)
-        return verror("thread.mutex_lock(mut): Expected a " MILA_LPREFIX
+    if (strcmp(GET_TYPENAME(argv[0]), "mutex") != 0)
+        return verror("thread.mutex_lock(mut): Expected a "
                       "mutex but got %s",
                       GET_TYPENAME(argv[0]));
 
@@ -94,8 +94,8 @@ Value *native_mutex_lock(Env *env, int argc, Value **argv) {
 Value *native_mutex_unlock(Env *env, int argc, Value **argv) {
     if (argc != 1)
         return verror("thread.mutex_unlock(mut): Expected 1 argument");
-    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "mutex") != 0)
-        return verror("thread.mutex_unlock(mut): Expected a " MILA_LPREFIX
+    if (strcmp(GET_TYPENAME(argv[0]), "mutex") != 0)
+        return verror("thread.mutex_unlock(mut): Expected a "
                       "mutex but got %s",
                       GET_TYPENAME(argv[0]));
 

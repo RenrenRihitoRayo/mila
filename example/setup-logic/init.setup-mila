@@ -3,10 +3,10 @@ println("Setup! " + setup_for);
 var conf = open("config.json", "r");
 var configs = json.loads(fread_all(conf));
 
-println("Setting up " + configs:lib);
+println("Setting up " + configs["lib"]);
 println("Checking packages...");
-foreach pack : configs:packages {
-	println("    Package " + pack:name);
-	println("        " + str.patch(pack:details, "\n", "\n        "));
+foreach pack : configs["packages"] {
+	println("    Package " + pack["name"]);
+	println("        " + str.patch(pack["details"], "\n", "\n        "));
 }
 println("Done!");

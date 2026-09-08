@@ -187,7 +187,7 @@ int item_qsort_compare(void *a, void *b) {
 }
 
 Value *native_qsort(Env *env, int argc, Value **argv) {
-    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0 ||
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), "list") != 0 ||
         GET_TYPE(argv[1]) != T_FUNCTION) {
         return verror("qsort(items, func): Invalid arguments.");
     }
@@ -209,7 +209,7 @@ Value *native_qsort(Env *env, int argc, Value **argv) {
 Value *native_map(Env *env, int argc, Value **argv) {
     if (argc != 2)
         return verror("map(lst, fun): Expected two arguments");
-    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0)
+    if (strcmp(GET_TYPENAME(argv[0]), "list") != 0)
         return verror("map(lst, fun): Expected first argument to be a list");
     if (GET_TYPE(argv[1]) != T_FUNCTION && GET_TYPE(argv[1]) != T_NATIVE)
         return verror(
@@ -231,7 +231,7 @@ Value *native_map(Env *env, int argc, Value **argv) {
 Value *native_filter(Env *env, int argc, Value **argv) {
     if (argc != 2)
         return verror("filter(lst, fun): Expected two arguments");
-    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0)
+    if (strcmp(GET_TYPENAME(argv[0]), "list") != 0)
         return verror("filter(lst, fun): Expected first argument to be a list");
     if (GET_TYPE(argv[1]) != T_FUNCTION && GET_TYPE(argv[1]) != T_NATIVE)
         return verror(
@@ -418,7 +418,7 @@ Value *native_open(Env *env, int argc, Value **argv) {
     mila_free(res);
     Value *v = vopaque(f);
     val_set_table(v, file_meta);
-    v->type_name = strdup(MILA_LPREFIX "file");
+    v->type_name = strdup("file");
     return v;
 }
 
@@ -443,13 +443,13 @@ Value *native_fdopen(Env *env, int argc, Value **argv) {
 
     Value *v = vopaque(f);
     val_set_table(v, file_meta);
-    v->type_name = strdup(MILA_LPREFIX "file");
+    v->type_name = strdup("file");
     return v;
 }
 
 Value *native_fileno(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), "file") != 0) {
         return verror("fileno(file) expects 1 string argument.");
     }
 
@@ -460,7 +460,7 @@ Value *native_fdredirect(Env *env, int argc, Value **argv) {
     if (argc != 2)
         return verror("fredirect(oldfd, newfd): Expects two arguments.");
     int oldfd = 0, newfd = 0;
-    if (strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") == 0) {
+    if (strcmp(GET_TYPENAME(argv[0]), "file") == 0) {
         oldfd = fileno((FILE *)GET_OPAQUE(argv[0]));
     } else if (GET_TYPE(argv[0]) == T_INT) {
         oldfd = (int)GET_INTEGER(argv[0]);
@@ -470,7 +470,7 @@ Value *native_fdredirect(Env *env, int argc, Value **argv) {
             "file descriptor, got %s",
             GET_TYPENAME(argv[0]));
     }
-    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "file") == 0) {
+    if (strcmp(GET_TYPENAME(argv[1]), "file") == 0) {
         newfd = fileno((FILE *)GET_OPAQUE(argv[1]));
     } else if (GET_TYPE(argv[1]) == T_INT) {
         newfd = (int)GET_INTEGER(argv[1]);
@@ -617,7 +617,7 @@ Value *native_file_list_dir(Env *e, int argc, Value **argv) {
 
 Value *native_fprint(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), "file") != 0 ||
         argv[1]->type != T_STRING) {
         return verror("fprint(file, string) expects (handle, string).");
     }
@@ -633,7 +633,7 @@ Value *native_fprint(Env *env, int argc, Value **argv) {
 Value *native_fprint_bytes(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc != 2 || argv[0]->type != T_OPAQUE ||
-        strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list") != 0) {
+        strcmp(GET_TYPENAME(argv[1]), "list") != 0) {
         return verror("fprint_bytes(file, bytes) expects (handle, list[int]).");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -654,7 +654,7 @@ Value *native_fprint_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fread(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), "file") != 0 ||
         argv[1]->type != T_INT) {
         return verror("fread(file, num_bytes) expects (handle, int).");
     }
@@ -679,7 +679,7 @@ Value *native_fread(Env *env, int argc, Value **argv) {
 
 Value *native_fread_bytes(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), "file") != 0 ||
         argv[1]->type != T_INT) {
         return verror("fread_bytes(file, num_bytes) expects (handle, int).");
     }
@@ -710,7 +710,7 @@ Value *native_fread_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fread_all(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), "file") != 0) {
         return verror("fread_all(file) expects handle.");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -733,7 +733,7 @@ Value *native_fread_all(Env *env, int argc, Value **argv) {
 
 Value *native_fread_all_bytes(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), "file") != 0) {
         return verror("fread_all(file) expects handle.");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -762,7 +762,7 @@ Value *native_fread_all_bytes(Env *env, int argc, Value **argv) {
 
 Value *native_fseek(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0 ||
+    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), "file") != 0 ||
         argv[1]->type != T_INT || argv[2]->type != T_INT) {
         return verror(
             "fseek(file, offset, whence) expects (handle, int, int).");
@@ -795,7 +795,7 @@ Value *native_fseek(Env *env, int argc, Value **argv) {
 
 Value *native_ftell(Env *env, int argc, Value **argv) {
     (void)env;
-    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "file") != 0) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), "file") != 0) {
         return verror("ftell(file) expects 1 file handle arg.");
     }
     FILE *f = (FILE *)argv[0]->v;
@@ -812,10 +812,9 @@ Value *native_report(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc == 1 && argv[0]->type == T_STRING)
         return verror("%s", GET_STRING(argv[0]));
-    else if (argc == 0)
+    else 
         return verror("No details given.");
-    else
-        return verror("report(message): Invalid number of arguments given.");
+    abort(); // UNREACHABLE
 }
 
 Value *native_report_tagged(Env *env, int argc, Value **argv) {
@@ -824,7 +823,7 @@ Value *native_report_tagged(Env *env, int argc, Value **argv) {
         return vtagged_error((ErrorType)GET_INTEGER(argv[0]), "%s",
                              GET_STRING(argv[1]));
     } else if (argc == 1) {
-        return vtagged_error(E_GENERIC, "No details given.");
+        return vtagged_error((ErrorType)GET_INTEGER(argv[0]), "No details given.");
     } else
         return verror(
             "report(tag, message): Invalid number of arguments given.");
@@ -833,13 +832,13 @@ Value *native_report_tagged(Env *env, int argc, Value **argv) {
 Value *native_exit(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc == 1 && argv[0]->type == T_INT) {
-        return vtagged_coded_error(E_EXIT, argv[0]->v->i, "Exited.");
+        return vtagged_coded_error(E_EXIT, GET_INTEGER(argv[0]), "Exited.");
     } else if (argc == 0) {
         return vtagged_coded_error(E_EXIT, 0, "Exited.");
     } else {
         return verror("invalid number of arguments given.");
     }
-    return vnull();
+    abort(); // UNREACHABLE
 }
 
 Value *native_get_time(Env *env, int argc, Value **argv) {
@@ -1210,7 +1209,7 @@ Value *native_istring(Env *e, int argc, Value **argv) {
     if (argc == 1) {
         char *str = as_c_string(argv[0]);
         Value *ptr = vowned_opaque(str);
-        ptr->type_name = mila_strdup(MILA_LPREFIX "istring");
+        ptr->type_name = mila_strdup("istring");
         val_set_table(ptr, istring_meta);
         return ptr;
     }
@@ -1477,7 +1476,7 @@ Value *native_list_deconstruct(Env *env, int argc, Value **argv) {
         return verror("list.deconstruct(pattern, list): Expected 2 args!");
     if (GET_TYPE(argv[0]) != T_STRING)
         return verror("Pattern must be string");
-    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list"))
+    if (strcmp(GET_TYPENAME(argv[1]), "list"))
         return verror("Must be list");
 
     char *pattern = GET_STRING(argv[0]);
@@ -1583,7 +1582,7 @@ Value *native_list_deconstruct(Env *env, int argc, Value **argv) {
 }
 
 Value *native_export(Env *env, int argc, Value **argv) {
-    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "dict") != 0) {
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), "dict") != 0) {
         return verror("export(obj): Expected one dict argument!");
     }
     Env *to = env->parent ? env->parent : env;
@@ -1679,6 +1678,10 @@ Value *_nd_get_weakrefs(Env *env, int argc, Value **argv) {
 
 #ifdef EXT_HTTP
 #include "addon/http/http.c"
+#endif
+
+#ifdef ML_LINUX
+#include "ml_linux.c"
 #endif
 
 void env_register_builtins(Env *g) {
@@ -1805,9 +1808,9 @@ void env_register_builtins(Env *g) {
 #else
     env_set_raw(g, "PATH_SEP", vstring_dup("/"));
 #endif
-    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, MILA_LPREFIX "file"));
-    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, MILA_LPREFIX "file"));
-    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, MILA_LPREFIX "file"));
+    env_set_raw(g, "stderr", vopaque_extra(stderr, NULL, "file"));
+    env_set_raw(g, "stdout", vopaque_extra(stdout, NULL, "file"));
+    env_set_raw(g, "stdin", vopaque_extra(stdin, NULL, "file"));
     env_set_raw(g, "stderr_fd", vint(STDERR_FILENO));
     env_set_raw(g, "stdout_fd", vint(STDOUT_FILENO));
     env_set_raw(g, "stdin_fd", vint(STDIN_FILENO));
@@ -1986,5 +1989,8 @@ void env_register_builtins(Env *g) {
 #ifdef EXT_HTTP
     env_set_local_raw(g, "_has_ext.http", vbool(1));
     env_register_http_ext(g);
+#endif
+#ifdef ML_LINUX
+    env_register_linux(g);
 #endif
 }

@@ -70,7 +70,7 @@ Value *native_list_new(Env *e, int argc, Value **argv) {
     for (int i = 0; i < argc; i++) {
         ll_append(list, val_retain(argv[i]));
     }
-    Value *res = vopaque_extra(list, NULL, MILA_LPREFIX "list");
+    Value *res = vopaque_extra(list, NULL, "list");
     val_set_table(res, list_meta);
     return res;
 }
@@ -161,7 +161,7 @@ Value *native_list_contains(Env *env, int argc, Value **argv) {
 }
 
 Value *native_list_slice(Env *env, int argc, Value **argv) {
-    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), MILA_LPREFIX "list") != 0 ||
+    if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), "list") != 0 ||
         !is_numeric(argv[1]) || !is_numeric(argv[2])) {
         return verror("list.slice(list, start, len): Expects three arguments "
                       "mila:list, num, num (list, start, len)");
@@ -190,7 +190,7 @@ Value *native_new_dict(Env *env, int argc, Value **argv) {
     if (d) {
         Value *v = vopaque(d);
         val_set_table(v, dict_meta);
-        v->type_name = mila_strdup(MILA_LPREFIX "dict");
+        v->type_name = mila_strdup("dict");
         return v;
     }
     return verror("couldnt make a dict.");
@@ -411,7 +411,7 @@ Value *native_range(Env *env, int argc, Value **argv) {
         r->start = 0;
         r->end = argv[0]->v->i;
         r->step = 1;
-        Value *res = vopaque_extra(r, NULL, MILA_LPREFIX "range");
+        Value *res = vopaque_extra(r, NULL, "range");
         val_set_table(res, range_meta);
         return res;
     }
@@ -420,7 +420,7 @@ Value *native_range(Env *env, int argc, Value **argv) {
         r->start = argv[0]->v->i;
         r->end = argv[1]->v->i;
         r->step = 1;
-        Value *res = vopaque_extra(r, NULL, MILA_LPREFIX "range");
+        Value *res = vopaque_extra(r, NULL, "range");
         val_set_table(res, range_meta);
         return res;
     }
@@ -430,7 +430,7 @@ Value *native_range(Env *env, int argc, Value **argv) {
         r->start = argv[0]->v->i;
         r->end = argv[1]->v->i;
         r->step = argv[2]->v->i;
-        Value *res = vopaque_extra(r, NULL, MILA_LPREFIX "range");
+        Value *res = vopaque_extra(r, NULL, "range");
         val_set_table(res, range_meta);
         return res;
     }
@@ -462,7 +462,7 @@ Value *native_new_array(Env *env, int argc, Value **argv) {
     }
 
     res->v = (void *)array;
-    res->type_name = mila_strdup(MILA_LPREFIX "array");
+    res->type_name = mila_strdup("array");
     val_set_table(res, array_meta);
     return res;
 }
@@ -482,7 +482,7 @@ Value *native_from_array(Env *env, int argc, Value **argv) {
     }
 
     res->v = (void *)array;
-    res->type_name = mila_strdup(MILA_LPREFIX "array");
+    res->type_name = mila_strdup("array");
     val_set_table(res, array_meta);
     return res;
 }
@@ -822,7 +822,7 @@ Value *native_str_join(Env *env, int argc, Value **argv) {
             "str.join(delim, list): Expected a deliminator and a list");
     if (GET_TYPE(argv[0]) != T_STRING)
         return verror("str.join(delim, list): Must deliminator be a string!");
-    if (strcmp(GET_TYPENAME(argv[1]), MILA_LPREFIX "list"))
+    if (strcmp(GET_TYPENAME(argv[1]), "list"))
         return verror("str.join(delim, list): Must list be a list!");
     char *delim = GET_STRING(argv[0]), *string = NULL;
     LinkedList *l = (LinkedList *)GET_OPAQUE(argv[1]);

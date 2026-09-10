@@ -1,0 +1,6 @@
+
+fn print_expr(expr: "@expr") {
+    println(expr + " = " + eval(expr));
+}
+
+@print_expr 90 + 90;

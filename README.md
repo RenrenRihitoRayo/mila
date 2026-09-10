@@ -3,6 +3,9 @@
 A small embeddable scripting language.
 MiLa is small, simple, and fast for general applications.
 
+MiLa stands for Minimal Language.
+It began as a small humble calculator but then quickly grew into it's own language.
+
 ## What MiLa is
 
 * A scaffold

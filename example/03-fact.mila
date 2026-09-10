@@ -1,13 +1,9 @@
 
-fn rec() { rec(); }
-rec();
-
 fn fact(n) {
     if (n <= 1) {
         return 1;
     }
-
     return fact(n - 1) * n;
 }
 
-println("fact(10) =" + fact(10));
+println("fact(10) = " + fact(10));

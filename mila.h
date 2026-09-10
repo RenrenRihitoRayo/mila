@@ -294,6 +294,7 @@ typedef struct Var {
 } Var;
 
 #define ITERATE_ENV(env) for (Var *var = (env)->vars; var; var = var->next)
+#define ITERATE_ENV_REC(env) for (Env *current = env; current; current = current->parent)
 
 struct Env {
     Var *vars;
@@ -626,7 +627,7 @@ typedef struct {
     char **params;      // NULL-terminated
     char **types;       // NULL-terminated
     char **defaults;    // NULL-terminated
-    char **contextuals; // NULL_terminated
+    char **contextuals; // NULL-terminated
     char *body_src;     // pointer to function body source (we'll keep a copy)
     // For evaluation we keep source pointer and we need the position. We'll
     // parse/eval at call-time.

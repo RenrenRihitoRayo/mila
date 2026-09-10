@@ -190,12 +190,8 @@ char *substitute_text(const char *needle, Value *replacement,
     }
 
     size_t needle_len = strlen(needle);
-    char *replacement_str = GET_TYPE(replacement) != T_STRING
-                                ? as_c_string(replacement)
-                                : as_c_string_repr(replacement);
-    char *replacement_lit = GET_TYPE(replacement) == T_STRING
-                                ? mila_strdup(GET_STRING(replacement))
-                                : as_c_string(replacement);
+    char *replacement_str = as_c_string_repr(replacement);
+    char *replacement_lit = as_c_string(replacement);
     size_t replacement_len = strlen(replacement_str);
     size_t replacement_len_lit = strlen(replacement_lit);
 
@@ -2061,7 +2057,7 @@ int print_value(Value *v) {
         Value *fn = dict_get_str((Dict *)GET_OPAQUE(v), ":display");
         if (fn) {
             Value *res = call_function_with(NULL, fn, val_retain(v), NULL);
-            if (IS_ERROR(res))
+            if (IS_ERROR(res)) // NOTE: we cant really pass any error info in here, GL to my future self here
                 print_error(res);
             val_release(res);
             fflush(stdout);
@@ -2446,6 +2442,27 @@ Env *env_new(Env *parent) {
     e->parent = parent;
     return e;
 }
+
+int env_check(Env* stack, Env* to_check) {
+    for (Env *cur = stack; cur; cur = cur->parent) {
+        if (cur == to_check) return 1;
+    }
+    return 0;
+}
+
+int env_hoist(Env* stack, Env* to_check) {
+    for (Env *cur = stack,
+             *prev = stack->parent,
+             *next = stack->parent->parent; cur; prev = cur, cur = cur->parent, next = cur->parent) {
+        if (cur == to_check) {
+            prev->parent = next;
+            break;
+        }
+    }
+    to_check->parent = stack;
+    return 1;
+}
+
 
 void env_copy(Env *dest, Env *src) {
     if (!src || !dest)
@@ -4798,7 +4815,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
     } else if (fnval->type == T_FUNCTION) {
         // create new environment with closure as parent
         Env *frame = NULL;
-        if (GET_FUNCTION(fnval)->closure) {
+        if (GET_FUNCTION(fnval)->closure && !env_check(env, GET_FUNCTION(fnval)->closure)) {
             GET_FUNCTION(fnval)->closure->parent = env;
             frame = env_new(GET_FUNCTION(fnval)->closure);
         } else {
@@ -4807,19 +4824,21 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
         // bind params
         char **p = GET_FUNCTION(fnval)->params;
         int i = 0;
+
         for (; p && p[i]; ++i) {
             // if fewer args provided, bind null
-            if (i < argc && GET_TYPE(argv[i]) == T_ERROR) {
-                return argv[i];
-            }
             Value *a = (i < argc) ? argv[i] : NULL;
+            if (a && GET_TYPE(a) == T_ERROR) {
+                return a;
+            }
             if (a == NULL) {
-                for (size_t j = argc; GET_FUNCTION(fnval)->defaults[j]; ++j) {
-                    env_set_raw(
+                size_t j = argc;
+                for (; GET_FUNCTION(fnval)->defaults[j]; ++j) {
+                    env_set_local_raw(
                         frame, strncmp("...", p[j], 3) != 0 ? p[j] : p[j] + 3,
                         eval_str(GET_FUNCTION(fnval)->defaults[j], frame));
                 }
-                i++;
+                i = j;
                 break;
             }
             if (strncmp("...", p[i], 3) == 0) {
@@ -4837,17 +4856,14 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
                 env_set_local(frame, p[i], a);
             }
         }
-        i--;
         // cursed
-        int limit = 0;
-        for (int meep = 0; GET_FUNCTION(fnval)->params[meep]; ++meep)
-            limit++;
-        limit--;
+        int limit = GET_FUNCTION(fnval)->argc;
+
         for (int j = i; j < limit; ++j) {
-            if (strncmp("...", p[i], 3) == 0)
-                env_set_local_raw(frame, p[i] + 3, vnull());
+            if (strncmp("...", p[j], 3) == 0)
+                env_set_local_raw(frame, p[j] + 3, vnull());
             else
-                env_set_local_raw(frame, p[i], vnull());
+                env_set_local_raw(frame, p[j], vnull());
         }
         // set contextual values
         p = GET_FUNCTION(fnval)->contextuals;
@@ -5208,7 +5224,7 @@ Value *eval_primary(Src *s, Env *env) {
             i = s->len;
         int blen = i - start;
         char *body = mila_malloc(blen + 1);
-        memcpy(body, s->src + start, blen);
+        memcpy(body, s->src + start + 1, blen - 1);
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
@@ -6974,6 +6990,8 @@ Value *eval_statement(Src *s, Env *env) {
                     return bod;
                 } break;
                 case T_TAGGED_ERROR:
+                    bod->v->tagged_error.pos.line--;
+                [[fallthrough]];
                 case T_ERROR: {
                     s->pos = body_end_pos;
                     return bod;
@@ -7120,6 +7138,8 @@ Value *eval_statement(Src *s, Env *env) {
                     return bod;
                 }
                 case T_TAGGED_ERROR:
+                    bod->v->tagged_error.pos.line--;
+                [[fallthrough]];
                 case T_ERROR: {
                     s->pos = body_end_pos;
                     mila_free(value);
@@ -7213,6 +7233,8 @@ Value *eval_statement(Src *s, Env *env) {
                     return bod;
                 }
                 case T_TAGGED_ERROR:
+                    bod->v->tagged_error.pos.line--;
+                [[fallthrough]];
                 case T_ERROR: {
                     s->pos = body_end_pos;
                     for (; value[i]; ++i)
@@ -7381,7 +7403,7 @@ Value *eval_statement(Src *s, Env *env) {
             i = s->len;
         int blen = i - start;
         char *body = mila_malloc(blen + 1);
-        memcpy(body, s->src + start, blen);
+        memcpy(body, s->src + start + 1, blen - 1);
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
@@ -7486,7 +7508,6 @@ Value *eval_statement(Src *s, Env *env) {
         if (IS_ERROR(res)) {
             env_free(class_env);
             mila_free(name);
-            val_release(obj);
             return res;
         } else
             val_release(res);
@@ -7627,7 +7648,14 @@ Value *eval_source(Src *s, Env *env) {
         last = st;
         if (last) {
             if (IS_ERROR(last)) {
-                return last;
+                Pos last_pos = get_pos(s);
+                char *err = GET_ERROR_MESSAGE(last);
+                ErrorType err_t = GET_ERROR_TYPE(last);
+                char *text = NULL;
+                Value *ret = vtagged_error(err_t, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
+                val_release(last);
+                mila_free(text);
+                return ret;
             } else if (last->type == T_RETURN) {
                 Value *res = (Value *)last->v;
                 val_release(last);
@@ -7641,6 +7669,16 @@ Value *eval_source(Src *s, Env *env) {
 Value *eval_str(char *src, Env *env) {
     Src *S = src_new(src);
     Value *res = eval_source(S, env);
+    if (IS_ERROR(res)) {
+        Pos last_pos = get_pos(S);
+        char *err = GET_ERROR_MESSAGE(res);
+        ErrorType err_t = GET_ERROR_TYPE(res);
+        char *text = NULL;
+        Value *ret = vtagged_error(err_t, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
+        val_release(res);
+        mila_free(text);
+        return ret;
+    }
     src_free(S);
     return res;
 }
@@ -8245,7 +8283,8 @@ int main(int argc, char **argv) {
             mila_free(cwd);
             int return_code = 0;
 
-            Value *res = eval_str(argv[2], g);
+            Src* s = src_new(argv[2]);
+            Value *res = eval_source(s, g);
             if (IS_ERROR(res)) {
                 print_error(res);
                 return_code = 1;
@@ -8270,6 +8309,8 @@ int main(int argc, char **argv) {
             val_release(res);
 
             mila_free(src_text);
+
+            src_free(s);
 
             mila_global_deinit(g);
             return return_code;

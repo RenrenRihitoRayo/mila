@@ -1,0 +1,20 @@
+
+fn make_counter(from: "int" = 0) -> "fn() -> int" {
+	var n = from - 1;
+	fn counter():[n] -> "int" {
+		set n += 1;
+		return n;
+	}
+	return counter;
+}
+
+var c1: "fn() -> int" = make_counter(10);
+var c2: "fn() -> int" = make_counter();
+
+println(c1());
+println(c1());
+println(c1());
+
+println(c2());
+println(c2());
+println(c2());

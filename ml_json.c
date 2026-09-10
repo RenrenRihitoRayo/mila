@@ -462,7 +462,7 @@ long _io_mila_to_json_unified(FILE *file, Value *v, int level, int include_fn) {
                 if (fn->params[i + 1])
                     result += fprintf(file, ",");
             }
-            result += fprintf(file, ") %s", fn->body_src);
+            result += fprintf(file, ") { %s }", fn->body_src);
         } else {
             result += fprintf(file, "null");
         }

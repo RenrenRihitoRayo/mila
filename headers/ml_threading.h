@@ -36,11 +36,11 @@ static ThreadRegistry thread_registry = {
     .capacity = 0,
 };
 
-static void thread_registry_init(void);
-static void thread_registry_expand(void);
-static int thread_registry_add(ThreadContext *ctx);
-static ThreadContext *thread_registry_get(int id);
-static void *mila_thread_worker(void *arg);
+__attribute__((unused)) static void thread_registry_init(void);
+__attribute__((unused)) static void thread_registry_expand(void);
+__attribute__((unused)) static int thread_registry_add(ThreadContext *ctx);
+__attribute__((unused)) static ThreadContext *thread_registry_get(int id);
+__attribute__((unused)) static void *mila_thread_worker(void *arg);
 Value *native_make_mutex(Env *env, int argc, Value **argv);
 Value *native_mutex_lock(Env *env, int argc, Value **argv);
 Value *native_mutex_unlock(Env *env, int argc, Value **argv);

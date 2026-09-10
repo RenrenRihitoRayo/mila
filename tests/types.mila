@@ -1,0 +1,22 @@
+
+var t = [
+    90,
+    90u,
+    90.0,
+    "string",
+    !{also a string},
+    fn() {},
+    true,
+    false,
+    none,
+    null,
+    [1, 2, 3],
+    [@ "a"=1, "b"=2, "c"=3],
+    array(0),
+    print,
+    stdout
+];
+
+foreach item : t {
+    println("item: " + typeof(item) + " = " + repr(item));
+}

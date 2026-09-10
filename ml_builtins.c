@@ -1038,9 +1038,12 @@ Value *native_eval(Env *env, int argc, Value **argv) {
 Value *native_system(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc != 1 || argv[0]->type != T_STRING) {
-        return verror("invalid number of arguments given or incorrect types.");
+        return verror("system(cmd): invalid number of arguments given or incorrect types.");
     }
-    return vint(system(GET_STRING(argv[0])));
+    if (!system(NULL))
+        return verror("system(cmd): environment does not have a shell for system(3)");
+    int ret = system(GET_STRING(argv[0]));
+    return make_list(vint((ret >> 8) & 0b11111111), vint(ret & 0b11111111), NULL);
 }
 #endif // ML_NO_ACE
 

@@ -347,13 +347,21 @@ var num: "int"= 0;
     Replace every occurrence of the needle with the given
     replacement.
 
-* `str.substitute(str: "string", name: "string", value: "any") -> "string"`
+* `str.substitute([name: "string", name: "string"] ..., str: "any") -> "string"`
 
-    Substitute a value in every occurrence of `name`.
+    Substitute pairs of aa value `value` in every occurrence of its paired `name`.
     Meant for code blocks.
     Syntax:
-    * `${name}` just replace the value
-    * `${name!}` replace the occurrence with the representation.
+    * `${name}` replace the occurrence with the value.
+    * `${name!}` replace the occurrence with the representation of the value.
+
+    Example:
+    * `str.substitute("name", "Ren", "age", 17, "${name!} ${age}") == "Ren 17"`
+    * `str.substitute("name", "Ren", "age", 17, "${name} ${age}") == "\"Ren\" 17"`
+
+    Unlike `str.patch` it will not freely replace every occurrence.
+    If the string `str` has strings and string blocks, it will not be substituted.
+    Example `str.substitute("name", "Ren", "age", 17, "${name!} ${age} !{ ${age} } \"${name}\"") == "Ren !{ ${age} } \"${name}\"`
 
 * `str.copy(str: "string") -> "string"`
 
@@ -567,10 +575,10 @@ Theres no date object shenanigans if theres no date object.
 
 ## <a id="system"></a>System
 
-* `system(cmd: "string") -> "int"`
+* `system(cmd: "string") -> "list(int, int)"`
 
     Run a command.
-    Returns the commands error code.
+    Returns the commands return code and the signal that terminated the process.
 
 * `sys.get_platform() -> "string"`
 

@@ -347,6 +347,14 @@ var num: "int"= 0;
     Replace every occurrence of the needle with the given
     replacement.
 
+* `str.substitute(str: "string", name: "string", value: "any") -> "string"`
+
+    Substitute a value in every occurrence of `name`.
+    Meant for code blocks.
+    Syntax:
+    * `${name}` just replace the value
+    * `${name!}` replace the occurrence with the representation.
+
 * `str.copy(str: "string") -> "string"`
 
     Copy a string.

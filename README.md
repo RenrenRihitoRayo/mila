@@ -45,6 +45,8 @@ all documented, in a interpreter as small as a png.
 | Linux 6.18.41-1-lts (Archlinux) | 148KB  | gcc 16.1.1   | smallest |
 | Linux 6.18.41-1-lts (Archlinux) | 232KB  | clang 22.1.8 | release  |
 | Linux 6.18.41-1-lts (Archlinux) | 176KB  | clang 22.1.8 | smallest |
+| Linux 6.18.41-1-lts (Archlinux) | 1.4MB  | gcc 16.1.1   | static   |
+| Linux 6.18.41-1-lts (Archlinux) | 1.4MB  | clang 22.1.8 | static   |
 
 ## Keywords (20 total)
 

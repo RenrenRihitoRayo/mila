@@ -1,5 +1,7 @@
 # Welcome to MiLa
 
+* Current version `202603.1.1`
+
 A small embeddable scripting language.
 MiLa is small, simple, and fast for general applications.
 
@@ -30,15 +32,15 @@ It began as a small humble calculator but then quickly grew into it's own langua
 
 ## Builtins
 
-There are currently 140+ builtins in MiLa
-all documented, in a interpreter as small as a picture.
+There are currently 150+ builtins in MiLa
+all documented, in a interpreter as small as a png.
 
 ## Size
 
 |         Platform                |  Size  | Compiler     |  Build   |
 |---------------------------------|--------|--------------|----------|
-| Android (MagicOS Termux)        | 256KB  | clang 21.1.8 | release  |
-| Android (MagicOS Termux)        | 172KB  | clang 21.1.8 | smallest |
+| Android (MagicOS Termux)        | 262KB  | clang 21.1.8 | release  |
+| Android (MagicOS Termux)        | 176KB  | clang 21.1.8 | smallest |
 | Linux 6.18.41-1-lts (Archlinux) | 272KB  | gcc 16.1.1   | release  |
 | Linux 6.18.41-1-lts (Archlinux) | 148KB  | gcc 16.1.1   | smallest |
 | Linux 6.18.41-1-lts (Archlinux) | 232KB  | clang 22.1.8 | release  |

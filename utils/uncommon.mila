@@ -5,10 +5,11 @@
 // from caffeine deprived developers.
 
 object uncommon {
-    fn _choose_random(list) {
-        srandom(cast.f2i(get_time()));
-        var len = list.len(list);
-        return list[random(0, len)];
+    fn _choose_random(lst) {
+        srandom(cast.f2i(get_time() * 1000));
+        var len = list.len(lst);
+        var i = random(0, len);
+        return lst[i];
     } 
     fn answer() {
         return 42;
@@ -16,7 +17,7 @@ object uncommon {
     fn question() {
         return "its obvious isnt it?";
     }
-    fn no_aas():[uncommon] {
+    fn no_aas() {
         return uncommon::_choose_random([
             "No.",
             "Invalid.",
@@ -65,6 +66,10 @@ Please reboot your computer.");
 
 Stop code: TOO_MANY_CHROME_TABS");
     }
+}
+
+if (!__importer__) {
+    println(uncommon::no_aas());
 }
 
 return uncommon;

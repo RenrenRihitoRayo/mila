@@ -47,56 +47,56 @@ and thus may not be guaranteed as safe for monkey patching.
 
 ## <a id="io-file"></a>File IO
 
-* `open(file: "string", mode: "string") -> "opaque:file"`
+* `open(file: "string", mode: "string") -> "file"`
 
     Open a file, uses C `fopen`.
 
-* `fdopen(fd: "int", mode: "string") -> "opaque:file"`
+* `fdopen(fd: "int", mode: "string") -> "file"`
 
     Open a file descriptor.
 
-* `fdredirect(to_fd: "[int,opaque:file]", from_fd: "[int,opaque:file]") -> "int"`
+* `fdredirect(to_fd: "[int,file]", from_fd: "[int,file]") -> "int"`
 
     Redirect `from_fd` into `to_fd` and return `from_fd`
 
-* `fileno(file: "opaque:file") -> "int"`
+* `fileno(file: "file") -> "int"`
 
     Return the file as a file descriptor.
 
-* `fread(file: "opaque:file", num: "int") -> "string"`
+* `fread(file: "file", num: "int") -> "string"`
 
     Read a certain amount of characters.
 
-* `fread_all(file: "opaque:file") -> "string"`
+* `fread_all(file: "file") -> "string"`
 
     Read the entire file.
 
-* `fread_bytes(file: "opaque:file", num: "int") -> "list[int]"`
+* `fread_bytes(file: "file", num: "int") -> "list[int]"`
 
     Read a certain amount of bytes.
 
-* `fread_all(file: "opaque:file") -> "list[int]"`
+* `fread_all(file: "file") -> "list[int]"`
 
     Read the entire file as bytes.
 
-* `fprint(file: "opaque:file", value: "string")`
+* `fprint(file: "file", value: "string")`
 
     Print the string into the file.
 
-* `fprint_bytes(file: "opaque:file", value: "list[int]")`
+* `fprint_bytes(file: "file", value: "list[int]")`
 
     Print the bytes into the file.
 
-* `ftell(file: "opaque:file") -> "int"`
+* `ftell(file: "file") -> "int"`
 
     Return the current cursor position.
 
-* `fseek(file: "opaque:file", offset: "int", whence: "int") -> "int"`
+* `fseek(file: "file", offset: "int", whence: "int") -> "int"`
 
     Exactly like C fseek.
     For whence use the values `SEEK_CUR`, `SEEK_SET`, and `SEEK_END`
 
-* `fclose(file: "opaque:file")`
+* `fclose(file: "file")`
 
     Close a file.
 
@@ -170,28 +170,29 @@ and thus may not be guaranteed as safe for monkey patching.
 
     Standard list syntax in MiLa.
 
-* `list(item1, item2, item3, ..., itemN) -> "opaque:list"`
+* `list(item1, item2, item3, ..., itemN) -> "list"`
 
     List constructor. Same as using the list syntax.
     (calls the same underlying constructor)
 
-* `list.append(list: "opaque:list", item)`
+* `list.append(list: "list", item)`
 
     Append an item to the given list.
+    Does not work for arrays!
 
-* `list.pop(list: "opaque:list") -> "any"`
+* `list.pop(list: "list") -> "any"`
 
     Pop an item, returns `null` if no items are in the list.
 
-* `list.len(list: "opaque:list") -> "int"`
+* `list.len(list: "list") -> "int"`
 
     Get the length of a list.
 
-* `list.contains(list: "opaque:list", item) -> "bool"`
+* `list.contains(list: "list", item) -> "bool"`
 
     Check if an item exists in the list (equality check)
 
-* `list.deconstruct(pattern: "opaque:list", list: "opaque:list") -> "opaque:dict"`
+* `list.deconstruct(pattern: "list", list: "list") -> "dict"`
 
     Deconstruct a list into a dict.<br>
     Example: `list.deconstruct("[...a, b]", [90, 70, 80])`
@@ -215,11 +216,11 @@ this functions seed value can be customized if needed.
 
     Standard dict syntax.
 
-* `dict(key1, val1, key2, val2, key3, val3, ..., keyN, valN) -> "opaque:dict"`
+* `dict(key1, val1, key2, val2, key3, val3, ..., keyN, valN) -> "dict"`
 
     Dictionary constructor.
 
-* `dict.rem(d: "opaque:dict", key: "str")`
+* `dict.rem(d: "dict", key: "str")`
 
     Remove a key-value pair from a dict.
     Does nothing when the key isn't found.
@@ -244,17 +245,17 @@ typedef struct {
 } Array;
 ```
 
-* `array(slots: "int") -> "opaque:array"`
+* `array(slots: "int") -> "array"`
 
     Array constructor.
     Allocates memory for the given number of slots.
 
-* `array.from(item1, item2, item3, ..., itemN) -> "opaque:array"`
+* `array.from(item1, item2, item3, ..., itemN) -> "array"`
 
     Array constructor.
     Allocates memory for the number of arguments passed.
 
-* `array.len(list: "opaque:array") -> "int"`
+* `array.len(list: "array") -> "int"`
 
     Get the length of a list.
 
@@ -269,7 +270,7 @@ typedef struct {
 
 ## <a id="sort"></a>Sorting
 
-* `qsort(obj: "opaque:list", function: "<callable>") -> "opaque:list"`
+* `qsort(obj: "list", function: "callable") -> "list"`
 
     Sort the given list, return the sorted list.
     The function accepts two arguments a and b, the function needs to return these values
@@ -282,11 +283,11 @@ typedef struct {
 
 ## <a id="func"></a>Functional Stuff
 
-* `map(lst: "opaque:list<T>", func: "function") -> "opaque:list<T>"`
+* `map(lst: "list<T>", func: "function") -> "list<T>"`
 
     Enumerate each item of the list `lst` with the function `func`.
 
-* `filter(lst: "opaque:list<T>", func: "function") -> "opaque:list<T>"`
+* `filter(lst: "list<T>", func: "function") -> "list<T>"`
 
     Enumerate each item of the list `lst` with the function `func`,
     the item will only get collected if `func` returns true for that item of `lst`.
@@ -311,7 +312,7 @@ typedef struct {
     Return the variable specified in `name`.
     Return `null` when the variable specified by `name` is not found or is not set.
 
-* `env.get_names() -> "opaque:list[str]"`
+* `env.get_names() -> "list[str]"`
 
     Returns a list of variable names found in the current scope.
 
@@ -327,7 +328,7 @@ var num: "int"= 0;
 }
     ```
 
-* `export(d: "opaque:dict[str, any]")`
+* `export(d: "dict[str, any]")`
 
     Accepts a dictionary.
     Exports to the surrounding scope.
@@ -379,11 +380,30 @@ var num: "int"= 0;
 
     Pop the back of the string.
 
-* `str.split(str: "string", delim: "string") -> "opaque:list[string]"`
+* `str.split(str: "string", delim: "string") -> "list[string]"`
 
     Split the string into a list of strings.
 
-* `str.join(delim: "string", items: "opaque:list") -> "string"`
+* `str.wqsplit(str: "string") -> "list[string]"`
+
+    Split the string into a list strings.
+    Delimetors are whitespace and does process quotes.<br>
+    Example: `str.wqsplit(!{test "this has a space" '"mixed quotes"' "quote -> \""})`<br>
+    Is: `["test", "this has a space", "\"mixed quotes\"", "quote -> \""]`
+
+* `str.cqsplit(str: "string") -> "list[string]"`
+
+    Split the string into a list strings.
+    Delimetors are commas and does process quotes.<br>
+    Example: `str.cqsplit(!{test,"this has a space",'"mixed quotes"',"quote -> \""})`<br>
+    Is: `["test", "this has a space", "\"mixed quotes\"", "quote -> \""]`
+
+* `str.shsplit(str: "string") -> "list[string]"`
+
+    Split the stirng into a list of strings
+    in the way a shell would.
+
+* `str.join(delim: "string", items: "list") -> "string"`
 
     Join a list of items into a string joined by the delim string.
 
@@ -436,7 +456,7 @@ var num: "int"= 0;
 
     Self explanatory name.
 
-* `istring(str: "string") -> "opaque:istring"`
+* `istring(str: "string") -> "istring"`
 
     Turn the string into an iterable string.
 
@@ -503,7 +523,7 @@ Self explanatory names.
     * uint
     * string
 
-* `from_opaque(type: "string", opaque: "opaque") -> "any"`
+* `from_opaque(type: "string",  "opaque") -> "any"`
 
     Cast an opaque into a type.<br>
     Supports these strings for `type`:
@@ -559,16 +579,16 @@ Theres no date object shenanigans if theres no date object.
 
     Sleep for a specified amount of miliseconds.
 
-* `strftime(fmt: "string", tm: "opaque:tm") -> "string"`
+* `strftime(fmt: "string", tm: "tm") -> "string"`
 
     C strftime wrapper.
 
-* `get_tm_local(time: "float") -> "opaque:tm`
+* `get_tm_local(time: "float") -> "tm`
 
     Get a `tm` struct for local time.
     Accepts unix timestamp.
 
-* `get_tm_gmt(time: "float") -> "opaque:tm`
+* `get_tm_gmt(time: "float") -> "tm`
 
     Get a `tm` struct for gmt timezone.
     Accepts unix timestamp.
@@ -732,27 +752,27 @@ Theres no date object shenanigans if theres no date object.
 
 ## <a id="json"></a>JSON and MJSON
 
-* `json.loads(json: "string") -> "opaque:list|opaque:dict"`
+* `json.loads(json: "string") -> "list|dict"`
 
     Loads a json string as MiLa types.
 
-* `json.dumps(mila: "opaque:list|opaque:dict") -> "string"`
+* `json.dumps(mila: "list|dict") -> "string"`
 
     Dumps a MiLa type as json.
 
-* `json.dumps_io(file: "opaque:file", mila: "opaque:list|opaque:dict") -> "string"`
+* `json.dumps_io(file: "file", mila: "list|dict") -> "string"`
 
     Dumps a MiLa type as json directly into a file.
 
-* `mjson.loads(mjson: "string") -> "opaque:list|opaque:dict"`
+* `mjson.loads(mjson: "string") -> "list|dict"`
 
     Loads an mjson string as MiLa types.
 
-* `mjson.dumps(mila: "opaque:list|opaque:dict") -> "string"`
+* `mjson.dumps(mila: "list|dict") -> "string"`
 
     Dumps a MiLa type as mjson.
 
-* `mjson.dumps_io(file: "opaque:file", mila: "opaque:list|opaque:dict") -> "string"`
+* `mjson.dumps_io(file: "file", mila: "list|dict") -> "string"`
 
     Dumps a MiLa type as mjson directly into a file.
 
@@ -792,7 +812,7 @@ Theres no date object shenanigans if theres no date object.
 
     Must be called inside threads that might be cancelled.
     This exists because MiLa threads are cooperative.
-    Even if we use pthreads underneath, we need to comply eith platforms
+    Even if we use pthreads underneath, we need to comply with platforms
     such as Android (google hates non cooperstive threading on mobile)
 
 * `thread.set_daemon(thread_id: "int")`
@@ -814,9 +834,9 @@ Theres no date object shenanigans if theres no date object.
 
     Create a mutex.
 
-* `thread.mutex_lock(mutex: "opaque:mutex")`
+* `thread.mutex_lock(mutex: "mutex")`
 
-* `thread.mutex_unlock(mutex: "opaque:mutex")`
+* `thread.mutex_unlock(mutex: "mutex")`
 
 * `thread.dump(thread_id: "int")`
 
@@ -831,7 +851,7 @@ Theres no date object shenanigans if theres no date object.
 
 * `crandom() -> "int"`
 
-    Returns random integers.
+    Returns random integers. as per `random(3)` in the libc implementation.
 
 * `random(min: "int", max: "int") -> "int"`
 
@@ -843,13 +863,7 @@ Theres no date object shenanigans if theres no date object.
     Sets the seed for random numbers.
     This is important for getting actual random numbers.
 
-* `noise(start: "int", min: "int", max: "int", mag: "int"=5) -> "opaque:list[int]"`
-
-    Return a list of random integers.
-    Magnitude is the maximum value the next integer can be far from the previous number.
-    Think of this as a 1d perlin noise generator.
-
-* `range(start: "int", stop: "int", step: "int"=1) -> "opaque:list[int]"`
+* `range(start: "int", stop: "int", step: "int"=1) -> "list[int]"`
 
     Just like in python, exlusive.
 

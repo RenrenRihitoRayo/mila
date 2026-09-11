@@ -508,7 +508,7 @@ double get_unix_timestamp(void);
 // mood)
 
 // THESE ARE INTERNAL
-#define GET_TAGGED_ERROR_TYPENAME(val)                                         \
+#define GET_ERROR_TYPENAME(val)                                         \
     (val ? (val->type == T_TAGGED_ERROR                                        \
                 ? MILA_ERROR_NAMES[val->v->tagged_error.type]                  \
                 : "???")                                                       \
@@ -748,15 +748,31 @@ char *replace_match(const char *pattern, const char *str,
 long find_match_index(const char *pattern, const char *str, size_t *out_len);
 int find_match(const char *pattern, const char *str, const char **out_start,
                size_t *out_len);
+
+// Evaluate a Src*
 Value *eval_source(Src *s, Env *env);
+// Evaluate a string
 Value *eval_str(char *src, Env *env);
+// Evaluate a Src* and make sure errors get the file name
+Value *eval_source_filed(const char* filename, Src *s, Env *env);
+// Evaluate a string and make sure the erros get the file name
+Value *eval_str_filed(const char* filename, char *src, Env *env);
+// Run a file
 int run_file(char *name, Env *env);
+// Run a file and get its return value
 Value *run_file_keep_res(char *name, Env *env);
+// Invoke a file
 int invoke_file(char *name, Env *env);
+// Invoke a file and keep its result
 Value *invoke_file_keep_res(char *name, Env *env);
+// Get the unix timestamp
 double get_unix_timestamp();
+// Get a monotonic timestamp
+double get_monotonic_timestamp();
+// Read input
 char *read_input(void);
 #ifndef ML_NO_DL
+// Load a library
 int load_library(Env *env, const char *libpath);
 #endif // ML_NO_DL
 void mila_add_atexit(Value *fn);

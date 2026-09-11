@@ -10,6 +10,8 @@
 #include "mila.h"
 #include "ml_commons.h"
 
+#include <bits/time.h>
+#include <fcntl.h>
 #include <stdalign.h>
 #define _GNU_SOURCE
 
@@ -140,21 +142,15 @@ void mila_fatal_sig_handler(int sig, siginfo_t *si, void *ctx) {
 }
 
 double get_unix_timestamp(void) {
-#ifdef _WIN32
-    FILETIME ft;
-    GetSystemTimeAsFileTime(&ft);
-
-    uint64_t t = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
-
-    t -= 116444736000000000ULL; // FILETIME -> Unix epoch
-
-    return (double)t / 10000000.0;
-#else
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-#endif
+}
+
+double get_monotonic_timestamp(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
 }
 
 void print_memory_usage() {
@@ -1667,7 +1663,7 @@ char *as_c_string(Value *v) {
         malloc_sprintf(&buffer, "<error:%s>", GET_ERROR_MESSAGE(v));
         break;
     case T_TAGGED_ERROR:
-        malloc_sprintf(&buffer, "<error[%s]:%s>", GET_TAGGED_ERROR_TYPENAME(v),
+        malloc_sprintf(&buffer, "<error[%s]:%s>", GET_ERROR_TYPENAME(v),
                        GET_TAGGED_ERROR_MESSAGE(v));
         break;
 
@@ -1817,7 +1813,7 @@ int raw_print_value(Value *v) {
     case T_ERROR:
         return printf("<error:%s>", GET_ERROR_MESSAGE(v));
     case T_TAGGED_ERROR:
-        return printf("<error[%s]:%s>", GET_TAGGED_ERROR_TYPENAME(v),
+        return printf("<error[%s]:%s>", GET_ERROR_TYPENAME(v),
                       GET_TAGGED_ERROR_MESSAGE(v));
 
     case T_INT:
@@ -5375,7 +5371,7 @@ Value *eval_primary(Src *s, Env *env) {
                                    text = indent(GET_ERROR_MESSAGE(res), 2));
                     mila_free(text);
                 }
-                int return_code = -1;
+                int return_code = 0;
                 if (type != E_NO_ERROR) {
                     return_code = res->v->tagged_error.return_code;
                 }
@@ -5383,8 +5379,9 @@ Value *eval_primary(Src *s, Env *env) {
                 Value *res;
                 if (type == E_NO_ERROR)
                     res = verror("%s", error);
-                else
+                else {
                     res = vtagged_coded_error(type, return_code, "%s", error);
+                }
                 mila_free(error);
                 mila_free(id);
                 return res;
@@ -6093,7 +6090,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                                    text = indent(GET_ERROR_MESSAGE(res), 2));
                     mila_free(text);
                 }
-                int return_code = -1;
+                int return_code = 0;
                 if (type != E_NO_ERROR) {
                     return_code = res->v->tagged_error.return_code;
                 }
@@ -6257,7 +6254,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                                    text = indent(GET_ERROR_MESSAGE(res), 2));
                     mila_free(text);
                 }
-                int return_code = -1;
+                int return_code = 0;
                 if (type != E_NO_ERROR) {
                     return_code = res->v->tagged_error.return_code;
                 }
@@ -7284,7 +7281,7 @@ Value *eval_statement(Src *s, Env *env) {
             if (id) {
                 if (IS_ERROR_TAGGED(res)) {
                     Value *msg = vstring_dup(res->v->tagged_error.message);
-                    Value *type = vstring_dup(GET_TAGGED_ERROR_TYPENAME(res));
+                    Value *type = vstring_dup(GET_ERROR_TYPENAME(res));
                     Value *e_id, *e_msg;
                     Value *dict = make_dict(
                         vstring_dup("error"), type, vstring_dup("error_id"),
@@ -7652,7 +7649,7 @@ Value *eval_source(Src *s, Env *env) {
                 char *err = GET_ERROR_MESSAGE(last);
                 ErrorType err_t = GET_ERROR_TYPE(last);
                 char *text = NULL;
-                Value *ret = vtagged_error(err_t, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
+                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? last->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
                 val_release(last);
                 mila_free(text);
                 return ret;
@@ -7674,7 +7671,56 @@ Value *eval_str(char *src, Env *env) {
         char *err = GET_ERROR_MESSAGE(res);
         ErrorType err_t = GET_ERROR_TYPE(res);
         char *text = NULL;
-        Value *ret = vtagged_error(err_t, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
+        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? res->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
+        val_release(res);
+        mila_free(text);
+        return ret;
+    }
+    src_free(S);
+    return res;
+}
+
+Value *eval_source_filed(const char* filename, Src *s, Env *env) {
+    Value *last = vnull();
+    while (!src_eof(s)) {
+        if (src_eof(s))
+            break;
+        Value *st = eval_statement(s, env);
+        if (GET_TYPE(st) == T_NULL) {
+            val_release(st);
+            continue;
+        }
+        val_release(last);
+        last = st;
+        if (last) {
+            if (IS_ERROR(last)) {
+                Pos last_pos = get_pos(s);
+                char *err = GET_ERROR_MESSAGE(last);
+                ErrorType err_t = GET_ERROR_TYPE(last);
+                char *text = NULL;
+                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? last->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
+                val_release(last);
+                mila_free(text);
+                return ret;
+            } else if (last->type == T_RETURN) {
+                Value *res = (Value *)last->v;
+                val_release(last);
+                return res;
+            }
+        }
+    }
+    return last;
+}
+
+Value *eval_str_filed(const char* filename, char *src, Env *env) {
+    Src *S = src_new(src);
+    Value *res = eval_source(S, env);
+    if (IS_ERROR(res)) {
+        Pos last_pos = get_pos(S);
+        char *err = GET_ERROR_MESSAGE(res);
+        ErrorType err_t = GET_ERROR_TYPE(res);
+        char *text = NULL;
+        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? res->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
         val_release(res);
         mila_free(text);
         return ret;
@@ -7689,7 +7735,7 @@ void print_error(Value *v) {
     }
     if (v->type == T_TAGGED_ERROR) {
         if (v->v->tagged_error.type == E_EXIT) {
-            if (v->v->tagged_error.return_code != 0)
+            if (v->v->tagged_error.return_code != -1)
                 fprintf(stderr, "\n== Recieved Exit Signal [%d] ==\n%s\n",
                     v->v->tagged_error.return_code,
                     GET_TAGGED_ERROR_MESSAGE(v));
@@ -7701,10 +7747,10 @@ void print_error(Value *v) {
             return;
         if (IS_FATAL(v))
             fprintf(stderr, "\n== FATAL ERROR [%s] ==\n%s\n",
-                    GET_TAGGED_ERROR_TYPENAME(v), v->v->tagged_error.message);
+                    GET_ERROR_TYPENAME(v), v->v->tagged_error.message);
         else
             fprintf(stderr, "\n== Error [%s] ==\n%s\n",
-                    GET_TAGGED_ERROR_TYPENAME(v), v->v->tagged_error.message);
+                    GET_ERROR_TYPENAME(v), v->v->tagged_error.message);
     }
 }
 
@@ -7730,7 +7776,7 @@ int run_file(char *name, Env *env) {
     src_text[size] = 0;
     fclose(f);
     Src *S = src_new(src_text);
-    Value *res = eval_source(S, env);
+    Value *res = eval_source_filed(name, S, env);
     val_release(res);
     src_free(S);
     mila_free(src_text);
@@ -7762,7 +7808,7 @@ Value *run_file_keep_res(char *name, Env *env) {
     src_text[size] = 0;
     fclose(f);
     Src *S = src_new(src_text);
-    Value *res = eval_source(S, env);
+    Value *res = eval_source_filed(name, S, env);
     src_free(S);
     mila_free(src_text);
 #ifndef RESTRICTED_BUILD
@@ -7827,7 +7873,7 @@ int invoke_file(char *name, Env *env) {
     src_text[size] = 0;
     fclose(f);
     Src *S = src_new(src_text);
-    Value *res = eval_source(S, env);
+    Value *res = eval_source_filed(name, S, env);
     val_release(res);
     src_free(S);
     mila_free(src_text);
@@ -7892,7 +7938,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[]) {
     if (src_peek(S) == '#') {
         src_get(S);
         if (!match_char(S, '!'))
-            return verror("Invalid shebang!");
+            return vtagged_error_pos(get_pos(S), E_SYNTAX_ERROR, "Invalid shebang!");
         while (src_peek(S) != '\n')
             src_get(S);
     }
@@ -7964,7 +8010,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[]) {
                     path_list_remove(mila_search_path, loc_dir);
                     mila_free(loc_dir);
 #endif
-                    return verror("Expected string annotation!");
+                    return vtagged_error_pos(get_pos(S), E_SYNTAX_ERROR, "Expected string annotation!");
                 }
                 S->pos--; // parse_string expects openning quote
                 val_release(parse_string(S));
@@ -7972,7 +8018,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[]) {
         }
     }
 
-    Value *res = eval_source(S, env);
+    Value *res = eval_source_filed(name, S, env);
     src_free(S);
     mila_free(src_text);
 #ifndef RESTRICTED_BUILD
@@ -8031,7 +8077,7 @@ Value *invoke_file_keep_res(char *name, Env *env) {
     src_text[size] = 0;
     fclose(f);
     Src *S = src_new(src_text);
-    Value *res = eval_source(S, env);
+    Value *res = eval_source_filed(name, S, env);
     src_free(S);
     mila_free(src_text);
 #ifndef RESTRICTED_BUILD
@@ -8164,6 +8210,15 @@ void handle_signal(int signal) {
     _exit(signal);
 }
 
+const char *poem =
+    "0906-15d-yeliah\n\n"
+    "People Suffer\n"
+    "looking for a paradise,\n"
+    "in a world built to suffer\n"
+    "with only a promise of paradise.\n\n"
+    "Byace fovras, was estan vis et'?\n"
+    "Bya arci et', that will never change.\n";
+
 #ifndef ML_NO_MAIN
 int main(int argc, char **argv) {
     char *src_text = NULL;
@@ -8235,6 +8290,9 @@ int main(int argc, char **argv) {
                 "  --version | -v = Prints version\n"
                 "  --help    | -h = Prints this list\n",
                 MILA_EDITION, MILA_VERSION, MILA_PATCH);
+            return 0;
+        } else if (strcmp(argv[1], "--poem") == 0) {
+            printf("%s", poem);
             return 0;
         }
     } else if (argc == 3) {

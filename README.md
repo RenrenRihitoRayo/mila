@@ -39,10 +39,10 @@ all documented, in a interpreter as small as a picture.
 |---------------------------------|--------|--------------|----------|
 | Android (MagicOS Termux)        | 256KB  | clang 21.1.8 | release  |
 | Android (MagicOS Termux)        | 172KB  | clang 21.1.8 | smallest |
-| Linux 6.18.41-1-lts (Archlinux) | 264KB  | gcc 16.1.1   | release  |
-| Linux 6.18.41-1-lts (Archlinux) | 144KB  | gcc 16.1.1   | smallest |
-| Linux 6.18.41-1-lts (Archlinux) | 228KB  | clang 22.1.8 | release  |
-| Linux 6.18.41-1-lts (Archlinux) | 172KB  | clang 22.1.8 | smallest |
+| Linux 6.18.41-1-lts (Archlinux) | 272KB  | gcc 16.1.1   | release  |
+| Linux 6.18.41-1-lts (Archlinux) | 148KB  | gcc 16.1.1   | smallest |
+| Linux 6.18.41-1-lts (Archlinux) | 232KB  | clang 22.1.8 | release  |
+| Linux 6.18.41-1-lts (Archlinux) | 176KB  | clang 22.1.8 | smallest |
 
 ## Keywords (20 total)
 

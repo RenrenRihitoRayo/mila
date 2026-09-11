@@ -1,0 +1,2 @@
+
+println(str.shsplit(!{ 90 90 "ehy what" 'test\'' huh $test ${test:space here}\ what}));

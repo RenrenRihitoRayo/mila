@@ -851,6 +851,16 @@ Value *native_get_time(Env *env, int argc, Value **argv) {
     return vfloat(get_unix_timestamp());
 }
 
+Value *native_get_time_monotonic(Env *env, int argc, Value **argv) {
+    (void)argc;
+    (void)argv;
+    (void)env;
+    if (argc != 0) {
+        return verror("get_time(): invalid number of arguments given.");
+    }
+    return vfloat(get_monotonic_timestamp());
+}
+
 Value *native_time_sleep(Env *env, int argc, Value **argv) {
     (void)argc;
     (void)argv;
@@ -1301,7 +1311,7 @@ Value *native_random(Env *env, int argc, Value **argv) {
     if (argc == 2 && GET_TYPE(argv[0]) == T_INT && GET_TYPE(argv[1]) == T_INT) {
         long min = GET_INTEGER(argv[0]);
         long max = GET_INTEGER(argv[1]);
-        return vint((rand() % (max - min + 1)) + min);
+        return vint((rand() % (max - min)) + min);
     }
     return verror("random(lower, upper): Expected two integer arguments.");
 }
@@ -1874,6 +1884,9 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "str.pop_f", native_str_pop_start);
     env_register_native(g, "str.pop_b", native_str_pop_end);
     env_register_native(g, "str.split", native_str_split);
+    env_register_native(g, "str.wqsplit", native_str_wqsplit);
+    env_register_native(g, "str.cqsplit", native_str_cqsplit);
+    env_register_native(g, "str.shsplit", native_str_shsplit);
     env_register_native(g, "str.join", native_str_join);
     env_register_native(g, "str.startswith", native_str_startsw);
     env_register_native(g, "str.endswith", native_str_endsw);
@@ -1929,6 +1942,7 @@ void env_register_builtins(Env *g) {
     // === Time measurement
 #ifndef ML_NO_TIME
     env_register_native(g, "get_time", native_get_time);
+    env_register_native(g, "get_time_monotonic", native_get_time_monotonic);
     env_register_native(g, "time_sleep", native_time_sleep);
     env_register_native(g, "time_sleep_ms", native_time_sleep_ms);
     env_register_native(g, "strftime", native_strftime);

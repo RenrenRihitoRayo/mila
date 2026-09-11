@@ -6,7 +6,11 @@
 
 * `{type1, type2, type3}` is a union.
 
-* `type<g_type>` a collection of type `type` with the generic type `g_type`
+* `<type>` a generic type `type`.
+
+    Example use case: `fn add(a: "<T>", b: "<T>") -> "<T>"`
+
+* `type[<g_type>]` a collection of type `type` with the generic type `g_type`
 
 * `type[{type1, type2, type3}]` a collection of type `type` with the union type `type1`, `type2`, and `type3`
 

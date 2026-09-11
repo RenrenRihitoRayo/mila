@@ -207,7 +207,7 @@ Value *native_keys_dict(Env *env, int argc, Value **argv) {
         val_release(call_native_with(NULL, native_list_append, val_retain(arr),
                                      keys[i], NULL));
     }
-    free(keys);
+    mila_free(keys);
     return arr;
 }
 
@@ -339,7 +339,7 @@ Value *array_iter_next(ArrayIterState *state) {
                : vnull();
 }
 
-void array_iter_cleanup(ArrayIterState *state) { free(state); }
+void array_iter_cleanup(ArrayIterState *state) { mila_free(state); }
 
 long range_len(long start, long stop, long step) {
     if (step == 0)
@@ -397,7 +397,7 @@ Value *range_iter_next(RangeState *self) {
     return vint(result);
 }
 
-void range_iter_free(RangeState *self) { free(self); }
+void range_iter_free(RangeState *self) { mila_free(self); }
 
 Value *range_free(Value *self) {
     mila_free(self->v);
@@ -731,7 +731,7 @@ Value *native_str_substitute(Env *env, int argc, Value **argv) {
     for (int i = 0; i < argc - 1; i += 2) {
         char *new_text =
             substitute_text(GET_STRING(argv[i]), argv[i + 1], text);
-        free(text);
+        mila_free(text);
         text = new_text;
     }
     return vstring_take(text);
@@ -812,7 +812,7 @@ Value *native_str_split(Env *env, int argc, Value **argv) {
                                      vstring_dup(part), NULL));
         part = strtok_r(NULL, GET_STRING(argv[1]), &save_ptr);
     }
-    free(copy);
+    mila_free(copy);
     return list;
 }
 
@@ -831,7 +831,7 @@ Value *native_str_join(Env *env, int argc, Value **argv) {
         malloc_sprintf(&string, "%s", vstr);
         if (v->next)
             malloc_sprintf(&string, "%s", delim);
-        free(vstr);
+        mila_free(vstr);
     }
     return vstring_take(string);
 }
@@ -924,4 +924,411 @@ Value *native_str_tolower(Env *env, int argc, Value **argv) {
     for (size_t i = 0; i < len; ++i)
         upper[i] = tolower(str[i]);
     return vstring_take(upper);
+}
+
+typedef struct {
+    char **items;
+    size_t count;
+    size_t capacity;
+} SplitResult;
+
+
+/* ---------- Common allocation ---------- */
+
+static int split_push(SplitResult *r, const char *buf, size_t len)
+{
+    char *copy;
+
+    if (r->count + 1 >= r->capacity) {
+        size_t new_capacity = r->capacity ? r->capacity * 2 : 8;
+        char **new_items = mila_realloc(r->items,
+                                   new_capacity * sizeof(*new_items));
+
+        if (!new_items)
+            return 0;
+
+        r->items = new_items;
+        r->capacity = new_capacity;
+    }
+
+    copy = mila_malloc(len + 1);
+    if (!copy)
+        return 0;
+
+    memcpy(copy, buf, len);
+    copy[len] = '\0';
+
+    r->items[r->count++] = copy;
+    r->items[r->count] = NULL;
+
+    return 1;
+}
+
+static void split_destroy(SplitResult *r)
+{
+    size_t i;
+
+    for (i = 0; i < r->count; ++i)
+        mila_free(r->items[i]);
+
+    mila_free(r->items);
+
+    r->items = NULL;
+    r->count = 0;
+    r->capacity = 0;
+}
+
+void str_split_free(char **parts, size_t count)
+{
+    size_t i;
+
+    if (!parts)
+        return;
+
+    for (i = 0; i < count; ++i)
+        mila_free(parts[i]);
+
+    mila_free(parts);
+}
+
+Value *native_str_wqsplit(Env* env, int argc, Value** argv)
+{
+    const char *s = GET_STRING(argv[0]);
+    SplitResult r = {0};
+    size_t i = 0;
+
+    while (s[i]) {
+        char quote;
+        char *buf;
+        size_t bcap;
+        size_t blen;
+
+        /* Skip whitespace. */
+        while (s[i] && isspace((unsigned char)s[i]))
+            ++i;
+
+        if (!s[i])
+            break;
+
+        quote = 0;
+        bcap = 32;
+        blen = 0;
+        buf = mila_malloc(bcap);
+
+        if (!buf) {
+            split_destroy(&r);
+            return NULL; // OOM, cant really allocate anymore
+        }
+
+        while (s[i] && (quote || !isspace((unsigned char)s[i]))) {
+            char c = s[i++];
+
+            if (c == '\\') {
+                /*
+                 * Escape the next character.
+                 */
+                if (s[i])
+                    c = s[i++];
+                else
+                    c = '\\';
+            }
+            else if (quote) {
+                if (c == quote) {
+                    quote = 0;
+                    continue;
+                }
+            }
+            else if (c == '\'' || c == '"') {
+                quote = c;
+                continue;
+            }
+
+            if (blen + 1 >= bcap) {
+                size_t new_cap = bcap * 2;
+                char *new_buf = mila_realloc(buf, new_cap);
+
+                if (!new_buf) {
+                    mila_free(buf);
+                    split_destroy(&r);
+                    return NULL; // Another OOM, couldnt allocate memory
+                }
+
+                buf = new_buf;
+                bcap = new_cap;
+            }
+
+            buf[blen++] = c;
+        }
+
+        /*
+         * Unmatched quotes are treated as an error.
+         */
+        if (quote) {
+            mila_free(buf);
+            split_destroy(&r);
+            return verror("Unmatched quote");
+        }
+
+        if (!split_push(&r, buf, blen)) {
+            mila_free(buf);
+            split_destroy(&r);
+            return NULL; // Yet another OOM
+        }
+
+        mila_free(buf);
+    }
+    Value* lst = make_list(NULL);
+    for (size_t i=0; i < r.count; ++i) {
+        val_release(call_native_with(env, native_list_append, val_retain(lst), vstring_take(r.items[i]), NULL));
+    }
+    mila_free(r.items);
+    return lst;
+}
+
+Value *native_str_cqsplit(Env* env, int argc, Value** argv)
+{
+    const char *s = GET_STRING(argv[0]);
+    SplitResult r = {0};
+    size_t i = 0;
+
+    for (;;) {
+        size_t bcap = 32;
+        size_t blen = 0;
+        char *buf = mila_malloc(bcap);
+        int quoted = 0;
+        char quote = 0;
+
+        if (!buf) {
+            split_destroy(&r);
+            return NULL; // OOM
+        }
+
+        if (s[i] == '"' || s[i] == '\'') {
+            quoted = 1;
+            quote = s[i++];
+        }
+
+        while (s[i]) {
+            char c = s[i];
+
+            if (quoted) {
+                if (c == '\\' && s[i+1]) {
+                    ++i;
+                    c = s[i++];
+                }
+                else if (c == quote) {
+                    if (s[i + 1] == quote) {
+                        c = quote;
+                        i += 2;
+                    }
+                    else {
+                        ++i;
+                        quoted = 0;
+                        continue;
+                    }
+                }
+                else {
+                    ++i;
+                }
+            }
+            else {
+                if (c == ',')
+                    break;
+                ++i;
+            }
+
+            if (blen + 1 >= bcap) {
+                size_t new_cap = bcap * 2;
+                char *new_buf = mila_realloc(buf, new_cap);
+
+                if (!new_buf) {
+                    mila_free(buf);
+                    split_destroy(&r);
+                    return NULL; // OOM
+                }
+
+                buf = new_buf;
+                bcap = new_cap;
+            }
+
+            buf[blen++] = c;
+        }
+
+        if (quoted) {
+            mila_free(buf);
+            split_destroy(&r);
+            return verror("Unmatched quote");
+        }
+
+        if (!split_push(&r, buf, blen)) {
+            mila_free(buf);
+            split_destroy(&r);
+            return NULL; // OOM
+        }
+
+        mila_free(buf);
+
+        if (s[i] == ',') {
+            ++i;
+
+            if (!s[i]) {
+                if (!split_push(&r, "", 0)) {
+                    split_destroy(&r);
+                    return NULL; // OOM
+                }
+                break;
+            }
+
+            continue;
+        }
+
+        break;
+    }
+    Value* lst = make_list(NULL);
+    for (size_t i=0; i < r.count; ++i) {
+        val_release(call_native_with(env, native_list_append, val_retain(lst), vstring_take(r.items[i]), NULL));
+    }
+    mila_free(r.items);
+    return lst;
+}
+
+Value *native_str_shsplit(Env* env, int argc, Value** argv)
+{
+    const char* s = GET_STRING(argv[0]);
+    SplitResult r = {0};
+    size_t i = 0;
+
+    while (s[i]) {
+        size_t bcap = 32;
+        size_t blen = 0;
+        char *buf = mila_malloc(bcap);
+        int in_word = 0;
+        int in_braces = 0;
+        char quote = 0;
+
+        if (!buf) {
+            split_destroy(&r);
+            return NULL; // OOM
+        }
+
+        while (s[i]) {
+            char c = s[i];
+
+            if (in_braces) {
+                if (c == '}') {
+                    in_braces--;
+                }
+                else if (c == '{') {
+                    in_braces++;
+                }
+                ++i;
+            }
+            else if (quote) {
+                if (c == quote) {
+                    quote = 0;
+                    ++i;
+                    in_word = 1;
+                    continue;
+                }
+
+                if (c == '\\' && quote == '"') {
+                    if (s[i + 1]) {
+                        c = s[i + 1];
+                        i += 2;
+                    }
+                    else {
+                        ++i;
+                    }
+                } else if (c == '\\' && quote == '\'') {
+                    if (s[i + 1]) {
+                        c = s[i + 1];
+                        i += 2;
+                    }
+                    else {
+                        ++i;
+                    }
+                }
+                else {
+                    ++i;
+                }
+            }
+            else {
+                if (isspace((unsigned char)c)) {
+                    if (in_word)
+                        break;
+
+                    ++i;
+                    continue;
+                }
+
+                if (c == '\'' || c == '"') {
+                    quote = c;
+                    in_word = 1;
+                    ++i;
+                    continue;
+                }
+
+                if (c == '$' && s[i + 1] == '{') {
+                    in_word = 1;
+                    in_braces = 1;
+                    c = s[i];
+                    i += 1;
+                }
+                else if (c == '\\') {
+                    in_word = 1;
+
+                    if (s[i + 1]) {
+                        c = s[i + 1];
+                        i += 2;
+                    }
+                    else {
+                        ++i;
+                    }
+                }
+                else {
+                    in_word = 1;
+                    ++i;
+                }
+            }
+
+            if (blen + 1 >= bcap) {
+                size_t new_cap = bcap * 2;
+                char *new_buf = mila_realloc(buf, new_cap);
+
+                if (!new_buf) {
+                    mila_free(buf);
+                    split_destroy(&r);
+                    return NULL; // OOM
+                }
+
+                buf = new_buf;
+                bcap = new_cap;
+            }
+
+            buf[blen++] = c;
+        }
+
+        if (quote) {
+            mila_free(buf);
+            split_destroy(&r);
+            return verror("Unmatched quote");
+        }
+
+        if (!split_push(&r, buf, blen)) {
+            mila_free(buf);
+            split_destroy(&r);
+            return NULL; // OOM
+        }
+
+        mila_free(buf);
+
+        while (s[i] && isspace((unsigned char)s[i]))
+            ++i;
+    }
+    Value* lst = make_list(NULL);
+    for (size_t i=0; i < r.count; ++i) {
+        val_release(call_native_with(env, native_list_append, val_retain(lst), vstring_take(r.items[i]), NULL));
+    }
+    mila_free(r.items);
+    return lst;
 }

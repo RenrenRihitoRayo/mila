@@ -372,7 +372,7 @@ char *_mila_to_json_unified(Value *v, int level, int include_fn) {
                 if (fn->params[i + 1])
                     malloc_sprintf(&args, "%s,", args);
             }
-            malloc_sprintf(&result, "fn(%s) %s", args, fn->body_src);
+            malloc_sprintf(&result, "fn(%s) { %s }", args, fn->body_src);
             free(args);
         } else {
             malloc_sprintf(&result, "null");

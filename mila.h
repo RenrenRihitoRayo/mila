@@ -521,7 +521,7 @@ double get_unix_timestamp(void);
     {                                                                          \
         if (val && val->type == T_RETURN) {                                    \
             Value *tmp = (void *)val->v;                                       \
-            val_release(val);                                                  \
+            val_release(val);                                              \
             return tmp;                                                        \
         }                                                                      \
     }

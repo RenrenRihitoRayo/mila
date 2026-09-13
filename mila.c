@@ -4651,7 +4651,6 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...) {
     for (size_t i = 0; i < count; ++i)
         val_release(args[i]);
     mila_free(args);
-    HANDLE_RETURN(res);
     return res;
 }
 
@@ -4690,7 +4689,6 @@ Value *call_native_with(Env *env, NativeFn fnval, Value *first, ...) {
     for (size_t i = 0; i < count; ++i)
         val_release(args[i]);
     mila_free(args);
-    HANDLE_RETURN(res);
     return res;
 }
 
@@ -4730,7 +4728,6 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...) {
     for (size_t i = 0; i < count; ++i)
         val_release(args[i]);
     mila_free(args);
-    HANDLE_RETURN(res);
     return res;
 }
 
@@ -4895,7 +4892,12 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
         env_free(frame);
         if (IS_ERROR_TAGGED(res))
             res->v->tagged_error.pos.line = pos.line;
-        HANDLE_CONTROL(res);
+        if (GET_TYPE(res) == T_RETURN) {
+            Value* v = (Value*)GET_OPAQUE(res);
+            val_release(res);
+            return v;
+        }
+        return res;
     } else {
         // not callable
         char *repr = as_c_string_repr_raw(fnval);
@@ -5068,7 +5070,7 @@ Value *eval_primary(Src *s, Env *env) {
                 val_release(res);
                 return tmp;
             }
-            HANDLE_CONTROL(res);
+            return res;
             return res;
         } else if (src_peek(s) == '[') {
             Value *obj = expr;
@@ -5117,7 +5119,7 @@ Value *eval_primary(Src *s, Env *env) {
     if (c == '{') {
         Value *v = eval_block(s, env);
         match_char(s, '}');
-        HANDLE_RETURN(v);
+        return v;;
         return v;
     }
     if (c == '!' && s->src[s->pos + 1] == '{') {
@@ -5185,7 +5187,7 @@ Value *eval_primary(Src *s, Env *env) {
         }
         skip_ws(s);
         // body is block; extract substring from '{' to matching '}'
-        size_t start = s->pos;
+        size_t start = s->pos + 1;
         size_t i = s->pos;
         if (src_peek(s) == '{') {
             int depth = 0;
@@ -5218,9 +5220,9 @@ Value *eval_primary(Src *s, Env *env) {
         if (i > s->len)
             i = s->len;
         int blen = i - start;
-        char *body = mila_malloc(blen + 1);
-        memcpy(body, s->src + start + 1, blen - 1);
-        body[blen] = 0;
+        char *body = mila_malloc(blen);
+        memcpy(body, s->src + start, blen - 1);
+        body[blen-1] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
         Value *fn = vfunction(params, ret, contextuals, closure, body);
@@ -5386,7 +5388,7 @@ Value *eval_primary(Src *s, Env *env) {
                 return res;
             }
             mila_free(id);
-            HANDLE_RETURN(res);
+            return res;;
             return res;
         } else if (src_peek(s) == '[') {
             Value *obj = env_get(env, id);
@@ -5418,9 +5420,9 @@ Value *eval_primary(Src *s, Env *env) {
                     obj = tmp;
                 } else {
                     val_release(index);
-                    val_release(obj);
-                    return verror("Type %s does not support BMethodGetItem!",
+                    Value* res = verror("Type %s does not support BMethodGetItem!",
                                   GET_TYPENAME(obj));
+                    return res;
                 }
             }
 
@@ -6111,7 +6113,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                 goto method_start;
             }
 
-            HANDLE_RETURN(res);
+            return res;;
             return res;
         } else if (op == BMethodCallNamespaceFunction) {
         namespace_fn_start:;
@@ -6274,7 +6276,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
                 lhs = res;
                 goto namespace_fn_start;
             }
-            HANDLE_RETURN(res);
+            return res;;
             return res;
         }
         int prec = precedence_of(op);
@@ -6299,28 +6301,26 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
 
 Value *eval_expr(Src *s, Env *env) { return eval_expr_prec(s, env, 1); }
 
-void clean_elif_chain(Src *s) {
+const char* clean_elif_chain(Src *s) {
+    const char *tmp = ERR_SUCCESS;
     while (is_keyword_at(s, "elif")) {
         s->pos += strlen("elif");
         if (match_char(s, '('))
-            skip_parse_expr(s);
+            if ((tmp=skip_parse_expr(s))) return tmp;
         match_char(s, ')');
         if (match_char(s, '{')) {
             s->pos--;
-            skip_block(s);
-        } else {
-            skip_parse_statement(s);
+            if ((tmp=skip_parse_block(s))) return tmp;
         }
     }
     if (is_keyword_at(s, "else")) {
         s->pos += strlen("else");
         if (match_char(s, '{')) {
             s->pos--;
-            skip_block(s);
-        } else {
-            skip_parse_statement(s);
+            if ((tmp=skip_parse_block(s))) return tmp;
         }
     }
+    return tmp;
 }
 
 Value *eval_statement(Src *s, Env *env) {
@@ -6863,6 +6863,7 @@ Value *eval_statement(Src *s, Env *env) {
         s->pos += strlen("if");
         if (match_char(s, '(')) {
             Value *cond = eval_expr(s, env);
+            if (IS_ERROR(cond)) return cond;
             match_char(s, ')');
             int truth = is_truthy(cond);
             val_release(cond);
@@ -6871,41 +6872,44 @@ Value *eval_statement(Src *s, Env *env) {
                 if (match_char(s, '{')) {
                     s->pos--;
                     res = eval_block_raw(s, env);
-                } else
-                    res = eval_statement(s, env);
-                clean_elif_chain(s);
-                HANDLE_CONTROL(res);
+                }
+                const char* syn_err = ERR_SUCCESS;
+                if ((syn_err=clean_elif_chain(s))) {
+                    val_release(res);
+                    return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "%s", syn_err);
+                }
+                return res;
             } else {
                 // skip then clause
                 if (match_char(s, '{')) {
                     s->pos--;
-                    skip_block(s);
-                } else {
-                    skip_parse_statement(s);
+                    const char* syn_err = skip_parse_block(s);
+                    if (syn_err) {
+                        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "%s", syn_err);
+                    }
                 }
                 // check elifs
                 while (is_keyword_at(s, "elif")) {
                     s->pos += strlen("elif");
                     if (match_char(s, '(')) {
                         Value *cond = eval_expr(s, env);
+                        if (IS_ERROR(cond)) return cond;
                         match_char(s, ')');
                         if (is_truthy(cond)) {
+                            val_release(cond);
                             Value *res = NULL;
                             if (match_char(s, '{')) {
                                 s->pos--;
                                 res = eval_block_raw(s, env);
-                            } else
-                                res = eval_statement(s, env);
-
+                            }
                             clean_elif_chain(s);
-                            val_release(cond);
-                            HANDLE_CONTROL(res);
+                            return res;
                         } else {
                             // skip elif then clause
                             val_release(cond);
                             if (match_char(s, '{')) {
                                 s->pos--;
-                                skip_block(s);
+                                skip_parse_block(s);
                             } else {
                                 skip_parse_statement(s);
                             }
@@ -6922,7 +6926,7 @@ Value *eval_statement(Src *s, Env *env) {
                     } else
                         res = eval_statement(s, env);
                     // check for return propagation
-                    HANDLE_CONTROL(res);
+                    return res;
                 }
             }
         }
@@ -7366,7 +7370,7 @@ Value *eval_statement(Src *s, Env *env) {
         skip_ws(s);
         // body is block; extract substring from '{' to matching '}'
         int depth = 0;
-        size_t start = s->pos;
+        size_t start = s->pos + 1;
         size_t i = s->pos;
         if (src_peek(s) == '{') {
             // find matching brace (we will copy out body)
@@ -7391,15 +7395,12 @@ Value *eval_statement(Src *s, Env *env) {
                     }
                 }
             }
-        } else {
-            skip_parse_statement(s);
-            i = s->pos;
         }
         if (i > s->len)
             i = s->len;
         int blen = i - start;
         char *body = mila_malloc(blen + 1);
-        memcpy(body, s->src + start + 1, blen - 1);
+        memcpy(body, s->src + start, blen - 1);
         body[blen] = 0;
         s->pos = i;
         // create function value with closure get_line_pos(s) current env
@@ -7729,17 +7730,12 @@ Value *eval_str_filed(const char* filename, char *src, Env *env) {
 }
 
 void print_error(Value *v) {
-    if (v->type == T_ERROR) {
-        fprintf(stderr, "\n== Error ==\n%s\n", GET_ERROR_MESSAGE(v));
-    }
     if (v->type == T_TAGGED_ERROR) {
         if (v->v->tagged_error.type == E_EXIT) {
-            if (v->v->tagged_error.return_code != -1)
+            if (v->v->tagged_error.return_code != -1 && v->v->tagged_error.return_code != 0)
                 fprintf(stderr, "\n== Recieved Exit Signal [%d] ==\n%s\n",
                     v->v->tagged_error.return_code,
                     GET_TAGGED_ERROR_MESSAGE(v));
-            else
-                fprintf(stderr, "\n== Recieved Exit Signal [Success] ==\n");
             return;
         }
         if (v->v->tagged_error.type == E_THREAD_HALT)
@@ -7750,6 +7746,8 @@ void print_error(Value *v) {
         else
             fprintf(stderr, "\n== Error [%s] ==\n%s\n",
                     GET_ERROR_TYPENAME(v), v->v->tagged_error.message);
+    } else if (v->type == T_ERROR) {
+        fprintf(stderr, "\n== Error ==\n%s\n", GET_ERROR_MESSAGE(v));
     }
 }
 

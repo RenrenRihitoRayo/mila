@@ -52,6 +52,7 @@
 #include <sys/time.h>
 #include <termios.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <time.h>
 
@@ -411,14 +412,13 @@ Value *native_open(Env *env, int argc, Value **argv) {
     FILE *f = fopen(res, GET_STRING(argv[1]));
     if (!f) {
         mila_free(res);
-        perror(NULL);
-        return vnull();
+        return verror("open(filename, mode): %s", strerror(errno));
     }
 
     mila_free(res);
     Value *v = vopaque(f);
     val_set_table(v, file_meta);
-    v->type_name = strdup("file");
+    v->type_name = mila_strdup("file");
     return v;
 }
 
@@ -437,8 +437,7 @@ Value *native_fdopen(Env *env, int argc, Value **argv) {
 
     FILE *f = fdopen((int)GET_INTEGER(argv[0]), GET_STRING(argv[1]));
     if (!f) {
-        perror(NULL);
-        return vnull();
+        return verror("fdopen(filedescriptor, mode): %s", strerror(errno));
     }
 
     Value *v = vopaque(f);
@@ -558,6 +557,16 @@ Value *native_file_resolve(Env *env, int argc, Value **argv) {
     if (argc != 1 || GET_TYPE(argv[0]) != T_STRING)
         verror("file.resolve(f: \"string\"): Expects a path!");
     char *file = path_list_find(mila_search_path, GET_STRING(argv[0]));
+    if (file) {
+        return vstring_take(file);
+    }
+    return val_retain(argv[0]);
+}
+
+Value *native_file_transform(Env *env, int argc, Value **argv) {
+    if (argc != 1 || GET_TYPE(argv[0]) != T_STRING)
+        verror("file.transform(f: \"string\"): Expects a path!");
+    char *file = transform_path(GET_STRING(argv[0]));
     if (file) {
         return vstring_take(file);
     }
@@ -1324,16 +1333,18 @@ Value *native_crandom(Env *env, int argc, Value **argv) {
 
 Value *native_get_tm_local(Env *env, int argc, Value **argv) {
     if (argc > 1)
-        return verror("get_tm_local(): Expected at most 1 argument!");
-    time_t time = argc == 0 ? get_unix_timestamp() : GET_INTEGER(argv[0]);
+        return verror("get_tm_local(t): Expected at most 1 argument!");
+    if (argc == 1 && !is_numeric(argv[0])) return verror("get_tm_local(t): t must be numeric!");
+    time_t time = argc == 0 ? get_unix_timestamp() : to_double(argv[0]);
     struct tm *info = localtime(&time);
     return vopaque(info);
 }
 
 Value *native_get_tm_gmt(Env *env, int argc, Value **argv) {
     if (argc > 1)
-        return verror("get_tm_gmt(): Expected at most 1 argument!");
-    time_t time = argc == 0 ? get_unix_timestamp() : GET_INTEGER(argv[0]);
+        return verror("get_tm_gmt(t): Expected at most 1 argument!");
+    if (argc == 1 && !is_numeric(argv[0])) return verror("get_tm_gmt(t): t must be numeric!");
+    time_t time = argc == 0 ? get_unix_timestamp() : to_double(argv[0]);
     struct tm *info = gmtime(&time);
     return vopaque(info);
 }
@@ -1761,6 +1772,7 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "range", native_range);
     env_register_native(g, "copy", native_copy);
     env_register_native(g, "repr", native_repr);
+    env_register_native(g, "str", native_str);
     env_register_native(g, "repr_raw", native_repr_raw);
     env_register_native(g, "random", native_random);
     env_register_native(g, "srandom", native_srandom);
@@ -1812,6 +1824,7 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "file.is_dir", native_file_is_dir);
     env_register_native(g, "file.list_dir", native_file_list_dir);
     env_register_native(g, "file.resolve", native_file_resolve);
+    env_register_native(g, "file.transform", native_file_transform);
     env_register_native(g, "isatty", native_isatty);
     env_set_raw(g, "SEEK_SET", vint(SEEK_SET));
     env_set_raw(g, "SEEK_END", vint(SEEK_END));

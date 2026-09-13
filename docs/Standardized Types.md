@@ -1,10 +1,15 @@
 # Standard for MiLa Type Annotations
 
+Standard for MiLa type hint syntax
+
 * `type` just the type `type`
 
 * `type[i_type]` a collection of type `type` with items of type `i_type`
 
 * `{type1, type2, type3}` is a union.
+
+    In a union only comprised of side effects, the union is treated implicitly
+    as `{null}`, such that `{io!}` is equivalent to `{null, io!}`
 
 * `<type>` a generic type `type`.
 
@@ -27,6 +32,10 @@
 	Example: `[@ "test" = 90, 90 = "test"]` is `dict(string=int, int=string)`
 
 ## Standard types
+
+* `any`
+
+    Anything
 
 * `int`, `float`, and `uint`
 
@@ -56,3 +65,55 @@
 
     For callable types, shorthand for `{function, native}`
 
+Note identifiers ending in `!` are special types.
+They are side effects rather than actual expected values.
+
+* `noreturn!`
+
+    A function that may not return
+
+* `exit!`
+
+    A function that may exit
+
+* `io!`
+
+    A function that may use IO
+
+* `impure!`
+
+    A function that is impure in general
+
+## Function syntax
+
+* `fn (type1, type2, type2) -> ret_type`
+
+    Example:
+    * `println` would be `fn (any...) -> null`
+    * `open` would be `fn (string, string) -> file`
+
+    Optional arguments are denoted with question marks.
+
+    How are errors denoted?
+    `report` would be `fn (string?) -> E_GENERIC!`
+
+## Example
+
+For an entire script (using parameterized scripts)
+
+```MiLa
+!fn (argc, ...argv) -> "{io!, exit!}"
+
+println("Hello, world!");
+```
+
+For a "main" function
+
+```MiLa
+fn main() -> "{int, io!, exit!}" {
+    println("Hello, world!");
+    return 0;
+}
+
+exit(main());
+```

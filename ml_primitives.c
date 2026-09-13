@@ -137,6 +137,7 @@ Value *list_free(Value *self) {
 }
 
 Value *native_list_append(Env *env, int argc, Value **argv) {
+    if (argc != 2 || strcmp(GET_TYPENAME(argv[0]), "list") != 0) return verror("list.append(lst, item): Expected a list for 1st argument, got %s", GET_TYPENAME(argv[0]));
     ll_append(GET_OPAQUE(argv[0]), val_retain(argv[1]));
     return vnull();
 }

@@ -6,7 +6,7 @@
 // Incremented per edition update (optimally maxes out to 20)
 #define MILA_VERSION 1L
 // Patch number
-#define MILA_PATCH 1L
+#define MILA_PATCH 2L
 
 /*
     To avoid compat issues

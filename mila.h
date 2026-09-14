@@ -730,6 +730,8 @@ Value *binary_op_objects(Env *env, char right, Value *a, MethodType op,
 int precedence_of(MethodType op);
 MethodType parse_op(Src *s);
 Value *eval_expr_prec(Src *s, Env *env, int min_prec);
+Value* handle_namespaced_call(Src *s, Env *env, Value* obj);
+Value* handle_method_call(Src *s, Env *env, Value* obj);
 Value *eval_expr(Src *s, Env *env);
 Value *eval_statement_fn(Src *s, Env *env);
 Value *eval_statement(Src *s, Env *env);

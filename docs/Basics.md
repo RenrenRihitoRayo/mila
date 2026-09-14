@@ -106,7 +106,7 @@ references.
 
 `:` is often mentioned as method calls and `::` as namespaced calls (as they act like namespaced functions)
 
-Note you can chain method calls and namespaced calls but never mix the two.
+Note you can chain method calls and namespaced calls.
 IE `a:b():c()` and `a::b()::c()`
 
 ## <a id="expr"></a>Expressions

@@ -9,6 +9,7 @@
 #include "mila.h"
 #include "ml_dict.h"
 #include "ml_ll.c"
+#include "ml_string.c"
 #include "ml_string.h"
 #include <ctype.h>
 #include <string.h>
@@ -164,8 +165,7 @@ Value *native_list_contains(Env *env, int argc, Value **argv) {
 Value *native_list_slice(Env *env, int argc, Value **argv) {
     if (argc != 3 || strcmp(GET_TYPENAME(argv[0]), "list") != 0 ||
         !is_numeric(argv[1]) || !is_numeric(argv[2])) {
-        return verror("list.slice(list, start, len): Expects three arguments "
-                      "mila:list, num, num (list, start, len)");
+        return verror("list.slice(lst, start, len): Expects three arguments");
     }
 
     return ll_slice_ll((LinkedList *)GET_OPAQUE(argv[0]), to_uint(argv[1]),
@@ -825,7 +825,7 @@ Value *native_str_join(Env *env, int argc, Value **argv) {
         return verror("str.join(delim, list): Must deliminator be a string!");
     if (strcmp(GET_TYPENAME(argv[1]), "list"))
         return verror("str.join(delim, list): Must list be a list!");
-    char *delim = GET_STRING(argv[0]), *string = NULL;
+    char *delim = GET_STRING(argv[0]), *string = mila_strdup("");
     LinkedList *l = (LinkedList *)GET_OPAQUE(argv[1]);
     for (LLNode *v = l->head; v; v = v->next) {
         char *vstr = as_c_string(v->value);

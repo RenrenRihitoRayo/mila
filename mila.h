@@ -183,7 +183,6 @@ typedef enum __attribute__((packed)) {
 
 // == Environment
 
-// When writing your own mila kernel
 // these functions bellow (env and value related) might be the only
 // part of mila youll ever touch.
 
@@ -199,6 +198,7 @@ typedef enum {
     T_NATIVE,
     T_OPAQUE,
     T_OWNED_OPAQUE,
+    T_ENV,
     T_RETURN,
     T_NONE,
     T_ERROR,

@@ -63,6 +63,21 @@ Primitives are:
 
 * Null sentinel as `null`
 
+* Env primtive as `.env`
+
+	Returns a primtive that has BMethodGetItem and TMethodSetItem
+	for maipulating the environment it was used in.
+
+	```MiLa
+	const env1 = .env;
+	{
+		const env2 = .env;
+		println(env1 == env2); // not true
+		set env1["test"] = "yay";
+	}
+	println(test); // "yay"
+	```
+
 * Functions (lambdas)
 
 * Natives

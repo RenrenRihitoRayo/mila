@@ -164,6 +164,18 @@ and thus may not be guaranteed as safe for monkey patching.
         * "f" for file
         * "?" for others
 
+* `file.resolve(path: "string") -> "string"`
+
+    Return the resolved path by iterating through the search paths and looking for a file.
+    If the file is not found the path is returned as it is.
+
+* `file.transform(path: "string") -> "string"`
+
+    Return the transformed path regardless if the path exists or not.
+    Allows for environment variables by using `${name}`.
+    An example for getting the file path for some file in the home directory would be
+    `file.transform("${HOME}/some_file.txt")`
+
 ## <a id="list"></a>Lists
 
 * `[item1, item2, item3, ..., itemN]`

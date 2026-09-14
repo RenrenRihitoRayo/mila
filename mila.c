@@ -78,7 +78,7 @@ const char *MILA_ERROR_NAMES[] = {
 };
 const char *MILA_TYPE_NAMES[] = {
     "null",     "int",    "uint",     "float",        "string",  "bool",
-    "function", "native", "opaque",   "owned_opaque", "return",  "none",
+    "function", "native", "opaque",   "owned_opaque", "env", "return",  "none",
     "error",    "break",  "continue", "tagged_error", "arg_end",
 };
 const char *MILA_OP_NAME[] = {"Nop",
@@ -1440,6 +1440,39 @@ Value *vstring_take(char *s) {
     return v;
 }
 
+MethodTable* venv_mtable = NULL;
+
+Value *venv_set_item(Value* self, Value* name, Value* item) {
+    Env* env = (Env*)GET_OPAQUE(self);
+    env_set_local(env, GET_STRING(name), item);
+    return NULL;
+}
+
+Value *venv_get_item(Value* self, Value* name) {
+    Env* env = (Env*)GET_OPAQUE(self);
+    Value *v = env_get(env, GET_STRING(name)) ;
+    return v;
+}
+
+Value *venv_repr(Value* self) {
+    return vstring_fmt("<env:%p>", GET_OPAQUE(self));
+}
+
+Value *venv(Env* e) {
+    Value *v = val_new_raw(T_ENV);
+    v->v = (void* )e;
+
+    if (!venv_mtable) {
+        venv_mtable = val_make_table();
+        val_set_method_table(venv_mtable, TMethodSetItem, venv_set_item);
+        val_set_method_table(venv_mtable, BMethodGetItem, venv_get_item);
+        val_set_method_table(venv_mtable, UMethodToRepr, venv_repr);
+    }
+    val_set_table(v, venv_mtable);
+
+    return v;
+}
+
 // String
 Value *vstring_slice(const char *restrict src, size_t start, size_t len) {
     size_t n = strlen(src);
@@ -2195,11 +2228,11 @@ void val_release(Value *v) {
         // mila_free internals
         if (v->type == T_STRING && GET_STRING(v))
             mila_free(GET_STRING(v));
-        if (v->type == T_ERROR && GET_ERROR_MESSAGE(v))
+        else if (v->type == T_ERROR && GET_ERROR_MESSAGE(v))
             mila_free(GET_ERROR_MESSAGE(v));
-        if (v->type == T_TAGGED_ERROR && v->v->tagged_error.message)
+        else if (v->type == T_TAGGED_ERROR && v->v->tagged_error.message)
             mila_free(v->v->tagged_error.message);
-        if (v->type == T_FUNCTION) {
+        else if (v->type == T_FUNCTION) {
             if (GET_FUNCTION(v)->params) {
                 char **p = GET_FUNCTION(v)->params;
                 for (int i = 0; p[i]; ++i)
@@ -2231,12 +2264,12 @@ void val_release(Value *v) {
             env_free(GET_FUNCTION(v)->closure);
             mila_free(GET_FUNCTION(v));
         }
-        if (v->type == T_NATIVE) {
+        else if (v->type == T_NATIVE) {
             if (GET_NATIVE(v)->name)
                 mila_free(GET_NATIVE(v)->name);
             mila_free(GET_NATIVE(v));
         }
-        if (v->type == T_OWNED_OPAQUE) {
+        else if (v->type == T_OWNED_OPAQUE) {
             if (v->v)
                 mila_free(v->v);
         }
@@ -2260,6 +2293,7 @@ void val_release(Value *v) {
         case T_NULL:
         case T_BOOL:
         case T_STRING:
+        case T_ENV:
             break;
         default:
             if (v->v)
@@ -5291,6 +5325,10 @@ Value *eval_primary(Src *s, Env *env) {
             mila_free(id);
             return vbool(0);
         }
+        if (strcmp(id, ".env") == 0) {
+            mila_free(id);
+            return venv(env);
+        }
         // look ahead: function call? subscript?
         skip_ws(s);
         if (src_peek(s) == '(') {
@@ -5983,169 +6021,169 @@ MethodType parse_op(Src *s) {
 }
 
 Value* handle_method_call(Src* s, Env* env, Value* obj) {
-        Pos expr_pos = get_pos(s);
-        size_t start = s->pos;
-        char *method = parse_ident(s);
-        if (!method) {
-            val_release(obj);
-            return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Expected identifier after ':'");
-        }
-        if (strcmp(GET_TYPENAME(obj), "dict") != 0) {
-            char *str = as_c_string_repr(obj);
-            Value *res =
-                vtagged_error_pos(get_pos(s), E_TYPE_ERROR,
-                                  "Object from a method call (for %s) was "
-                                  "not a dictionary but was %s (%s)",
-                                  method, GET_TYPENAME(obj), str);
-            mila_free(method);
-            val_release(obj);
-            mila_free(str);
-            return res;
-        }
-        Value *function = dict_get_str((Dict *)GET_OPAQUE(obj), method);
-        if (!function) {
-            val_release(obj);
-            Value *res = vtagged_error_pos(
-                get_pos(s), E_RUNTIME, "Method %s does not exist in object",
-                method);
-            mila_free(method);
-            return res;
-        }
-        if (src_peek(s) != '(') {
-            mila_free(method);
-            val_release(obj);
-            return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Malformed method call!");
-        }
-        // parse args
-        src_get(s); // consume '('
-        // parse comma separated expressions
-        Value **args = mila_malloc(sizeof(Value *) *
-                                   (GET_FUNCTION(function)->argc + 1));
-        int cap = GET_FUNCTION(function)->argc + 1;
-        args[0] = val_retain(obj);
-        int argc = 1;
-        skip_ws(s);
+    Pos expr_pos = get_pos(s);
+    size_t start = s->pos;
+    char *method = parse_ident(s);
+    if (!method) {
+        val_release(obj);
+        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                 "Expected identifier after ':'");
+    }
+    if (strcmp(GET_TYPENAME(obj), "dict") != 0) {
+        char *str = as_c_string_repr(obj);
+        Value *res =
+            vtagged_error_pos(get_pos(s), E_TYPE_ERROR,
+                              "Object from a method call (for %s) was "
+                              "not a dictionary but was %s (%s)",
+                              method, GET_TYPENAME(obj), str);
+        mila_free(method);
+        val_release(obj);
+        mila_free(str);
+        return res;
+    }
+    Value *function = dict_get_str((Dict *)GET_OPAQUE(obj), method);
+    if (!function) {
+        val_release(obj);
+        Value *res = vtagged_error_pos(
+            get_pos(s), E_RUNTIME, "Method %s does not exist in object",
+            method);
+        mila_free(method);
+        return res;
+    }
+    if (src_peek(s) != '(') {
+        mila_free(method);
+        val_release(obj);
+        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                 "Malformed method call!");
+    }
+    // parse args
+    src_get(s); // consume '('
+    // parse comma separated expressions
+    Value **args = mila_malloc(sizeof(Value *) *
+                               (GET_FUNCTION(function)->argc + 1));
+    int cap = GET_FUNCTION(function)->argc + 1;
+    args[0] = val_retain(obj);
+    int argc = 1;
+    skip_ws(s);
 
-        // handle (value)(...) calls
-        if (src_peek(s) != ')') {
-            for (;;) {
-                Value *a = eval_expr(s, env);
-                if (IS_ERROR(a)) {
-                    for (int i = 0; i < GET_FUNCTION(function)->argc; i++)
-                        val_release(args[i]);
-                    mila_free(args);
-                    return a;
-                }
-                if (argc >= cap) {
-                    args = realloc(args, sizeof(Value *) * (cap * 2));
-                }
-                args[argc++] = a;
-                if (match_char(s, ','))
-                    continue;
-                if (match_char(s, ')'))
-                    break;
+    // handle (value)(...) calls
+    if (src_peek(s) != ')') {
+        for (;;) {
+            Value *a = eval_expr(s, env);
+            if (IS_ERROR(a)) {
                 for (int i = 0; i < GET_FUNCTION(function)->argc; i++)
                     val_release(args[i]);
                 mila_free(args);
-                int k = 1;
-                while (k) {
-                    if (src_peek(s) == '(')
-                        k++;
-                    if (src_peek(s) == ')')
-                        k--;
-                    s->pos++;
-                }
-                size_t end = s->pos;
-                int len = end - start + 1;
-                return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                         "Expected a comma or closing "
-                                         "parenthesis!\nAt call `%.*s`",
-                                         len, s->src + start);
+                return a;
+            }
+            if (argc >= cap) {
+                args = realloc(args, sizeof(Value *) * (cap * 2));
+            }
+            args[argc++] = a;
+            if (match_char(s, ','))
+                continue;
+            if (match_char(s, ')'))
+                break;
+            for (int i = 0; i < GET_FUNCTION(function)->argc; i++)
+                val_release(args[i]);
+            mila_free(args);
+            int k = 1;
+            while (k) {
+                if (src_peek(s) == '(')
+                    k++;
+                if (src_peek(s) == ')')
+                    k--;
+                s->pos++;
+            }
+            size_t end = s->pos;
+            int len = end - start + 1;
+            return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                     "Expected a comma or closing "
+                                     "parenthesis!\nAt call `%.*s`",
+                                     len, s->src + start);
+        }
+    } else {
+        // empty
+        src_get(s); // consume ')'
+    }
+    // callp
+    Value *res = call_function(function, env, argc, args);
+    for (int i = 0; i < argc; i++)
+        val_release(args[i]);
+    mila_free(args);
+    val_release(obj);
+    if (IS_ERROR(res) && !IS_FATAL(res)) {
+        char *error = NULL;
+        ErrorType type = E_NO_ERROR;
+        if (IS_ERROR_TAGGED(res)) {
+            char *text = NULL;
+            if (GET_TYPE(function) == T_FUNCTION) {
+                malloc_sprintf(&error,
+                               "Error calling method '%s' (defined "
+                               "in line %zu)\nError in method was in "
+                               "line %zu column %zu\n%s",
+                               method,
+                               GET_FUNCTION(function)->line,
+                               res->v->tagged_error.pos.line,
+                               res->v->tagged_error.pos.column,
+                               text =
+                                   indent(GET_ERROR_MESSAGE(res), 2));
+                mila_free(text);
+                type = res->v->tagged_error.type;
+            } else {
+                malloc_sprintf(
+                    &error,
+                    "Error calling method '%s' (native at %p) at line %zu col %zu\n%s",
+                    method, GET_NATIVE(function)->fn,
+                    expr_pos.line, expr_pos.column,
+                    text = indent(GET_ERROR_MESSAGE(res), 2));
+                mila_free(text);
+                type = res->v->tagged_error.type;
             }
         } else {
-            // empty
-            src_get(s); // consume ')'
-        }
-        // callp
-        Value *res = call_function(function, env, argc, args);
-        for (int i = 0; i < argc; i++)
-            val_release(args[i]);
-        mila_free(args);
-        val_release(obj);
-        if (IS_ERROR(res) && !IS_FATAL(res)) {
-            char *error = NULL;
-            ErrorType type = E_NO_ERROR;
-            if (IS_ERROR_TAGGED(res)) {
-                char *text = NULL;
-                if (GET_TYPE(function) == T_FUNCTION) {
-                    malloc_sprintf(&error,
-                                   "Error calling method '%s' (defined "
-                                   "in line %zu)\nError in method was in "
-                                   "line %zu column %zu\n%s",
-                                   method,
-                                   GET_FUNCTION(function)->line,
-                                   res->v->tagged_error.pos.line,
-                                   res->v->tagged_error.pos.column,
-                                   text =
-                                       indent(GET_ERROR_MESSAGE(res), 2));
-                    mila_free(text);
-                    type = res->v->tagged_error.type;
-                } else {
-                    malloc_sprintf(
-                        &error,
-                        "Error calling method '%s' (native at %p) at line %zu col %zu\n%s",
-                        method, GET_NATIVE(function)->fn,
-                        expr_pos.line, expr_pos.column,
-                        text = indent(GET_ERROR_MESSAGE(res), 2));
-                    mila_free(text);
-                    type = res->v->tagged_error.type;
-                }
-            } else {
-                char *text = NULL;
-                if (GET_TYPE(function) == T_FUNCTION)
-                    malloc_sprintf(&error,
-                               "Error calling method '%s' (defined in "
-                               "line %zu) in line %zu column %zu\n%s",
-                               method, GET_FUNCTION(function)->line,
-                               expr_pos.line, expr_pos.column,
-                               text = indent(GET_ERROR_MESSAGE(res), 2));
-                else
-                    malloc_sprintf(&error,
-                               "Error calling method '%s' (native at "
-                               " %zu) in line %zu column %zu\n%s",
-                               method, GET_NATIVE(function)->fn,
-                               expr_pos.line, expr_pos.column,
-                               text = indent(GET_ERROR_MESSAGE(res), 2));
-                mila_free(text);
-            }
-            int return_code = 0;
-            if (type != E_NO_ERROR) {
-                return_code = res->v->tagged_error.return_code;
-            }
-            val_release(res);
-            Value *res;
-            if (type == E_NO_ERROR)
-                res = verror("%s", error);
+            char *text = NULL;
+            if (GET_TYPE(function) == T_FUNCTION)
+                malloc_sprintf(&error,
+                           "Error calling method '%s' (defined in "
+                           "line %zu) in line %zu column %zu\n%s",
+                           method, GET_FUNCTION(function)->line,
+                           expr_pos.line, expr_pos.column,
+                           text = indent(GET_ERROR_MESSAGE(res), 2));
             else
-                res = vtagged_coded_error(type, return_code, "%s", error);
-            mila_free(error);
-            mila_free(method);
-            return res;
+                malloc_sprintf(&error,
+                           "Error calling method '%s' (native at "
+                           " %zu) in line %zu column %zu\n%s",
+                           method, GET_NATIVE(function)->fn,
+                           expr_pos.line, expr_pos.column,
+                           text = indent(GET_ERROR_MESSAGE(res), 2));
+            mila_free(text);
         }
-
+        int return_code = 0;
+        if (type != E_NO_ERROR) {
+            return_code = res->v->tagged_error.return_code;
+        }
+        val_release(res);
+        Value *res;
+        if (type == E_NO_ERROR)
+            res = verror("%s", error);
+        else
+            res = vtagged_coded_error(type, return_code, "%s", error);
+        mila_free(error);
         mila_free(method);
-        if (src_peek(s) == ':') {
-            obj = res;
-            src_get(s);
-            if (src_peek(s) == ':') {
-                src_get(s);
-                return handle_namespaced_call(s, env, obj);
-            }
-            else return handle_method_call(s, env, obj);
-        }
         return res;
+    }
+
+    mila_free(method);
+    if (src_peek(s) == ':') {
+        obj = res;
+        src_get(s);
+        if (src_peek(s) == ':') {
+            src_get(s);
+            return handle_namespaced_call(s, env, obj);
+        }
+        else return handle_method_call(s, env, obj);
+    }
+    return res;
 }
 
 Value* handle_namespaced_call(Src *s, Env *env, Value* obj) {
@@ -6331,7 +6369,7 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
         if (op == BMethodCallMethod) {
             return handle_method_call(s, env, lhs);
         } else if (op == BMethodCallNamespaceFunction) {
-            return handle_method_call(s, env, lhs);
+            return handle_namespaced_call(s, env, lhs);
         }
         int prec = precedence_of(op);
         if (prec < min_prec) {
@@ -6429,7 +6467,7 @@ Value *eval_statement(Src *s, Env *env) {
             printf("%s\n", _debug_buffer);
             mila_free(_debug_buffer);
 #endif
-
+            src_get(s); // get closing ']'
             skip_ws(s);
 
             // Parse the assignment or statement

@@ -1,6 +1,6 @@
 # Welcome to MiLa
 
-* Current version `202603.1.1`
+* Current version `202603.1.2`
 
 A small embeddable scripting language.
 MiLa is small, simple, and fast for general applications.

@@ -75,7 +75,7 @@ and thus may not be guaranteed as safe for monkey patching.
 
     Read a certain amount of bytes.
 
-* `fread_all(file: "file") -> "list[int]"`
+* `fread_all_bytes(file: "file") -> "list[int]"`
 
     Read the entire file as bytes.
 

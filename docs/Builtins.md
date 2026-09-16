@@ -282,6 +282,14 @@ typedef struct {
 
 ## <a id="sort"></a>Sorting
 
+* `min(lst: "list") -> any`
+
+    Return the smallest value within the list (any value that supports comparison)
+
+* `max(lst: "list") -> any`
+
+    Return the biggest value within the list (any value that supports comparison)
+
 * `qsort(obj: "list", function: "callable") -> "list"`
 
     Sort the given list, return the sorted list.
@@ -294,6 +302,10 @@ typedef struct {
     The qsort function works as it does in the GNU C standard library.
 
 ## <a id="func"></a>Functional Stuff
+
+* `reduce(lst: "list<T>", func: "function") -> "list<T>"`
+
+    Enumerate each item of the list `lst` with the function `func` which receives the accumulator and the current item in that order.
 
 * `map(lst: "list<T>", func: "function") -> "list<T>"`
 

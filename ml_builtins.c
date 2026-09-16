@@ -22,11 +22,13 @@
 #pragma once
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 #include <uchar.h>
 
 #include "ml_dict.h"
 #include "ml_json.c"
+#include "ml_ll.c"
 #include "ml_paths.c"
 
 #ifdef ML_LIB
@@ -207,6 +209,66 @@ Value *native_qsort(Env *env, int argc, Value **argv) {
     return res;
 }
 
+Value *native_max(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("max(lst): Expected one argument");
+    if (strcmp(GET_TYPENAME(argv[0]), "list") != 0)
+        return verror("max(lst): Expected first argument to be a list");
+    // 1 because source[0] is the iter length.
+    Value* max = NULL;
+    ITERATE_LIST((LinkedList *)GET_OPAQUE(argv[0])) {
+        if (!max) {
+            max = current->value;
+            continue;
+        }
+        Value* res = binary_op(current->value, BMethodGreat, max);
+        if (is_truthy(res)) {
+            max = current->value;
+        }
+        val_release(res);
+    }
+    return val_retain(max);
+}
+
+Value *native_min(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("max(lst): Expected one argument");
+    if (strcmp(GET_TYPENAME(argv[0]), "list") != 0)
+        return verror("max(lst): Expected first argument to be a list");
+    // 1 because source[0] is the iter length.
+    Value* min = NULL;
+    ITERATE_LIST((LinkedList *)GET_OPAQUE(argv[0])) {
+        if (!min) {
+            min = current->value;
+            continue;
+        }
+        Value* res = binary_op(current->value, BMethodLess, min);
+        if (is_truthy(res)) {
+            min = current->value;
+        }
+        val_release(res);
+    }
+    return val_retain(min);
+}
+
+Value *native_reduce(Env *env, int argc, Value **argv) {
+    if (argc > 3)
+        return verror("reduce(lst, fun, start): Expected at most 3 arguments!");
+    if (argc < 2)
+        return verror("reduce(lst, fun, start): Expected at least 2 arguments!");
+    if (strcmp(GET_TYPENAME(argv[0]), "list") != 0)
+        return verror("reduce(lst, fun): Expected first argument to be a list");
+    if (GET_TYPE(argv[1]) != T_FUNCTION && GET_TYPE(argv[1]) != T_NATIVE)
+        return verror(
+            "reduce(lst, fun): Expected second argument to be a function");
+    Value* state = argc == 3 ? val_retain(argv[2]) : vint(0);
+    ITERATE_LIST((LinkedList *)GET_OPAQUE(argv[0])) {
+        state = call_function_with(env, argv[1], state, val_retain(current->value), NULL);
+        if (IS_ERROR(state)) break; // short circuit on errors
+    }
+    return state;
+}
+
 Value *native_map(Env *env, int argc, Value **argv) {
     if (argc != 2)
         return verror("map(lst, fun): Expected two arguments");
@@ -221,6 +283,13 @@ Value *native_map(Env *env, int argc, Value **argv) {
     for (unsigned long i = 1; i < GET_UINTEGER(source[0]); ++i) {
         Value *enumerated_val =
             call_function_with(env, argv[1], source[i], NULL);
+        if (IS_ERROR(enumerated_val)) {
+            // short circuit on errors
+            val_release(list);
+            val_release(source[0]);
+            mila_free(source);
+            return enumerated_val;
+        }
         val_release(call_native_with(NULL, native_list_append, val_retain(list),
                                      enumerated_val, NULL));
     }
@@ -1781,9 +1850,12 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "hash.set_seed", native_hash_set_seed);
     env_register_native(g, "hash._get_seed", native_hash_get_seed);
     // === Organize
+    env_register_native(g, "max", native_max);
+    env_register_native(g, "min", native_min);
     env_register_native(g, "qsort", native_qsort);
     // === Functional Shenanigans
     env_register_native(g, "map", native_map);
+    env_register_native(g, "reduce", native_reduce);
     env_register_native(g, "filter", native_filter);
     // === Scopes
     env_register_native(g, "env.set", native_env_set);
@@ -1903,6 +1975,8 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "str.join", native_str_join);
     env_register_native(g, "str.startswith", native_str_startsw);
     env_register_native(g, "str.endswith", native_str_endsw);
+    env_register_native(g, "str.stripl", native_str_stripl);
+    env_register_native(g, "str.stripr", native_str_stripr);
     env_register_native(g, "str.contains", native_str_contains);
     env_register_native(g, "str.caseless_contains",
                         native_str_contains_caseless);

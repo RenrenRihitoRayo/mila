@@ -72,7 +72,7 @@ pthread_mutex_t mila_search_path_lock_read = {0};
 #endif
 
 const char *MILA_ERROR_NAMES[] = {
-    NULL,    "SyntaxErfror", "PreRuntime", "Runtime",        "TypeError",
+    NULL,    "SyntaxError", "PreRuntime", "Runtime",        "TypeError",
     "Fatal", "ConstError",  "Generic",    "AssertionError", "ThreadHalt",
     "Exit",
 };
@@ -411,7 +411,7 @@ CleanupRegistryEntry *make_cleanup_entry(char *name, void (*fn)(Env *)) {
 }
 
 Pos get_pos(Src *s) {
-    size_t line = 1 + s->line_offset, col = 1;
+    size_t line = 1 + s->line_offset, col = 0;
     for (size_t i = 0; i < s->pos && i < s->len; ++i) {
         if (s->src[i] == '\n') {
             line++;
@@ -2241,13 +2241,13 @@ void val_release(Value *v) {
             }
             if (GET_FUNCTION(v)->defaults) {
                 char **p = GET_FUNCTION(v)->defaults;
-                for (int i = 0; p[i]; ++i)
+                for (int i = 0; i < GET_FUNCTION(v)->argc; ++i)
                     mila_free(p[i]);
                 mila_free(p);
             }
             if (GET_FUNCTION(v)->types) {
                 char **p = GET_FUNCTION(v)->types;
-                for (int i = 0; p[i]; ++i)
+                for (int i = 0; i < GET_FUNCTION(v)->argc; ++i)
                     mila_free(p[i]);
                 mila_free(p);
             }
@@ -4499,7 +4499,9 @@ FunctionParameters *parse_param_list(Src *s) {
                 type_string = mila_strdup(GET_STRING(type));
             else
                 type_string = NULL;
-            val_kill(type);
+            val_release(type);
+        } else {
+            type_string = NULL;
         }
         if (match_char(s, '=')) {
             size_t old_pos = s->pos;
@@ -4572,11 +4574,16 @@ char **parse_context_list(Src *s) {
 
 Value *parse_subscript(Src *s, Env *e) {
     if (!match_char(s, '[')) {
-        return verror("Subscript was expected!");
+        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Subscript was expected!");
     }
     Value *res = eval_expr(s, e);
+    if (!src_peek(s)) {
+        val_release(res);
+        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Subscript got unexpected EOF.");
+    }
     if (!match_char(s, ']')) {
-        return verror("Closing square bracket was expected!");
+        val_release(res);
+        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Closing square bracket was expected!");
     }
 
     return res;
@@ -4962,10 +4969,11 @@ Value *eval_primary(Src *s, Env *env) {
         return parse_string(s);
     }
     if (c == '[') {
+        size_t start = s->pos;
         src_get(s);
         char is_dict = match_char(s, '@');
-        size_t start = s->pos;
         Value **args = NULL;
+        Value* result = NULL;
         int argc = 0, cap = 0;
         skip_ws(s);
         if (src_peek(s) != ']') {
@@ -4990,13 +4998,16 @@ Value *eval_primary(Src *s, Env *env) {
                         val_release(call_native_with(env, native_list_append,
                                                       val_retain(list), a, NULL));
                     }
+                    size_t safe_end = s->pos;
                     if (match_char(s, ','))
                         continue;
                     if (match_char(s, ']'))
                         break;
                     val_release(list);
+                    if (match_char(s, '=')) {
+                        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Did not expect stray '=' in a list, did you mean `[@ ...]` and not `[...]`?\nAt `%.*s`", (int)(s->pos - start), s->src + start);
+                    }
                     int k = 1;
-                    size_t safe_end = s->pos;
                     while (k) {
                         if (src_peek(s) == '[')
                             k++;
@@ -5009,14 +5020,13 @@ Value *eval_primary(Src *s, Env *env) {
                         s->pos++;
                     }
                     size_t end = s->pos;
-                    int len = end - start + 1;
+                    int len = end - start;
                     return vtagged_error_pos(
                         get_pos(s), E_SYNTAX_ERROR,
-                        "Expected a %s or closing bracket!\nAt `%.*s`",
-                        is_dict && argc % 2 ? "equal" : "comma", len,
-                        s->src + start - 1);
+                        "Expected a comma or closing bracket!\nAt `%.*s`", len,
+                        s->src + start);
                 }
-                return list;
+                result = list;
             } else {
                 for (;;) {
                     Value *a = eval_expr(s, env);
@@ -5030,15 +5040,17 @@ Value *eval_primary(Src *s, Env *env) {
                     }
                     args[argc++] = a;
                     skip_ws(s);
+                    size_t safe_end = s->pos;
                     if (match_char(s, ','))
                         continue;
                     if (match_char(s, '='))
                         continue;
                     if (match_char(s, ']'))
                         break;
+                    for (int i=0; i<argc; ++i)
+                        val_release(args[i]);
                     mila_free(args);
                     int k = 1;
-                    size_t safe_end = s->pos;
                     while (k) {
                         if (src_peek(s) == '[')
                             k++;
@@ -5051,22 +5063,66 @@ Value *eval_primary(Src *s, Env *env) {
                         s->pos++;
                     }
                     size_t end = s->pos;
-                    int len = end - start + 1;
+                    int len = end - start;
                     return vtagged_error_pos(
                         get_pos(s), E_SYNTAX_ERROR,
-                        "Expected a %s or closing bracket!\nAt `%.*s`",
-                        is_dict && argc % 2 ? "equal" : "comma", len,
-                        s->src + start - 1);
+                        "Expected a%s!\nAt `%.*s`",
+                        is_dict && argc % 2 ? "n equal sign" : " comma or a closing bracket", len,
+                        s->src + start);
                 }
                 Value *dict = native_new_dict(env, argc, args);
                 for (int i=0; i<argc; ++i)
                     val_release(args[i]);
                 mila_free(args);
-                return dict;
+                result = dict;
             }
         } else {
             src_get(s);
-            return is_dict ? make_dict(NULL): make_list(NULL);
+            result = is_dict ? make_dict(NULL): make_list(NULL);
+        }
+        // indexing right after dict/list literal
+        if (src_peek(s) == '[') {
+            Value *obj = result;
+            if (!obj) {
+                Value *ret =
+                    vtagged_error_pos(get_pos(s), E_RUNTIME,
+                                      "cannot be subscripted as it is not defined");
+                return ret;
+            }
+            // Handle chained subscripts: (expr)[x][y][z]
+            while (src_peek(s) == '[') {
+                Value *index = parse_subscript(s, env);
+                if (!obj) {
+                    val_release(index);
+                    Value *ret = vtagged_error_pos(
+                        get_pos(s), E_RUNTIME,
+                        "cannot be subscripted as it is not defined");
+                    return ret;
+                }
+                if (IS_ERROR(index)) {
+                    val_release(obj);
+                    return index;
+                }
+                if (GET_METHOD(obj, BMethodGetItem)) {
+                    Value *res =
+                        ((binary_method)GET_METHOD(obj, BMethodGetItem))(obj,
+                                                                         index);
+                    val_release(index);
+                    Value *tmp = val_retain(res);
+                    val_release(obj);
+                    obj = tmp;
+                } else {
+                    val_release(index);
+                    val_release(obj);
+                    return vtagged_error_pos(
+                        get_pos(s), E_TYPE_ERROR,
+                        "Type %s does not support BMethodGetItem!",
+                        GET_TYPENAME(obj));
+                }
+            }
+            return obj;
+        } else {
+            return result;
         }
     }
     // parentheses
@@ -5077,10 +5133,24 @@ Value *eval_primary(Src *s, Env *env) {
         if (IS_ERROR(expr))
             return expr;
         skip_ws(s);
-        if (src_peek(s) == ')')
+        if (src_peek(s) == ')') {
             src_get(s);
+        } else {
+            int len = s->pos - start;
+            const char* expr_src = s->src + start;
+            val_release(expr);
+            if (match_char(s, ',')) {
+                return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Expected a closing parentheses but got comma, did you expect a tuple? MiLa does not support tuples.\nAt `%.*s`", len + 1, expr_src);
+            } else {
+                return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Expected a closing parentheses.\nAt `%.*s`", len, expr_src);
+            }
+        }
 
         if (src_peek(s) == '(') {
+            if (GET_TYPE(expr) != T_FUNCTION && GET_TYPE(expr) != T_NATIVE) {
+                val_release(expr);
+                return vtagged_error_pos(get_pos(s), E_RUNTIME, "The value in the expression was not callable!");
+            }
             // parse args
             src_get(s); // consume '('
             // parse comma separated expressions
@@ -5101,6 +5171,7 @@ Value *eval_primary(Src *s, Env *env) {
                     args[argc++] = a;
                     if (match_char(s, ','))
                         continue;
+                    size_t safe_end = s->pos;
                     if (match_char(s, ')'))
                         break;
                     val_release(expr);
@@ -5108,7 +5179,6 @@ Value *eval_primary(Src *s, Env *env) {
                         val_release(args[i]);
                     mila_free(args);
                     int k = 1;
-                    size_t safe_end = s->pos;
                     while (k) {
                         if (src_peek(s) == '(')
                             k++;
@@ -5136,12 +5206,73 @@ Value *eval_primary(Src *s, Env *env) {
             for (int i = 0; i < argc; i++)
                 val_release(args[i]);
             mila_free(args);
-            val_release(expr);
             if (GET_TYPE(res) == T_RETURN) {
                 Value *tmp = (Value *)res->v;
                 val_release(res);
+                val_release(expr);
                 return tmp;
             }
+            if (IS_ERROR(res) && !IS_FATAL(res)) {
+                char *error = NULL;
+                ErrorType type = E_NO_ERROR;
+                if (IS_ERROR_TAGGED(res)) {
+                    char *text = NULL;
+                    if (GET_TYPE(expr) == T_FUNCTION) {
+                        malloc_sprintf(&error,
+                                       "Error calling function '%s' (defined "
+                                       "in line %zu)\nError in function was in "
+                                       "line %zu\n%s",
+                                       GET_FUNCTION(expr)->name,
+                                       GET_FUNCTION(expr)->line,
+                                       res->v->tagged_error.pos.line,
+                                       text =
+                                           indent(GET_ERROR_MESSAGE(res), 2));
+                        mila_free(text);
+                        type = res->v->tagged_error.type;
+                    } else {
+                        malloc_sprintf(
+                            &error,
+                            "Error calling function '%s' (native at %p) at line %zu col %zu\n%s",
+                            GET_NATIVE(expr)->name, GET_NATIVE(expr)->fn,
+                            expr_pos.line, expr_pos.column,
+                            text = indent(GET_ERROR_MESSAGE(res), 2));
+                        mila_free(text);
+                        type = res->v->tagged_error.type;
+                    }
+                } else {
+                    char *text = NULL;
+                    if (GET_TYPE(expr) == T_FUNCTION)
+                        malloc_sprintf(&error,
+                                   "Error calling function '%s' (defined in "
+                                   "line %zu) in line %zu column %zu\n%s",
+                                   GET_FUNCTION(expr)->name, GET_FUNCTION(expr)->line,
+                                   expr_pos.line, expr_pos.column,
+                                   text = indent(GET_ERROR_MESSAGE(res), 2));
+                    else
+                        malloc_sprintf(&error,
+                                   "Error calling function '%s' (native at "
+                                   " %p) in line %zu column %zu\n%s",
+                                   GET_NATIVE(expr)->name, GET_NATIVE(expr)->fn,
+                                   expr_pos.line, expr_pos.column,
+                                   text = indent(GET_ERROR_MESSAGE(res), 2));
+                    mila_free(text);
+                }
+                int return_code = 0;
+                if (type != E_NO_ERROR) {
+                    return_code = res->v->tagged_error.return_code;
+                }
+                val_release(res);
+                Value *res;
+                if (type == E_NO_ERROR)
+                    res = verror("%s", error);
+                else {
+                    res = vtagged_coded_error(type, return_code, "%s", error);
+                }
+                mila_free(error);
+                val_release(expr);
+                return res;
+            }
+            val_release(expr);
             return res;
         } else if (src_peek(s) == '[') {
             Value *obj = expr;
@@ -5149,20 +5280,16 @@ Value *eval_primary(Src *s, Env *env) {
             if (!obj) {
                 Value *ret =
                     vtagged_error_pos(get_pos(s), E_RUNTIME,
-                                      "cannot be subscripted as it is cnull");
+                                      "cannot be subscripted as it is not defined");
                 return ret;
             }
 
             // Handle chained subscripts: (expr)[x][y][z]
             while (src_peek(s) == '[') {
                 Value *index = parse_subscript(s, env);
-
-                if (!obj) {
-                    val_release(index);
-                    Value *ret = vtagged_error_pos(
-                        get_pos(s), E_RUNTIME,
-                        "cannot be subscripted as it is cnull");
-                    return ret;
+                if (IS_ERROR(index)) {
+                    val_release(obj);
+                    return index;
                 }
 
                 if (GET_METHOD(obj, BMethodGetItem)) {
@@ -5175,11 +5302,12 @@ Value *eval_primary(Src *s, Env *env) {
                     obj = tmp;
                 } else {
                     val_release(index);
-                    val_release(obj);
-                    return vtagged_error_pos(
+                    Value *res = vtagged_error_pos(
                         get_pos(s), E_TYPE_ERROR,
-                        "Type %s does not support BMethodGetItem!",
+                        "Type %s does not support BMethodGetItem! You subscripted an expression, were you expecting a tuple? MiLa does not have tuples.",
                         GET_TYPENAME(obj));
+                    val_release(obj);
+                    return res;
                 }
             }
 
@@ -5190,7 +5318,6 @@ Value *eval_primary(Src *s, Env *env) {
     if (c == '{') {
         Value *v = eval_block(s, env);
         match_char(s, '}');
-        return v;;
         return v;
     }
     if (c == '!' && s->src[s->pos + 1] == '{') {
@@ -5236,6 +5363,7 @@ Value *eval_primary(Src *s, Env *env) {
         if (is_keyword_at(s, "->")) {
             s->pos += 2;
             skip_ws(s);
+            int start = (int)s->pos;
             if (src_peek(s) == '"') {
                 Value *ret_type = parse_string(s);
                 ret = mila_strdup(GET_STRING(ret_type));
@@ -5244,16 +5372,23 @@ Value *eval_primary(Src *s, Env *env) {
                 env_free(closure);
                 for (int i = 0; params->params[i]; ++i) {
                     mila_free(params->params[i]);
-                    mila_free(params->types[i]);
                     mila_free(params->defaults[i]);
+                    mila_free(params->types[i]);
                 }
                 mila_free(params->params);
                 mila_free(params->defaults);
                 mila_free(params->types);
                 mila_free(params);
+
+                while ((!strchr(".!: ", src_peek(s))) || isalnum(src_peek(s))) {
+                    src_get(s);
+                }
+                int len = s->pos - start;
+                const char* error = s->src + start;
+
                 return vtagged_error_pos(
                     get_pos(s), E_SYNTAX_ERROR,
-                    "Expected a string literal for the return type.");
+                    "Expected a string literal for the return type. Got `%.*s`, maybe you meant `\"%.*s\"`", len, error, len, error);
             }
         }
         skip_ws(s);
@@ -5285,7 +5420,21 @@ Value *eval_primary(Src *s, Env *env) {
                 }
             }
         } else {
-            skip_parse_statement(s);
+            start--;
+            const char* err = skip_parse_statement(s);
+            if (err) {
+                env_free(closure);
+                for (int i = 0; params->params[i]; ++i) {
+                    mila_free(params->params[i]);
+                    mila_free(params->defaults[i]);
+                    mila_free(params->types[i]);
+                }
+                mila_free(params->params);
+                mila_free(params->defaults);
+                mila_free(params->types);
+                mila_free(params);
+                return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Error when parsing lambda body: %s", err);
+            }
             i = s->pos;
         }
         if (i > s->len)
@@ -5354,6 +5503,7 @@ Value *eval_primary(Src *s, Env *env) {
                     args[argc++] = a;
                     if (match_char(s, ','))
                         continue;
+                    size_t safe_end = s->pos;
                     if (match_char(s, ')'))
                         break;
                     mila_free(id);
@@ -5362,7 +5512,6 @@ Value *eval_primary(Src *s, Env *env) {
                     mila_free(args);
 
                     int k = 1;
-                    size_t safe_end = s->pos;
                     while (k) {
                         if (src_peek(s) == '(')
                             k++;
@@ -5468,13 +5617,12 @@ Value *eval_primary(Src *s, Env *env) {
                 return res;
             }
             mila_free(id);
-            return res;;
             return res;
         } else if (src_peek(s) == '[') {
             Value *obj = env_get(env, id);
             if (!obj) {
                 Value *ret =
-                    verror("%s cannot be subscripted as it is cnull", id);
+                    verror("%s cannot be subscripted as it is not defined", id);
                 mila_free(id);
                 return ret;
             }
@@ -5486,8 +5634,12 @@ Value *eval_primary(Src *s, Env *env) {
 
                 if (!obj) {
                     val_release(index);
-                    Value *ret = verror("cannot be subscripted as it is cnull");
+                    Value *ret = verror("cannot be subscripted as it is not defined");
                     return ret;
+                }
+
+                if (IS_ERROR(index)) {
+                    return index;
                 }
 
                 if (obj->method_table && obj->method_table[BMethodGetItem]) {
@@ -5507,6 +5659,29 @@ Value *eval_primary(Src *s, Env *env) {
             }
 
             return val_retain(obj);
+        } else if (src_peek(s) == '=') {
+            // guard against `id = value` syntax
+            size_t pos = s->pos;
+            src_get(s);
+            if (src_peek(s) != '=') {
+                Value* res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "You tried setting a variable `%s` but we dont support the syntax `%s = ...`.\nYou may have tried to do a comparison in which the correct syntax is `%s == ...`,\nbut if you were indeed setting `%s` then do so by `{set %s = ...}`", id, id, id, id, id);
+                mila_free(id);
+                return res;
+            }
+            s->pos = pos;
+
+            // variable lookup
+            Value *vv = env_get(env, id);
+#ifdef MILA_DEBUG
+            printf("  ?? read %s\n", id);
+#endif
+            mila_free(id);
+            if (!vv) {
+                // undefined variable -> null
+                return vnull();
+            }
+            val_retain(vv);
+            return vv;
         } else {
             // variable lookup
             Value *vv = env_get(env, id);
@@ -6041,6 +6216,13 @@ Value* handle_method_call(Src* s, Env* env, Value* obj) {
         mila_free(str);
         return res;
     }
+    if (src_peek(s) != '(') {
+        val_release(obj);
+        Value *res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                 "Malformed method call! If you meant to access `%s` as an attribute, use indexing syntax: `[\"%s\"]`.", method, method);
+        mila_free(method);
+        return res;
+    }
     Value *function = dict_get_str((Dict *)GET_OPAQUE(obj), method);
     if (!function) {
         val_release(obj);
@@ -6049,12 +6231,6 @@ Value* handle_method_call(Src* s, Env* env, Value* obj) {
             method);
         mila_free(method);
         return res;
-    }
-    if (src_peek(s) != '(') {
-        mila_free(method);
-        val_release(obj);
-        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                 "Malformed method call!");
     }
     // parse args
     src_get(s); // consume '('
@@ -6209,6 +6385,13 @@ Value* handle_namespaced_call(Src *s, Env *env, Value* obj) {
     }
     Value *function =
         dict_get_str((Dict *)GET_OPAQUE(obj), namespaced_function);
+    if (src_peek(s) != '(') {
+        val_release(obj);
+        Value* res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                 "Malformed namespaced function call! If you meant to access `%s` as an attribute, use the indexing syntax: `[\"%s\"]`", namespaced_function, namespaced_function);
+        mila_free(namespaced_function);
+        return res;
+    }
     if (!function) {
         val_release(obj);
         Value *res = vtagged_error_pos(
@@ -6217,12 +6400,6 @@ Value* handle_namespaced_call(Src *s, Env *env, Value* obj) {
             namespaced_function);
         mila_free(namespaced_function);
         return res;
-    }
-    if (src_peek(s) != '(') {
-        mila_free(namespaced_function);
-        val_release(obj);
-        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                 "Malformed namespaced function call!");
     }
     // parse args
     src_get(s); // consume '('
@@ -6421,7 +6598,7 @@ Value *eval_statement(Src *s, Env *env) {
         char *id = parse_ident(s);
         if (!id)
             return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Invalid set statement.");
+                                     "Invalid set statement. Expected a name.\nIf you have set a variable with the name `set`,\nusing it in contexts where we expect `set` to be the set statement can cause problems,\nuse `(set)` to make it clear");
         Value *v = NULL;
         MethodType mt = MethodNone;
         skip_ws(s);
@@ -6436,7 +6613,7 @@ Value *eval_statement(Src *s, Env *env) {
             if (!obj) {
                 Value *ret = vtagged_error_pos(
                     get_pos(s), E_TYPE_ERROR,
-                    "%s cannot be subscripted as it is cnull", id);
+                    "%s cannot be subscripted as it is not defined", id);
                 mila_free(id);
                 return ret;
             }
@@ -6714,8 +6891,14 @@ Value *eval_statement(Src *s, Env *env) {
             match_char(s, ';');
             return res;
         } else {
-            return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Expected a proper set statement!");
+            Value* res;
+            if (strcmp(id, "set") == 0 || strcmp(id, "var") == 0 || strcmp(id, "object") == 0 || strcmp(id, "alias") == 0 || strcmp(id, "forget") == 0 || strcmp(id, "contextual") == 0 || strcmp(id, "break") == 0 || strcmp(id, "continue") == 0 || strcmp(id, "foreach") == 0 || strcmp(id, "sync") == 0 || strcmp(id, "if") == 0 || strcmp(id, "elif") == 0 || strcmp(id, "else") == 0 || strcmp(id, "while") == 0 || strcmp(id, "catch") == 0 || strcmp(id, "const") == 0)
+                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Expected a proper set statement. For `%s`, its missing the assignment part.\nAn additional info for your assignment, you used `%s` which is a statement.\nYou must read it by doing `(%s)` to make sure it gets evaluated in the context of an expression rather than a statement.", id, id, id);
+            else
+                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                     "Expected a proper set statement! For `%s`, its missing the assignment part.", id);
+            mila_free(id);
+            return res;
         }
         abort(); // UNREACHABLE
     }
@@ -6732,7 +6915,7 @@ Value *eval_statement(Src *s, Env *env) {
         }
         if (!id)
             return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Invalid var statement.");
+                                     "Invalid var statement. Expected a name.\nIf you have set a variable with the name `var`,\nusing it in contexts where we expect `var` to be the var statement can cause problems,\nuse `(var)` to make it clear");
 #ifdef MILA_DEBUG
         printf("  ?? Assigning %s\n", id);
 #endif
@@ -6755,9 +6938,15 @@ Value *eval_statement(Src *s, Env *env) {
             v = eval_expr(s, env);
             match_char(s, ';');
         } else {
+            Value* res;
+            if (strcmp(id, "set") == 0 || strcmp(id, "var") == 0 || strcmp(id, "object") == 0 || strcmp(id, "alias") == 0 || strcmp(id, "forget") == 0 || strcmp(id, "contextual") == 0 || strcmp(id, "break") == 0 || strcmp(id, "continue") == 0 || strcmp(id, "foreach") == 0 || strcmp(id, "sync") == 0 || strcmp(id, "if") == 0 || strcmp(id, "elif") == 0 || strcmp(id, "else") == 0 || strcmp(id, "while") == 0 || strcmp(id, "catch") == 0 || strcmp(id, "const") == 0)
+                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Expected a proper var statement. For `%s`, its missing the assignment part.\nAn additional info for your assignment, you used `%s` which is a statement.\nYou must read it by doing `(%s)` to make sure it gets evaluated in the context of an expression rather than a statement.", id, id, id);
+            else
+                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                     "Expected a proper var statement! For `%s`, its missing the assignment part.", id);
+            mila_free(type_string);
             mila_free(id);
-            return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Expected a proper var statement!");
+            return res;
         }
 
         if (v && v->type == T_RETURN) {
@@ -7075,6 +7264,7 @@ Value *eval_statement(Src *s, Env *env) {
                 } break;
                 case T_CONTINUE: {
                     s->pos = cond_start_pos;
+                    val_release(bod);
                     continue;
                 } break;
                 case T_RETURN: {
@@ -7116,6 +7306,7 @@ Value *eval_statement(Src *s, Env *env) {
         s->pos += strlen("continue");
         if (!match_char(s, ';')) {
             Value *n = eval_expr(s, env);
+            match_char(s, ';');
             Value *res = vcontinue_step(GET_UINTEGER(n));
             val_release(n);
             return res;
@@ -7145,6 +7336,7 @@ Value *eval_statement(Src *s, Env *env) {
             iter_obj->method_table[UMethodStepIterInit] &&
             iter_obj->method_table[UMethodStepIter] &&
             iter_obj->method_table[UMethodStepIterClean]) {
+            // Cleaner path, actual iterables
             void *iter_state =
                 ((unary_method)iter_obj->method_table[UMethodStepIterInit])(
                     iter_obj);
@@ -7212,6 +7404,7 @@ Value *eval_statement(Src *s, Env *env) {
                                      ->method_table[UMethodStepIterClean])(
                                     iter_state);
                                 val_release(iter_obj);
+                                val_release(bod);
                                 return vnull();
                             }
                             val_release(v);
@@ -7251,6 +7444,7 @@ Value *eval_statement(Src *s, Env *env) {
             mila_free(value);
         } else if (iter_obj->method_table &&
                    iter_obj->method_table[UMethodToIter]) {
+            // Messier flat array "iterators"
             Value *iter_instance =
                 ((unary_method)iter_obj->method_table[UMethodToIter])(iter_obj);
             if (IS_ERROR(iter_instance)) {
@@ -7424,7 +7618,7 @@ Value *eval_statement(Src *s, Env *env) {
         char *type_string = NULL;
         if (!name)
             return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Function needs a name!");
+                                     "Function needs a name! Maybe you accidentally put a lambda where a statement function would be?\nFix would be to wrap the lambda in parenthesis.");
         FunctionParameters *params = parse_param_list(s);
         char **contextuals = parse_context_list(s);
         char **names;
@@ -7441,6 +7635,7 @@ Value *eval_statement(Src *s, Env *env) {
         if (is_keyword_at(s, "->")) {
             s->pos += 2;
             skip_ws(s);
+            int start = (int)s->pos;
             if (src_peek(s) == '"') {
                 Value *ret_type = parse_string(s);
                 type_string = mila_strdup(GET_STRING(ret_type));
@@ -7452,11 +7647,22 @@ Value *eval_statement(Src *s, Env *env) {
                     mila_free(params->defaults[i]);
                     mila_free(params->types[i]);
                 }
+                mila_free(type_string);
+                mila_free(params->params);
+                mila_free(params->defaults);
+                mila_free(params->types);
                 mila_free(params);
                 mila_free(name);
+
+                while ((!strchr(".!: ", src_peek(s))) || isalnum(src_peek(s))) {
+                    src_get(s);
+                }
+                int len = s->pos - start;
+                const char* error = s->src + start;
+
                 return vtagged_error_pos(
                     get_pos(s), E_SYNTAX_ERROR,
-                    "Expected a string literal for the return type.");
+                    "Expected a string literal for the return type. Got `%.*s`, maybe you meant `\"%.*s\"`", len, error, len, error);
             }
         }
         skip_ws(s);
@@ -7509,6 +7715,9 @@ Value *eval_statement(Src *s, Env *env) {
             }
             mila_free(name);
             mila_free(type_string);
+            mila_free(params->params);
+            mila_free(params->defaults);
+            mila_free(params->types);
             mila_free(params);
             return vtagged_error_pos(get_pos(s), E_CONST_ERROR,
                                      "Function %s overwrote a const variable!",
@@ -8485,13 +8694,13 @@ int main(int argc, char **argv) {
         }
 
         env_set_raw(g, "argc", vint(argc - 1));
-        array = call_function_str(g, "array", vint(argc - 1), NULL);
+        Value* list = make_list(NULL);
         for (int i = 1; i < argc; i++) {
             Value *str = vstring_dup(argv[i]);
-            val_release(call_native_with(g, native_set_array, val_retain(array),
-                                          vint(i - 1), str, NULL));
+            val_release(call_native_with(g, native_list_append, val_retain(list),
+                                          str, NULL));
         }
-        env_set_raw(g, "argv", array);
+        env_set_raw(g, "argv", list);
         env_set_raw(g, "__argv", vopaque(argv));
         mila_free(cwd);
         int return_code = 0;

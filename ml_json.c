@@ -329,34 +329,57 @@ char *_mila_to_json_unified(Value *v, int level, int include_fn) {
     case T_OWNED_OPAQUE: {
         if (v->type_name && strcmp(v->type_name, "list") == 0) {
             LinkedList *list = (LinkedList *)GET_OPAQUE(v);
-            malloc_sprintf(&result, "[\n");
-            for (size_t i = 0; i < list->size; ++i) {
-                char *item_json = _mila_to_json_unified(ll_get(list, i),
-                                                        level + 1, include_fn);
-                malloc_sprintf(&result, "%*s%s%s", level * 2, "", item_json,
-                               i < list->size - 1 ? ",\n" : "");
-                mila_free(item_json);
+            if (list->size == 0) {
+                malloc_sprintf(&result, "[]");
+            } else if (list->size < 17) {
+                malloc_sprintf(&result, "[");
+                for (size_t i = 0; i < list->size; ++i) {
+                    char *item_json = _mila_to_json_unified(ll_get(list, i),
+                                                            level + 1, include_fn);
+                    malloc_sprintf(&result, "%s%s", item_json,
+                                   i < list->size - 1 ? ", " : "");
+                    mila_free(item_json);
+                }
+                malloc_sprintf(&result, "]", (level - 1) * 2, "");
+            } else {
+                malloc_sprintf(&result, "[\n%*s", level * 2, "");
+                for (size_t i = 0; i < list->size; i += 16) {
+                    size_t j = i;
+                    for (; j - i < 16 && j < list->size; j++) {
+                        char *item_json = _mila_to_json_unified(ll_get(list, j),
+                                                                level + 1, include_fn);
+                        malloc_sprintf(&result, "%s%s", item_json,
+                                       j < list->size - 1 ? ", " : "");
+                        mila_free(item_json);
+                    }
+                    malloc_sprintf(&result, "\n%*s", j < list->size-1 ? level * 2 : (level - 1) * 2, "");
+                }
+                malloc_sprintf(&result, "]");
             }
-            malloc_sprintf(&result, "\n%*s]", (level - 1) * 2, "");
         } else if (v->type_name &&
                    strcmp(v->type_name, "dict") == 0) {
             Dict *dict = (Dict *)GET_OPAQUE(v);
-            malloc_sprintf(&result, "{\n");
-            int first = 1;
-            for (size_t i = 0; i < dict->capacity; ++i) {
-                for (DictEntry *entry = dict->buckets[i]; entry;
-                     entry = entry->next) {
-                    if (!first)
-                        malloc_sprintf(&result, ",\n");
-                    first = 0;
-                    char *val_json = _mila_to_json_unified(
-                        entry->value, level + 1, include_fn);
-                    malloc_sprintf(&result, "%*s%s: %s", level * 2, "",
-                                   entry->key, val_json);
-                    mila_free(val_json);
+            if (dict->size == 0) {
+                malloc_sprintf(&result, "{}");
+                break;
+            } else {
+                malloc_sprintf(&result, "{\n");
+                int first = 1;
+                for (size_t i = 0; i < dict->capacity; ++i) {
+                    for (DictEntry *entry = dict->buckets[i]; entry;
+                         entry = entry->next) {
+                        if (!first)
+                            malloc_sprintf(&result, ",\n");
+                        first = 0;
+                        char *val_json = _mila_to_json_unified(
+                            entry->value, level + 1, include_fn);
+                        malloc_sprintf(&result, "%*s%s: %s", level * 2, "",
+                                       entry->key, val_json);
+                        mila_free(val_json);
+                    }
                 }
+                malloc_sprintf(&result, "\n%*s}", (level - 1) * 2, "");
             }
-            malloc_sprintf(&result, "\n%*s}", (level - 1) * 2, "");
         } else {
             malloc_sprintf(&result, "null");
         }
@@ -418,35 +441,57 @@ long _io_mila_to_json_unified(FILE *file, Value *v, int level, int include_fn) {
     }
     case T_OPAQUE:
     case T_OWNED_OPAQUE: {
-        if (v->type_name && strcmp(v->type_name, "list") == 0) {
+        if (v->type_name && strcmp(v->type_name, "list") == 0) {    
             LinkedList *list = (LinkedList *)GET_OPAQUE(v);
-            result += fprintf(file, "[\n");
-            for (size_t i = 0; i < list->size; ++i) {
-                result += fprintf(file, "%*s", level * 2, "");
-                result += _io_mila_to_json_unified(file, ll_get(list, i),
-                                                   level + 1, include_fn);
-                if (i < list->size - 1)
-                    result += fprintf(file, ",\n");
+            if (list->size == 0) {
+                result += fprintf(file, "[]");
+            } else if (list->size < 17) {
+                result += fprintf(file, "[");
+                for (size_t i = 0; i < list->size; ++i) {
+                    char *item_json = _mila_to_json_unified(ll_get(list, i),
+                                                            level + 1, include_fn);
+                    result += fprintf(file, "%s%s", item_json,
+                                   i < list->size - 1 ? ", " : "");
+                    mila_free(item_json);
+                }
+                result += fprintf(file, "]");
+            } else {
+                result += fprintf(file, "[\n%*s", level * 2, "");
+                for (size_t i = 0; i < list->size; i += 16) {
+                    size_t j = i;
+                    for (; j - i < 16 && j < list->size; j++) {
+                        char *item_json = _mila_to_json_unified(ll_get(list, j),
+                                                                level + 1, include_fn);
+                        result += fprintf(file, "%s%s", item_json,
+                                       j < list->size - 1 ? ", " : "");
+                        mila_free(item_json);
+                    }
+                    result += fprintf(file, "\n%*s", j < list->size-1 ? level * 2 : (level - 1) * 2, "");
+                }
+                result += fprintf(file, "]");
             }
-            result += fprintf(file, "\n%*s]", (level - 1) * 2, "");
         } else if (v->type_name &&
                    strcmp(v->type_name, "dict") == 0) {
             Dict *dict = (Dict *)GET_OPAQUE(v);
-            result += fprintf(file, "{\n");
-            int first = 1;
-            for (size_t i = 0; i < dict->capacity; ++i) {
-                for (DictEntry *entry = dict->buckets[i]; entry;
-                     entry = entry->next) {
-                    if (!first)
-                        result += fprintf(file, ",\n");
-                    first = 0;
-                    result +=
-                        fprintf(file, "%*s%s: ", level * 2, "", entry->key);
-                    result += _io_mila_to_json_unified(file, entry->value,
-                                                       level + 1, include_fn);
+            if (dict->size == 0) {
+                result += fprintf(file, "{}");
+            } else {
+                result += fprintf(file, "{\n");
+                int first = 1;
+                for (size_t i = 0; i < dict->capacity; ++i) {
+                    for (DictEntry *entry = dict->buckets[i]; entry;
+                         entry = entry->next) {
+                        if (!first)
+                            result += fprintf(file, ",\n");
+                        first = 0;
+                        result +=
+                            fprintf(file, "%*s%s: ", level * 2, "", entry->key);
+                        result += _io_mila_to_json_unified(file, entry->value,
+                                                           level + 1, include_fn);
+                    }
                 }
+                result += fprintf(file, "\n%*s}", (level - 1) * 2, "");
             }
-            result += fprintf(file, "\n%*s}", (level - 1) * 2, "");
         } else {
             result += fprintf(file, "null");
         }

@@ -12,6 +12,7 @@
 #include "ml_string.c"
 #include "ml_string.h"
 #include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Define meta tables
@@ -847,6 +848,25 @@ Value *native_str_startsw(Env *env, int argc, Value **argv) {
     return vbool(0);
 }
 
+Value *native_str_stripl(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.stripl(str): Expected 1 argument!");
+    char *str = GET_STRING(argv[0]);
+    while (isspace(*str)) str++;
+    return vstring_dup(str);
+}
+
+Value *native_str_stripr(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.stripr(str): Expected 1 argument!");
+    char *str = GET_STRING(argv[0]);
+    int end = strlen(str) - 1;
+    while (isspace(str[end])) end--;
+    char* buffer = NULL;
+    malloc_sprintf(&buffer, "%.*s", end, str);
+    return vstring_take(buffer);
+}
+
 Value *native_str_endsw(Env *env, int argc, Value **argv) {
     if (argc != 2)
         return verror("str.endswith(str, suf): Expected 2 arguments!");
@@ -1024,7 +1044,7 @@ Value *native_str_wqsplit(Env* env, int argc, Value** argv)
         while (s[i] && (quote || !isspace((unsigned char)s[i]))) {
             char c = s[i++];
 
-            if (c == '\\') {
+            if (c == '\\' && strchr("\"'", s[i])) {
                 /*
                  * Escape the next character.
                  */

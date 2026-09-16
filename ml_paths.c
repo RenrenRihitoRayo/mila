@@ -685,6 +685,7 @@ char *path_list_find_alternative(path_list *pl, const char *file) {
 #ifndef ML_NO_THREADING
         pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
+        mila_free(tfile);
         return NULL;
     }
     strcpy(full, root);
@@ -701,6 +702,7 @@ char *path_list_find_alternative(path_list *pl, const char *file) {
 #ifndef ML_NO_THREADING
     pthread_mutex_unlock(&mila_search_path_lock_read);
 #endif
+    mila_free(tfile);
     return full;
 }
 

@@ -8751,7 +8751,9 @@ int main(int argc, char **argv) {
 
         printf("Edition %ld version %ld (full %ld.%ld.%ld)\n", MILA_EDITION,
                MILA_VERSION, MILA_EDITION, MILA_VERSION, MILA_PATCH);
-
+        
+        printf("----------------------------------------\n");
+        printf("Hello! Donut Oreo Computer is here...\n");
         BlrHistory hist;
         if (blr_history_init(&hist, 100)) {
             perror("blr_history_init");

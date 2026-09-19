@@ -175,7 +175,7 @@ Value *native_thread_join(Env *env, int argc, Value **argv) {
         return verror("thread.join(id): requires integer thread ID");
     }
 
-    int thread_id = (int)argv[0]->v->i;
+    int thread_id = (int)GET_INTEGER(argv[0]);
     ThreadContext *ctx = thread_registry_get(thread_id);
 
     if (!ctx) {
@@ -212,7 +212,7 @@ Value *native_thread_dump(Env *env, int argc, Value **argv) {
         return verror("thread.next(id): requires integer thread ID");
     }
 
-    int thread_id = (int)argv[0]->v->i;
+    int thread_id = (int)GET_INTEGER(argv[0]);
     ThreadContext *ctx = thread_registry_get(thread_id);
 
     if (!ctx) {

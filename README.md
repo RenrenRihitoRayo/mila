@@ -42,11 +42,11 @@ all documented, in a interpreter as small as a png.
 | Android (MagicOS Termux)        | 262KB  | clang 21.1.8 | release  |
 | Android (MagicOS Termux)        | 176KB  | clang 21.1.8 | smallest |
 | Linux 6.18.41-1-lts (Archlinux) | 272KB  | gcc 16.1.1   | release  |
-| Linux 6.18.41-1-lts (Archlinux) | 148KB  | gcc 16.1.1   | smallest |
-| Linux 6.18.41-1-lts (Archlinux) | 232KB  | clang 22.1.8 | release  |
-| Linux 6.18.41-1-lts (Archlinux) | 176KB  | clang 22.1.8 | smallest |
+| Linux 6.18.41-1-lts (Archlinux) | 156KB  | gcc 16.1.1   | smallest |
+| Linux 6.18.41-1-lts (Archlinux) | 240KB  | clang 22.1.8 | release  |
+| Linux 6.18.41-1-lts (Archlinux) | 180KB  | clang 22.1.8 | smallest |
 | Linux 6.18.41-1-lts (Archlinux) | 1.4MB  | gcc 16.1.1   | static   |
-| Linux 6.18.41-1-lts (Archlinux) | 1.4MB  | clang 22.1.8 | static   |
+| Linux 6.18.41-1-lts (Archlinux) | 1.5MB  | clang 22.1.8 | static   |
 
 ## Keywords (20 total)
 

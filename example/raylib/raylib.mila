@@ -3,8 +3,11 @@ load("./raylib.so");
 
 const food_size = 20.0;
 const player_speed = 500;
-const food_num = 15;
-const fps = 100;
+
+// 110 fps at 1K food, 19 when auto
+// 7 fps at 10K, 2 fps when auto
+const food_num = 1000;
+const fps = 0;
 
 var screen_w = 1200;
 var screen_h = 600;
@@ -26,8 +29,8 @@ const NONE = Color(255u, 255u, 255u, 255u);
 const player = Rectangle(
     (screen_w / 2) - 90,
     (screen_h / 2) - 30,
-    180.0,
-    60.0
+    180,
+    60
 );
 
 // own tells MiLa it can free this pointer!
@@ -62,15 +65,41 @@ fn distance(v1, v2) {
     return dis;
 }
 
+// 11 fps impl
 fn step(v1, v2, speed) {
     var dx = Vector2.get_x(v2) - Vector2.get_x(v1);
     var dy = Vector2.get_y(v2) - Vector2.get_y(v1);
     var dist = distance(v1, v2);
-
     // Move proportionally along the direction
     // Randomness makes it impossible to get stuck between two equally far food particles.
     Vector2.set_x(v1, Vector2.get_x(v1) + (dx / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
     Vector2.set_y(v1, Vector2.get_y(v1) + (dy / dist * speed) + cast.i2f(GetRandomValue(0, 3)));
+}
+
+// 20 fps impl, generic rect->vect
+fn step_rv(v1, v2, speed) {
+    var x1 = Rectangle.get_x(v1);
+    var y1 = Rectangle.get_y(v1);
+    var x2 = Vector2.get_x(v2);
+    var y2 = Vector2.get_y(v2);
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    var dist = sqrtf(dx * dx + dy * dy);
+    Rectangle.set_x(v1, x1 + (dx / dist * speed));
+    Rectangle.set_y(v1, y1 + (dy / dist * speed));
+}
+
+// 25 fps impl, generic to rect->player_rect
+fn step_to_player(v1, v2, speed) {
+    var x1 = Rectangle.get_x(v1);
+    var y1 = Rectangle.get_y(v1);
+    var x2 = Rectangle.get_x(v2) + 90;
+    var y2 = Rectangle.get_y(v2) + 30;
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    var dist = sqrtf(dx * dx + dy * dy);
+    Rectangle.set_x(v1, x1 + (dx / dist * speed));
+    Rectangle.set_y(v1, y1 + (dy / dist * speed));
 }
 
 var foods = list();
@@ -89,10 +118,12 @@ foreach i : range(food_num) {
 var peak_fps = fps;
 
 var auto = false;
+var tick = 0;
 
 // 1500 FPS spike is 1700 FPSw
 while (not(WindowShouldClose()))
 {
+    set tick += 1;
     set old = new ?? 0; // FIX: big delta spike at first frame
     set new = get_time();
     var delta = new - old; // We calculate the delta
@@ -107,31 +138,34 @@ while (not(WindowShouldClose()))
 
     if (auto) {
         foreach food : foods {
-            var food_v = Vector2(Rectangle.get_x(food), Rectangle.get_y(food));
-            step(food_v, Vector2(Rectangle.get_x(player) + 90, Rectangle.get_y(player) + 30), 300 * delta);
-            Rectangle.set_x(food, Rectangle.get_x(food_v));
-            Rectangle.set_y(food, Rectangle.get_y(food_v));
+            step_to_player(food, player, 300 * delta);
+        }
+    }
+
+    // only check collision every 5 frames
+    // increased performance by at least 53%
+    if (tick % 3 == 0) {
+        foreach food : foods {i hate niggers -darren papa
+            if (CheckCollisionRecs(player, food)) {
+                random_place(food);
+                set score += 1;
+            }
         }
     }
 
     foreach food : foods {
         DrawRectangleRec(food, MARIGOLD); // faster
         // DrawCircle(cast.f2i(Rectangle.get_x(food)+10), cast.f2i(Rectangle.get_y(food)+10), 10.0, MARIGOLD);
-        if (CheckCollisionRecs(player, food)) {
-            random_place(food);
-            set score += 1;
-        }
     }
 
     DrawText("Hello world!\nBox.", cast.f2i(Rectangle.get_x(player))+10, cast.f2i(Rectangle.get_y(player))+10, 24, BLACK);
 
-    // Yes addition and concat is the same.
     DrawRectangle(6, 6, 155, 90, RAYWHITE_TRANSLUCENT);
 
     var current_fps = GetFPS();
     if (current_fps > peak_fps) {
         set peak_fps = current_fps;
-    } elif (current_fps < peak_fps * 0.8) {
+    } elif (current_fps < peak_fps * 0.9) {
         set peak_fps = current_fps; // reset peak_fps
     }
 
@@ -172,15 +206,6 @@ while (not(WindowShouldClose()))
     elif (IsKeyDown(KeyboardKey.KEY_Q)) {
         set start_x = Rectangle.get_x(player);
         set start_y = Rectangle.get_y(player);
-    }
-    // Allow user to change FPS realtime
-    elif (IsKeyPressed(KeyboardKey.KEY_C)) {
-        set fps = fps + 10;
-        SetTargetFPS(fps);
-    }
-    elif (IsKeyPressed(KeyboardKey.KEY_B)) {
-        set fps = fps - 10;
-        SetTargetFPS(fps);
     }
     elif (IsKeyPressed(KeyboardKey.KEY_V)) {
         set auto = not(auto);

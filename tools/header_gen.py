@@ -36,15 +36,15 @@ mila_to_c = {
     "char[]": "(char*){value}->v",
     "char *": "(char*){value}->v",
     "const char *": "(char*){value}->v",
-    "int": "((int)GET_INTEGER({value}))",
-    "long": "GET_INTEGER({value})",
-    "float": "{value}->v->f",
-    "double": "{value}->v->f",
-    "void *": "(void*){value}->v",
-    "const void*": "(void*){value}->v",
-    "unsigned int": "{value}->v->ui",
-    "_Bool": "(long){value}->v",
-    "bool": "(long){value}->v",
+    "int": "(int)to_int({value})",
+    "long": "to_int({value})",
+    "float": "(float)to_double({value})",
+    "double": "to_double({value})",
+    "void *": "GET_OPAQUE({value})",
+    "const void*": "(const void*)GET_OPAQUE({value})",
+    "unsigned int": "to_uint({value})",
+    "_Bool": "GET_BOOL({value})",
+    "bool": "GET_BOOL({value})",
     "unsigned char": "(unsigned char)(GET_INTEGER({value}))",
     "Value *": "{value}"
 }
@@ -334,9 +334,9 @@ def gen_normal_wrapper(func):
         types.append(f"{t} {p['name']}")
 
         if t in typedefs or t in structs:
-            arg_list.append(f"*(({t}*)argv[{i}]->v)")
+            arg_list.append(f"*(({t}*)GET_OPAQUE(argv[{i}]))")
         elif t in enums:
-            arg_list.append(f"({t})argv[{i}]->v->i")
+            arg_list.append(f"({t})to_int(argv[{i}])")
         else:
             arg_list.append(
                 mila_to_c.get(t, "{value}->v").format(value=f"argv[{i}]")
@@ -349,7 +349,7 @@ Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
     if(argc != {len(params)})
         return verror("{name}: wrong arg count");
 
-    {name}({', '.join(arg_list)});
+    {name}(\n        {',\n        '.join(arg_list)}\n    );
     return vnull();
 }}
 """
@@ -360,7 +360,7 @@ Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
     if(argc != {len(params)})
         return verror("{name}: wrong arg count");
     {ret}* res = ({ret}*)malloc(sizeof({ret})); 
-    {ret} tmp = {name}({', '.join(arg_list)});
+    {ret} tmp = {name}(\n        {',\n        '.join(arg_list)}\n    );
     memcpy(res, &tmp, sizeof({ret}));
     return vopaque(res);
 }}
@@ -371,7 +371,9 @@ Value* native_mila_{name}(Env* e, int argc, Value** argv) {{
     if(argc != {len(params)})
         return verror("{name}: wrong arg count");
 
-    {ret} res = {name}({', '.join(arg_list)});
+    {ret} res = {name}(
+        {',\n        '.join(arg_list)}
+    );
     return {c_to_mila.get(ret, "vopaque({value})").format(value="res")};
 }}
 """
@@ -463,7 +465,7 @@ if len(sys.argv) < 2:
 file_path = os.path.abspath(sys.argv[1])
 out_path = file_path.replace(".h", ".mila-wrap.c")
 
-final = f'#define ML_LIB\n#include "mila.c"\n#include "{file_path}"\n\n'
+final = f'/*==== AUTO GENERATED WRAPPERS ====*/\n// Any errors and bugs must be reported to ensure the best experience with this generator.\n\n#define ML_LIB\n#include "mila.c"\n#include "{file_path}"\n\n'
 final += gen_wrap(file_path, sys.argv[2] if len(sys.argv) == 3 else None)
 final = ("#include <ffi.h>\n" if use_libffi else "") + final
 

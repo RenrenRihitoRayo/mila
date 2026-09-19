@@ -4,9 +4,9 @@
 // Year-Month edition started
 #define MILA_EDITION 202603L
 // Incremented per edition update (optimally maxes out to 20)
-#define MILA_VERSION 1L
+#define MILA_VERSION 2L
 // Patch number
-#define MILA_PATCH 2L
+#define MILA_PATCH 0L
 
 /*
     To avoid compat issues
@@ -93,6 +93,8 @@
 #define ERR_STRING_UNCLOSED "String not terminated"
 #define ERR_EXPECTED_TYPE_ANNOTATION "Expected type annotation (string)"
 
+extern _Thread_local double __tmp_float;
+
 // Public getters for types
 #define IS_ERROR(v) (GET_TYPE(v) == T_ERROR || GET_TYPE(v) == T_TAGGED_ERROR)
 #define IS_ERROR_TAGGED(v) (GET_TYPE(v) == T_TAGGED_ERROR)
@@ -100,10 +102,10 @@
     ((GET_ERROR_TYPE(v) == E_FATAL || GET_ERROR_TYPE(v) == E_SYNTAX_ERROR ||   \
       GET_ERROR_TYPE(v) == E_THREAD_HALT))
 #define GET_STRING(val) (val ? (char *)val->v : NULL)
-#define GET_INTEGER(val) (val ? val->v->i : 0)
-#define GET_INTEGER_REF(val) (val ? &(val->v->i) : NULL)
-#define GET_UINTEGER(val) (val ? val->v->ui : 0)
-#define GET_FLOAT(val) (val ? val->v->f : 0.0)
+#define GET_INTEGER(val) (val ? (long)val->v : 0)
+#define GET_INTEGER_REF(val) (val ? (long*)&val->v : 0)
+#define GET_UINTEGER(val) (val ? (unsigned long)val->v : 0)
+#define GET_FLOAT(val) (memcpy(&__tmp_float, &(val->v), sizeof(double)), __tmp_float)
 #define GET_BOOL(val) (val ? (long)val->v : 0)
 #define GET_OPAQUE(val) (val ? (void *)val->v : NULL)
 #define GET_FUNCTION(val) (val ? (FunctionV *)val->v : NULL)
@@ -113,7 +115,8 @@
                                  : GET_TAGGED_ERROR_MESSAGE(val))              \
          : NULL)
 #define GET_TAGGED_ERROR_MESSAGE(val)                                          \
-    (val ? val->v->tagged_error.message : NULL)
+    (val ? ((TaggedError*)(val->v))->message : NULL)
+#define GET_TAGGED_ERROR(val) ((TaggedError*)val->v)
 #define OWNED(val) (val->type = T_OWNED_OPAQUE)
 #define UNOWNED(val) (val->type = T_OPAQUE)
 
@@ -145,13 +148,11 @@ typedef enum __attribute__((packed)) {
     UMethodStepIter,      // step update
     UMethodStepIterInit,  // initializes state for iterator
     UMethodStepIterClean, // initializes state for iterator
-    UMethodToGen,         // Method to turn collections into generators
 
     UMethodFree,
     UMethodKill,
 
-    UMethodCopy, // Deep copy by default
-    UMethodCopyShallow,
+    UMethodCopy, // Deep copy
 
     MethodTotalCount
 } MethodType; // Also used by VIOO (actually exposed)
@@ -186,7 +187,7 @@ typedef enum __attribute__((packed)) {
 // these functions bellow (env and value related) might be the only
 // part of mila youll ever touch.
 
-typedef enum {
+typedef enum __attribute__((packed)) {
     T_WHAT = -1,
     T_NULL,
     T_INT,
@@ -500,6 +501,7 @@ typedef struct {
 } Pos;
 
 typedef struct Src Src;
+typedef struct TaggedError TaggedError;
 Pos get_pos(Src *s);
 
 double get_unix_timestamp(void);
@@ -510,11 +512,11 @@ double get_unix_timestamp(void);
 // THESE ARE INTERNAL
 #define GET_ERROR_TYPENAME(val)                                         \
     (val ? (val->type == T_TAGGED_ERROR                                        \
-                ? MILA_ERROR_NAMES[val->v->tagged_error.type]                  \
+                ? MILA_ERROR_NAMES[((TaggedError*)(val->v))->type]                  \
                 : "???")                                                       \
          : "???")
 #define GET_ERROR_TYPE(val)                                                    \
-    (IS_ERROR_TAGGED(val) ? val->v->tagged_error.type : E_GENERIC)
+    (IS_ERROR_TAGGED(val) ? ((TaggedError*)(val->v))->type : E_GENERIC)
 #define GET_TYPE(v) (v ? v->type : T_WHAT)
 
 #define HANDLE_RETURN(val)                                                     \
@@ -649,32 +651,27 @@ typedef struct {
     char *name;
 } NativeFunctionV;
 
-typedef union {
-    long i;
-    unsigned long ui;
-    double f;
-    struct {
-        char *message;
-        ErrorType type;
-        int return_code; // -1 by default, if it remains -1 the error type is
-                         // the error code.
-        Pos pos;
-    } tagged_error;
-} ValueValue;
+struct TaggedError {
+    char *message;
+    ErrorType type;
+    int return_code; // -1 by default, if it remains -1 the error type is
+                     // the error code.
+    Pos pos;
+};
 
-// Primitives are boxed, minimum size 48 bytes.
-// worst case is 100+ Bytes (especially if VIOO)
+// Primitives are boxed, minimum size 40 bytes.
+// worst case is 136 Bytes VIOO
 struct Value {
+    ValueType type;            // 4 bytes
+    char owns_table;           // check if table can be freed or not (1 byte)
 #ifdef ML_USE_REF_SHORT
     unsigned short refcount; // simple refcount (2 bytes)
 #else
     unsigned int refcount;
 #endif
-    char owns_table;           // check if table can be freed or not (1 byte)
-    ValueType type;            // 4 bytes
     char *type_name;           // 8 bytes ptr
     MethodTable *method_table; // 8 bytes ptr
-    ValueValue *v;             // around 8 bytes
+    void *v;                   // around 8 bytes
 };
 
 // for future wref
@@ -793,8 +790,8 @@ void mila_deinit(Env *env);
 
 char *substitute_text(const char *needle, Value *replacement, const char *text);
 
-void *mila_malloc(size_t size);
-void *mila_realloc(void *ptr, size_t size);
+__attribute__((malloc, alloc_size(1), returns_nonnull)) void *mila_malloc(size_t size);
+__attribute__((malloc, alloc_size(2), returns_nonnull)) void *mila_realloc(void *ptr, size_t size);
 void mila_free(void *ptr);
 
 // Misc

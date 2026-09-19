@@ -107,7 +107,7 @@ Value *native_bitwise_and(Env *env, int argc, Value **argv) {
     (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
-    return vint(argv[0]->v->i & argv[1]->v->i);
+    return vint(GET_INTEGER(argv[0]) & GET_INTEGER(argv[1]));
 }
 
 Value *native_bitwise_or(Env *env, int argc, Value **argv) {
@@ -115,7 +115,7 @@ Value *native_bitwise_or(Env *env, int argc, Value **argv) {
     (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
-    return vint(argv[0]->v->i | argv[1]->v->i);
+    return vint(GET_INTEGER(argv[0]) | GET_INTEGER(argv[1]));
 }
 
 Value *native_bitwise_xor(Env *env, int argc, Value **argv) {
@@ -123,7 +123,7 @@ Value *native_bitwise_xor(Env *env, int argc, Value **argv) {
     (void)argc;
     if (!match_types(argv, T_INT, T_INT, T_ARG_END))
         return vnull();
-    return vint(argv[0]->v->i ^ argv[1]->v->i);
+    return vint(GET_INTEGER(argv[0]) ^ GET_INTEGER(argv[1]));
 }
 
 Value *native_not(Env *env, int argc, Value **argv) {
@@ -369,7 +369,7 @@ Value *native_cast_float(Env *env, int argc, Value **argv) {
 Value *native_cast_int_to_uint(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc == 1 && argv[0]->type == T_INT) {
-        return vuint(argv[0]->v->ui);
+        return vuint(GET_UINTEGER(argv[0]));
     } else {
         return verror("cast.i2u(int): Expected 1 argument (int) int. Got %s",
                       GET_TYPENAME(argv[0]));
@@ -379,7 +379,7 @@ Value *native_cast_int_to_uint(Env *env, int argc, Value **argv) {
 Value *native_cast_uint_to_int(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc == 1 && argv[0]->type == T_UINT) {
-        return vint(argv[0]->v->i);
+        return vint(GET_INTEGER(argv[0]));
     } else {
         return verror("cast.u2i(uint): Expected 1 argument (uint) uint. Got %s",
                       GET_TYPENAME(argv[0]));
@@ -399,7 +399,7 @@ Value *native_cast_int_to_float(Env *env, int argc, Value **argv) {
 Value *native_cast_float_to_int(Env *env, int argc, Value **argv) {
     (void)env;
     if (argc == 1 && argv[0]->type == T_FLOAT) {
-        return vint((long)argv[0]->v->f);
+        return vint((long)GET_FLOAT(argv[0]));
     } else {
         return verror(
             "cast.f2i(float): Expected 1 argument (float) float. Got %s",
@@ -511,7 +511,7 @@ Value *native_fdopen(Env *env, int argc, Value **argv) {
 
     Value *v = vopaque(f);
     val_set_table(v, file_meta);
-    v->type_name = strdup("file");
+    v->type_name = mila_strdup("file");
     return v;
 }
 
@@ -741,7 +741,7 @@ Value *native_fread(Env *env, int argc, Value **argv) {
         return verror(
             "fread(file, num_bytes): file handle is closed or invalid.");
     }
-    long n = argv[1]->v->i;
+    long n = GET_INTEGER(argv[1]);
     if (n <= 0)
         return vstring_dup("");
 
@@ -766,7 +766,7 @@ Value *native_fread_bytes(Env *env, int argc, Value **argv) {
         return verror(
             "fread_bytes(file, num_bytes): file handle is closed or invalid.");
     }
-    long n = argv[1]->v->i;
+    long n = GET_INTEGER(argv[1]);
     if (n <= 0)
         return vstring_dup("");
 
@@ -850,8 +850,8 @@ Value *native_fseek(Env *env, int argc, Value **argv) {
         return verror(
             "fseek(file, offset, whence): file handle is closed or invalid.");
     }
-    long offset = argv[1]->v->i;
-    int whence = (int)argv[2]->v->i;
+    long offset = GET_INTEGER(argv[1]);
+    int whence = (int)GET_INTEGER(argv[2]);
     int c_whence;
 
     switch (whence) {
@@ -1266,7 +1266,6 @@ Value *native_str(Env *env, int argc, Value **argv) {
 
 Value *env_free_builtins() {
     mila_free(dict_meta);
-    mila_free(array_meta);
     mila_free(list_meta);
     mila_free(file_meta);
     mila_free(range_meta);
@@ -1801,17 +1800,6 @@ void env_register_builtins(Env *g) {
     val_set_method_table(list_meta, UMethodStepIterClean, ll_iter_cleanup);
     val_set_method_table(list_meta, UMethodCopy, ll_copy);
 
-    array_meta = val_make_table();
-
-    val_set_method_table(array_meta, UMethodToString, array_to_str);
-    val_set_method_table(array_meta, UMethodToRepr, array_to_repr);
-    val_set_method_table(array_meta, BMethodGetItem, get_array);
-    val_set_method_table(array_meta, TMethodSetItem, set_array);
-    val_set_method_table(array_meta, UMethodFree, free_array);
-    val_set_method_table(array_meta, UMethodStepIterInit, array_iter_init);
-    val_set_method_table(array_meta, UMethodStepIter, array_iter_next);
-    val_set_method_table(array_meta, UMethodStepIterClean, array_iter_cleanup);
-
     range_meta = val_make_table();
 
     // val_set_method_table(range_meta, UMethodToIter, range_to_iter);
@@ -1925,10 +1913,6 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "list.index", native_list_index);
     env_register_native(g, "list.slice", native_list_slice);
     env_register_native(g, "list.deconstruct", native_list_deconstruct);
-    // === Array
-    env_register_native(g, "array", native_new_array);
-    env_register_native(g, "array.from", native_from_array);
-    env_register_native(g, "array.len", native_len_array);
     // === Dicts
     env_register_native(g, "dict", native_new_dict);
     env_register_native(g, "dict.rem", native_rem_dict);
@@ -1977,6 +1961,12 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "str.endswith", native_str_endsw);
     env_register_native(g, "str.stripl", native_str_stripl);
     env_register_native(g, "str.stripr", native_str_stripr);
+    env_register_native(g, "str.isalpha", native_str_isalpha);
+    env_register_native(g, "str.isspace", native_str_isspace);
+    env_register_native(g, "str.isdigit", native_str_isdigit);
+    env_register_native(g, "str.isalnum", native_str_isalnum);
+    env_register_native(g, "str.isupper", native_str_isupper);
+    env_register_native(g, "str.islower", native_str_islower);
     env_register_native(g, "str.contains", native_str_contains);
     env_register_native(g, "str.caseless_contains",
                         native_str_contains_caseless);

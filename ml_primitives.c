@@ -20,7 +20,6 @@
 MethodTable *file_meta = NULL;
 MethodTable *dict_meta = NULL;
 MethodTable *list_meta = NULL;
-MethodTable *array_meta = NULL;
 MethodTable *range_meta = NULL;
 MethodTable *istring_meta = NULL;
 
@@ -106,12 +105,12 @@ Value *native_list_get(Env *e, int argc, Value **argv) {
 }
 
 Value *set_list(Value *self, Value *index, Value *value) {
-    ll_set((LinkedList *)self->v, index->v->i, val_retain(value));
+    ll_set((LinkedList *)self->v, GET_INTEGER(index), val_retain(value));
     return NULL;
 }
 
 Value *get_list(Value *self, Value *index) {
-    return ll_get((LinkedList *)self->v, index->v->i);
+    return ll_get((LinkedList *)self->v, GET_INTEGER(index));
 }
 
 Value *native_list_len(Env *e, int argc, Value **argv) {
@@ -126,7 +125,7 @@ Value *native_list_pop(Env *e, int argc, Value **argv) {
     if (argc == 1)
         return ll_pop((LinkedList *)argv[0]->v, -1);
     else if (argc == 2)
-        return ll_pop((LinkedList *)argv[0]->v, argv[1]->v->i);
+        return ll_pop((LinkedList *)argv[0]->v, GET_INTEGER(argv[1]));
     return vtagged_error(E_RUNTIME,
                          "list.pop(l, index?): Missing list argument!");
 }
@@ -258,91 +257,6 @@ Value *free_dict(Value *self) {
     return NULL;
 }
 
-Value *array_to_str(Value *self) {
-    char *buffer = NULL;
-    if (!self || self->type != T_OPAQUE) {
-        malloc_sprintf(&buffer, "<not-an-array>");
-        return vstring_take(buffer);
-    }
-
-    Array *arr = (Array *)self->v;
-    if (!arr) {
-        malloc_sprintf(&buffer, "<null-array-data>");
-        return vstring_take(buffer);
-    }
-
-    malloc_sprintf(&buffer, "array.from(");
-    for (int i = 0; i < arr->size; i++) {
-        Value *slot = arr->array[i];
-        if (!slot) {
-            malloc_sprintf(&buffer, "?null?");
-        } else {
-            char *s = as_c_string_repr(slot);
-            malloc_sprintf(&buffer, "%s", s);
-            mila_free(s);
-        }
-        if (i < arr->size - 1)
-            malloc_sprintf(&buffer, ", ");
-    }
-    malloc_sprintf(&buffer, ")");
-    return vstring_take(buffer);
-}
-
-Value *array_to_repr(Value *self) {
-    char *buffer = NULL;
-    if (!self || self->type != T_OPAQUE) {
-        malloc_sprintf(&buffer, "<not-an-array>");
-        return vstring_take(buffer);
-    }
-
-    Array *arr = (Array *)self->v;
-    if (!arr) {
-        malloc_sprintf(&buffer, "<null-array-data>");
-        return vstring_take(buffer);
-    }
-
-    if (arr->size > MAX_ITEMS_DISPLAYED) {
-        return vstring_fmt("array(%d)", arr->size);
-    }
-
-    malloc_sprintf(&buffer, "array.from(");
-    for (int i = 0; i < arr->size; i++) {
-        Value *slot = arr->array[i];
-        if (!slot) {
-            malloc_sprintf(&buffer, "?null?");
-        } else {
-            char *s = as_c_string_repr(slot);
-            malloc_sprintf(&buffer, "%s", s);
-            mila_free(s);
-        }
-        if (i < arr->size - 1)
-            malloc_sprintf(&buffer, ", ");
-    }
-    malloc_sprintf(&buffer, ")");
-    return vstring_take(buffer);
-}
-
-ArrayIterState *array_iter_init(Value *self) {
-    ArrayIterState *state =
-        (ArrayIterState *)mila_malloc(sizeof(ArrayIterState));
-    Array *arr = (Array *)GET_OPAQUE(self);
-    state->array = arr->array;
-    state->end = arr->size;
-    state->index = 0;
-    return state;
-}
-
-Value *array_iter_next(ArrayIterState *state) {
-    state->index++;
-    if (state->index > state->end)
-        return NULL;
-    return state->array[state->index - 1]
-               ? val_retain(state->array[state->index - 1])
-               : vnull();
-}
-
-void array_iter_cleanup(ArrayIterState *state) { mila_free(state); }
-
 long range_len(long start, long stop, long step) {
     if (step == 0)
         return 0;
@@ -411,7 +325,7 @@ Value *native_range(Env *env, int argc, Value **argv) {
     if (argc == 1 && argv[0]->type == T_INT) {
         Range *r = (Range *)mila_malloc(sizeof(Range));
         r->start = 0;
-        r->end = argv[0]->v->i;
+        r->end = GET_INTEGER(argv[0]);
         r->step = 1;
         Value *res = vopaque_extra(r, NULL, "range");
         val_set_table(res, range_meta);
@@ -419,8 +333,8 @@ Value *native_range(Env *env, int argc, Value **argv) {
     }
     if (argc == 2 && argv[0]->type == T_INT && argv[1]->type == T_INT) {
         Range *r = (Range *)mila_malloc(sizeof(Range));
-        r->start = argv[0]->v->i;
-        r->end = argv[1]->v->i;
+        r->start = GET_INTEGER(argv[0]);
+        r->end = GET_INTEGER(argv[1]);
         r->step = 1;
         Value *res = vopaque_extra(r, NULL, "range");
         val_set_table(res, range_meta);
@@ -429,225 +343,14 @@ Value *native_range(Env *env, int argc, Value **argv) {
     if (argc == 3 && argv[0]->type == T_INT && argv[1]->type == T_INT &&
         argv[2]->type == T_INT) {
         Range *r = (Range *)mila_malloc(sizeof(Range));
-        r->start = argv[0]->v->i;
-        r->end = argv[1]->v->i;
-        r->step = argv[2]->v->i;
+        r->start = GET_INTEGER(argv[0]);
+        r->end = GET_INTEGER(argv[1]);
+        r->step = GET_INTEGER(argv[2]);
         Value *res = vopaque_extra(r, NULL, "range");
         val_set_table(res, range_meta);
         return res;
     }
     return vnull();
-}
-
-Value *native_new_array(Env *env, int argc, Value **argv) {
-    (void)env;
-    if (argc != 1) {
-        return verror("array(size): Requires one argument, array size (int)\n");
-    }
-    if (!match_types(argv, T_INT, T_ARG_END)) {
-        return verror("array(size): Expected the argument type int\n");
-    }
-
-    int size = (int)argv[0]->v->i;
-    if (size < 0) // what.
-    {
-        return verror("array(size): negative size\n");
-    }
-
-    Value *res = val_new_raw(T_OPAQUE);
-    Array *array = mila_malloc(sizeof(Array));
-    array->size = size;
-    array->array = mila_malloc(sizeof(Value *) * size);
-
-    for (int i = 0; i < size; i++) {
-        array->array[i] = NULL;
-    }
-
-    res->v = (void *)array;
-    res->type_name = mila_strdup("array");
-    val_set_table(res, array_meta);
-    return res;
-}
-
-Value *native_from_array(Env *env, int argc, Value **argv) {
-    (void)env;
-
-    int size = argc;
-
-    Value *res = val_new(T_OPAQUE);
-    Array *array = mila_malloc(sizeof(Array));
-    array->size = size;
-    array->array = mila_malloc(sizeof(Value *) * size);
-
-    for (int i = 0; i < size; i++) {
-        array->array[i] = val_retain(argv[i]);
-    }
-
-    res->v = (void *)array;
-    res->type_name = mila_strdup("array");
-    val_set_table(res, array_meta);
-    return res;
-}
-
-Value *native_set_array(Env *env, int argc, Value **argv) {
-    (void)env;
-    if (argc != 3) {
-        return verror("array.set(array, index, value): requires 3 args");
-    }
-
-    Value *arrv = argv[0];
-    if (arrv->type != T_OPAQUE) {
-        return verror("array.set(array, index, value): first arg must be an "
-                      "array (opaque)");
-    }
-
-    Array *arr = (Array *)arrv->v;
-    if (!arr) {
-        return verror("array.set(array, index, value): null array data");
-    }
-
-    if (argv[1]->type != T_INT) {
-        return verror("array.set(array, index, value): index must be int");
-    }
-
-    int idx = (int)argv[1]->v->i;
-    if (idx < 0 || idx >= arr->size) {
-        return verror(
-            "array.set(array, index, value): index %d out of bounds (size %d)",
-            idx, arr->size);
-    }
-
-    Value *old = arr->array[idx];
-    if (old)
-        val_release(old);
-
-    arr->array[idx] = argv[2];
-    val_retain(argv[2]);
-
-    return vnull();
-}
-
-Value *native_get_array(Env *env, int argc, Value **argv) {
-    (void)env;
-    if (argc != 2) {
-        return verror("array.get(array, index): requires 2 args");
-    }
-
-    Value *arrv = argv[0];
-    if (arrv->type != T_OPAQUE) {
-        return verror(
-            "array.get(array, index): first arg must be an array (opaque)");
-    }
-
-    Array *arr = (Array *)arrv->v;
-    if (!arr) {
-        return verror("array.get(array, index): null array data");
-    }
-
-    if (argv[1]->type != T_INT) {
-        return verror("array.get(array, index): index must be int");
-    }
-
-    int idx = (int)argv[1]->v->i;
-    if (idx < 0 || idx >= arr->size) {
-        return verror(
-            "array.get(array, index): index %d out of bounds (size %d)", idx,
-            arr->size);
-    }
-
-    Value *val = arr->array[idx];
-    if (val)
-        val_retain(val);
-    else
-        return vnull();
-
-    return val;
-}
-
-Value *native_len_array(Env *env, int argc, Value **argv) {
-    (void)env;
-    if (argc != 1) {
-        return verror("array.len(array): requires 1 arg");
-    }
-
-    Value *arrv = argv[0];
-    if (arrv->type != T_OPAQUE) {
-        return verror("array.len(array): first arg must be an array (opaque)");
-    }
-
-    Array *arr = (Array *)arrv->v;
-    if (!arr) {
-        return verror("array.len(array): null array data");
-    }
-
-    return vint(arr->size);
-}
-
-Value *get_array(Value *self, Value *index) {
-    Value *arrv = self;
-    Array *arr = (Array *)arrv->v;
-    if (!arr) {
-        return verror("array.get(array, index): null array data");
-    }
-
-    if (index->type != T_INT) {
-        return verror("array.get(array, index): index must be int");
-    }
-
-    int idx = (int)index->v->i;
-    if (idx < 0 || idx >= arr->size) {
-        return verror(
-            "array.get(array, index): index %d out of bounds (size %d)", idx,
-            arr->size);
-    }
-
-    Value *val = arr->array[idx];
-
-    return val ? val : vnull();
-}
-
-Value *set_array(Value *self, Value *index, Value *val) {
-    Value *arrv = self;
-    Array *arr = (Array *)arrv->v;
-    if (!arr) {
-        return verror("array.set(array, index, value): null array data");
-    }
-
-    if (index->type != T_INT) {
-        return verror("array.set(array, index, value): index must be int");
-    }
-
-    int idx = (int)index->v->i;
-    if (idx < 0 || idx >= arr->size) {
-        return verror(
-            "array.set(array, index, value): index %d out of bounds (size %d)",
-            idx, arr->size);
-    }
-
-    Value *old = arr->array[idx];
-    if (old)
-        val_release(old);
-    arr->array[idx] = val_retain(val);
-    return NULL;
-}
-
-Value *free_array(Value *self) {
-    Value *arrv = self;
-    if (arrv->type != T_OPAQUE) {
-        return NULL;
-    }
-
-    Array *arr = (Array *)arrv->v;
-    if (!arr) {
-        return NULL;
-    }
-
-    for (int i = 0; i < arr->size; i++)
-        val_release(arr->array[i]);
-    mila_free(arr->array);
-    mila_free(arr);
-
-    return NULL;
 }
 
 Value *native_str_pop_start(Env *env, int argc, Value **argv) {
@@ -710,7 +413,7 @@ Value *native_str_slice(Env *env, int argc, Value **argv) {
         return verror(
             "str.slice(str, index, len): Expected atleast 2 arguments.");
     if (argc == 3) {
-        return vstring_slice(GET_STRING(argv[0]), argv[1]->v->i, argv[2]->v->i);
+        return vstring_slice(GET_STRING(argv[0]), GET_INTEGER(argv[1]), GET_INTEGER(argv[2]));
     } else {
         return vstring_slice(
             GET_STRING(argv[0]), GET_INTEGER(argv[1]),
@@ -744,7 +447,7 @@ Value *native_str_index(Env *env, int argc, Value **argv) {
     (void)argc;
     if (!match_types(argv, T_STRING, T_INT, T_ARG_END))
         return vnull();
-    return vstring_index(GET_STRING(argv[0]), argv[1]->v->i);
+    return vstring_index(GET_STRING(argv[0]), GET_INTEGER(argv[1]));
 }
 
 Value *native_str_patch(Env *env, int argc, Value **argv) {
@@ -841,6 +544,10 @@ Value *native_str_join(Env *env, int argc, Value **argv) {
 Value *native_str_startsw(Env *env, int argc, Value **argv) {
     if (argc != 2)
         return verror("str.startswith(str, pref): Expected 2 arguments!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.startswith(str, pref): Expected str to be a string!");
+    if (GET_TYPE(argv[1]) != T_STRING)
+        return verror("str.startswith(str, pref): Expected pref to be a string!");
     char *str = GET_STRING(argv[0]);
     char *prefix = GET_STRING(argv[1]);
     if (strncmp(prefix, str, strlen(prefix)) == 0)
@@ -851,6 +558,8 @@ Value *native_str_startsw(Env *env, int argc, Value **argv) {
 Value *native_str_stripl(Env *env, int argc, Value **argv) {
     if (argc != 1)
         return verror("str.stripl(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.stripl(str): Expected a string!");
     char *str = GET_STRING(argv[0]);
     while (isspace(*str)) str++;
     return vstring_dup(str);
@@ -859,6 +568,8 @@ Value *native_str_stripl(Env *env, int argc, Value **argv) {
 Value *native_str_stripr(Env *env, int argc, Value **argv) {
     if (argc != 1)
         return verror("str.stripr(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) == T_STRING)
+        return verror("str.stripr(str): Expected a string!");
     char *str = GET_STRING(argv[0]);
     int end = strlen(str) - 1;
     while (isspace(str[end])) end--;
@@ -867,9 +578,106 @@ Value *native_str_stripr(Env *env, int argc, Value **argv) {
     return vstring_take(buffer);
 }
 
+Value *native_str_isalpha(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.isalpha(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.isalpha(str): Expected a string!");
+    char *str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i) {
+        if (!isalpha(str[i])) return vbool(0);
+    }
+    return vbool(1);
+}
+
+Value *native_str_isalnum(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.isalnum(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.isalnum(str): Expected a string!");
+    char *str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i) {
+        if (!isalnum(str[i])) return vbool(0);
+    }
+    return vbool(1);
+}
+
+Value *native_str_isdigit(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.isdigit(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.isdigit(str): Expected a string!");
+    char *str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i) {
+        if (!isdigit(str[i])) return vbool(0);
+    }
+    return vbool(1);
+}
+
+Value *native_str_isxdigit(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.isxdigit(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.isxdigit(str): Expected a string!");
+    char *str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i) {
+        if (!isxdigit(str[i])) return vbool(0);
+    }
+    return vbool(1);
+}
+
+Value *native_str_isspace(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.isspace(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.isspace(str): Expected a string!");
+    char *str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i) {
+        if (!isspace(str[i])) return vbool(0);
+    }
+    return vbool(1);
+}
+
+Value *native_str_isupper(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.isupper(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.isupper(str): Expected a string!");
+    char *str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i) {
+        if (!isalpha(str[i])) continue;
+        if (!isupper(str[i])) return vbool(0);
+    }
+    return vbool(1);
+}
+
+Value *native_str_islower(Env *env, int argc, Value **argv) {
+    if (argc != 1)
+        return verror("str.islower(str): Expected 1 argument!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.islower(str): Expected a string!");
+    char *str = GET_STRING(argv[0]);
+    size_t len = strlen(str);
+    for (size_t i=0; i < len; ++i) {
+        if (!isalpha(str[i])) continue;
+        if (!islower(str[i])) return vbool(0);
+    }
+    return vbool(1);
+}
+
 Value *native_str_endsw(Env *env, int argc, Value **argv) {
     if (argc != 2)
         return verror("str.endswith(str, suf): Expected 2 arguments!");
+    if (GET_TYPE(argv[0]) != T_STRING)
+        return verror("str.endswith(str, suf): Expected str to be a string!");
+    if (GET_TYPE(argv[1]) != T_STRING)
+        return verror("str.endswith(str, suf): Expected suf to be a string!");
     char *str = GET_STRING(argv[0]);
     char *prefix = GET_STRING(argv[1]);
     if (strcmp(prefix, str + (strlen(str) - strlen(prefix))) == 0)

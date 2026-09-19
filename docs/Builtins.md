@@ -14,6 +14,7 @@ and doesnt require you to run an external file.
 * [Sorting](#sort)
 * [Environments](#env)
 * [Strings](#str)
+    * [Pattern Matching](#str-pattern)
 * [Math](#math)
     * [Bitwise Logic](#math-bit)
 * [Types](#cast)
@@ -200,7 +201,7 @@ and thus may not be guaranteed as safe for monkey patching.
 
     Get the length of a list.
 
-* `list.contains(list: "list", item) -> "bool"`
+* `list.contains(list: "list", item: "any") -> "bool"`
 
     Check if an item exists in the list (equality check)
 
@@ -480,6 +481,53 @@ var num: "int"= 0;
 
     Self explanatory name.
 
+* `str.stripl(str: "string") -> "string"`
+
+    Strip all whitespace from the left.
+
+* `str.stripr(str: "string") -> "string"`
+
+    Strip all whitespace from the right.
+
+* `str.isalpha(str: "string") -> "bool"`
+
+    Return true if every charater is alphabetical.
+    Depends on your locale.
+
+* `str.isalnum(str: "string") -> "bool"`
+
+    Return true if every character is alphanumeric.
+    Depends on your locale.
+
+* `str.isspace(str: "string") -> "bool"`
+
+    Return true if every character is a whitespace character.
+    These include `\n`, `\t`, ` `, `\v`, `\f`, and `\r`
+
+* `str.isdigit(str: "string") -> "bool"`
+
+    Return true if every character is a digit.
+
+* `str.isdigit(str: "string") -> "bool"`
+
+    Return true if every character is a hexadecimal digit.
+
+* `str.islower(str: "string") -> "bool"`
+
+    Return true if the string with every alphabetic character is in its uppercase form.
+
+* `str.isupper(str: "string") -> "bool"`
+
+    Return true if the string with every alphabetic character is in its lowercase form.
+
+* `str.tolower(str: "string") -> "bool"`
+
+    Return the string with every alphabetic character in its uppercase form.
+
+* `str.toupper(str: "string") -> "bool"`
+
+    Return the string with every alphabetic character in its lowercase form.
+
 * `istring(str: "string") -> "istring"`
 
     Turn the string into an iterable string.
@@ -491,6 +539,30 @@ var num: "int"= 0;
 * `ascii.from_string(char: "string") -> "int"`
 
     Self explanatory name.
+
+### <a id="str-pattern"></a>Pattern Matching
+
+Semantically this is equivalent to file globbing but do
+note we only implement a subset of common globbing syntax and
+have added new constructs (`?` and `{..}` which are not always expressable in some globbing engines)
+
+* `c` match `c`
+
+* `?` match any single character
+
+* `*` match any string (with backtracking)
+
+* `[set]` match any single character seen in the set
+
+    You can use ranges `a-z` inside the set.
+    These ranges are not just alphanumerical but based in the ascii codes of the
+    characters thus `a-Z` means `a-z`, `{-[` (contains control characters, and range `A-Z`.
+
+* `{set}` match a run of characters seen in the set (with backtracking)
+
+    Likewise with the `[...]` syntax, you can use ranges here.
+
+* Escape with `\`, only the opening brackets are necessary to escape the syntax.
 
 ## <a id="math"></a>Math
 

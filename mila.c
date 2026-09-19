@@ -95,10 +95,12 @@ const char *MILA_OP_NAME[] = {"Nop",
                               "UMethodFree",
                               "UMethodKill",
                               "UMethodCopy",
-                              "UMethodCopyShallow"};
+};
 const int MILA_OP_COUNT = sizeof(MILA_OP_NAME) / sizeof(MILA_OP_NAME[0]);
 const int MILA_TYPE_COUNT = T_ARG_END;
 const int MILA_ERROR_COUNT = E_THREAD_HALT;
+
+_Thread_local double __tmp_float = 0;
 
 static void hex(uintptr_t v) {
     char b[19] = "0x000000000000000\n";
@@ -441,7 +443,7 @@ void free_cleanup_registry(CleanupRegistry *registry) {
 #include <stdio.h>
 #include <string.h>
 
-void *mila_malloc(size_t size) {
+__attribute__((malloc, alloc_size(1), returns_nonnull)) void *mila_malloc(size_t size) {
     void *ptr = malloc(size);
     if (!ptr)
         return NULL;
@@ -449,7 +451,7 @@ void *mila_malloc(size_t size) {
     return ptr;
 }
 void mila_free(void *ptr_in) { free(ptr_in); }
-void *mila_realloc(void *ptr, size_t size) { return realloc(ptr, size); }
+__attribute__((malloc, alloc_size(2), returns_nonnull)) void *mila_realloc(void *ptr, size_t size) { return realloc(ptr, size); }
 
 void float_to_string(float f, char *buf, size_t bufsize) {
     // Step 1: try %g with max precision
@@ -627,16 +629,13 @@ Value *_copy(Value *src) {
         copy->v = (void *)mila_strdup(GET_STRING(src));
         break;
     case T_INT:
-        copy->v = (ValueValue *)mila_malloc(sizeof(ValueValue));
-        copy->v->i = GET_INTEGER(src);
+        memcpy(&copy->v, &src->v, sizeof(long));
         break;
     case T_UINT:
-        copy->v = (ValueValue *)mila_malloc(sizeof(ValueValue));
-        copy->v->ui = GET_UINTEGER(src);
+        memcpy(&copy->v, &src->v, sizeof(unsigned long));
         break;
     case T_FLOAT:
-        copy->v = (ValueValue *)mila_malloc(sizeof(ValueValue));
-        copy->v->f = GET_FLOAT(src);
+        memcpy(&copy->v, &src->v, sizeof(double));
         break;
     case T_FUNCTION:
         copy->v = (void *)functionv_copy(GET_FUNCTION(src));
@@ -665,36 +664,12 @@ Value *val_copy(Value *src) {
         return vnull();
     if (src->method_table && src->method_table[UMethodCopy])
         return ((unary_method)src->method_table[UMethodCopy])(src);
-    if (src->method_table && src->method_table[UMethodCopyShallow])
-        return ((unary_method)src->method_table[UMethodCopyShallow])(src);
-
-    return _copy(src);
-}
-FN_UNUSED Value *val_copy_shallow(Value *src) {
-    if (!src)
-        return vnull();
-    if (src->method_table && src->method_table[UMethodCopyShallow])
-        return ((unary_method)src->method_table[UMethodCopyShallow])(src);
 
     return _copy(src);
 }
 
 Value *val_new(ValueType t) {
-    Value *p = mila_malloc(sizeof(Value));
-    p->type = t;
-    p->refcount = 1;
-    p->type_name = NULL;
-    p->method_table = NULL;
-    p->owns_table = 1;
-    p->v = (ValueValue *)malloc(sizeof(ValueValue));
-#ifdef MILA_DEBUG
-    printf("  ++ %s type allocated!\n     pointer: %p\n", GET_TYPENAME(p), p);
-#endif
-    return p;
-}
-
-Value *val_new_raw(ValueType t) {
-    Value *p = mila_malloc(sizeof(Value));
+    Value *p = (Value*)mila_malloc(sizeof(Value));
     p->type = t;
     p->refcount = 1;
     p->type_name = NULL;
@@ -737,11 +712,13 @@ FN_UNUSED void val_set_method_table(MethodTable *v, MethodType t, void *func) {
 // Helpers to create typed values or check their truthiness
 
 FN_UNUSED int is_truthy(Value *value) {
+    if (!value) return 0;
     switch (GET_TYPE(value)) {
     case T_INT:
         return GET_INTEGER(value) ? 1 : 0;
-    case T_FLOAT:
+    case T_FLOAT: {
         return GET_FLOAT(value) ? 1 : 0;
+    }
     case T_UINT:
         return GET_UINTEGER(value) ? 1 : 0;
     case T_BOOL:
@@ -768,6 +745,9 @@ FN_UNUSED int is_truthy(Value *value) {
                 val_release(tmp);
                 return res;
             }
+        } else if (value->type_name &&
+            strcmp(value->type_name, "list") == 0) {
+            return ((LinkedList *)GET_OPAQUE(value))->size;
         }
         return GET_OPAQUE(value) ? 1 : 0;
     case T_ERROR:
@@ -1228,18 +1208,18 @@ char *replace_match(const char *pattern, const char *str,
     return out.buf;
 }
 
-Value *vnull() { return val_new_raw(T_NULL); }
-Value *vnone() { return val_new_raw(T_NONE); }
-Value *vbreak() { return val_new_raw(T_BREAK); }
-Value *vcontinue() { return val_new_raw(T_CONTINUE); }
+Value *vnull() { return val_new(T_NULL); }
+Value *vnone() { return val_new(T_NONE); }
+Value *vbreak() { return val_new(T_BREAK); }
+Value *vcontinue() { return val_new(T_CONTINUE); }
 Value *vcontinue_step(unsigned long steps) {
     Value *v = val_new(T_CONTINUE);
-    v->v->ui = steps;
+    v->v = (void*)steps;
     return v;
 }
 Value *vbreak_step(unsigned long steps) {
     Value *v = val_new(T_CONTINUE);
-    v->v->ui = steps;
+    v->v = (void*)steps;
     return v;
 }
 
@@ -1262,7 +1242,7 @@ __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
     char *buf = mila_malloc(len + 1);
     if (!buf) {
         va_end(ap);
-        Value *v = val_new_raw(T_ERROR);
+        Value *v = val_new(T_ERROR);
         v->v = (void *)mila_strdup("verror could not allocate memory!");
         return v;
     }
@@ -1270,10 +1250,11 @@ __attribute__((format(printf, 2, 3))) Value *vtagged_error(ErrorType err,
     vsnprintf(buf, len + 1, fmt, ap);
     va_end(ap);
     Value *v = val_new(T_TAGGED_ERROR);
-    v->v->tagged_error.message = buf;
-    v->v->tagged_error.type = err;
-    v->v->tagged_error.pos = (Pos){0, 0};
-    v->v->tagged_error.return_code = -1;
+    v->v = mila_malloc(sizeof(TaggedError));
+    ((TaggedError*)v->v)->message = buf;
+    ((TaggedError*)v->v)->type = err;
+    ((TaggedError*)v->v)->pos = (Pos){0, 0};
+    ((TaggedError*)v->v)->return_code = -1;
     return v;
 }
 
@@ -1295,14 +1276,14 @@ __attribute__((format(printf, 1, 2))) Value *verror(char *fmt, ...) {
     char *buf = mila_malloc(len + 1);
     if (!buf) {
         va_end(ap);
-        Value *v = val_new_raw(T_ERROR);
+        Value *v = val_new(T_ERROR);
         v->v = (void *)mila_strdup("verror could not allocate memory!");
         return v;
     }
 
     vsnprintf(buf, len + 1, fmt, ap);
     va_end(ap);
-    Value *v = val_new_raw(T_ERROR);
+    Value *v = val_new(T_ERROR);
     v->v = (void *)buf;
     return v;
 }
@@ -1326,7 +1307,7 @@ vtagged_error_pos(Pos pos, ErrorType err, char *fmt, ...) {
     char *buf = mila_malloc(len + 1);
     if (!buf) {
         va_end(ap);
-        Value *v = val_new_raw(T_ERROR);
+        Value *v = val_new(T_ERROR);
         v->v = (void *)mila_strdup("verror could not allocate memory!");
         return v;
     }
@@ -1334,10 +1315,11 @@ vtagged_error_pos(Pos pos, ErrorType err, char *fmt, ...) {
     vsnprintf(buf, len + 1, fmt, ap);
     va_end(ap);
     Value *v = val_new(T_TAGGED_ERROR);
-    v->v->tagged_error.pos = pos;
-    v->v->tagged_error.message = buf;
-    v->v->tagged_error.type = err;
-    v->v->tagged_error.return_code = -1;
+    v->v = mila_malloc(sizeof(TaggedError));
+    ((TaggedError*)v->v)->pos = pos;
+    ((TaggedError*)v->v)->message = buf;
+    ((TaggedError*)v->v)->type = err;
+    ((TaggedError*)v->v)->return_code = -1;
     return v;
 }
 
@@ -1360,7 +1342,7 @@ vtagged_coded_error(ErrorType err, int ret_code, char *fmt, ...) {
     char *buf = mila_malloc(len + 1);
     if (!buf) {
         va_end(ap);
-        Value *v = val_new_raw(T_ERROR);
+        Value *v = val_new(T_ERROR);
         v->v = (void *)mila_strdup("verror could not allocate memory!");
         return v;
     }
@@ -1368,9 +1350,10 @@ vtagged_coded_error(ErrorType err, int ret_code, char *fmt, ...) {
     vsnprintf(buf, len + 1, fmt, ap);
     va_end(ap);
     Value *v = val_new(T_TAGGED_ERROR);
-    v->v->tagged_error.message = buf;
-    v->v->tagged_error.type = err;
-    v->v->tagged_error.return_code = ret_code;
+    v->v = mila_malloc(sizeof(TaggedError));
+    ((TaggedError*)v->v)->message = buf;
+    ((TaggedError*)v->v)->type = err;
+    ((TaggedError*)v->v)->return_code = ret_code;
     return v;
 }
 
@@ -1392,50 +1375,52 @@ __attribute__((format(printf, 1, 2))) Value *vstring_fmt(char *fmt, ...) {
     char *buf = mila_malloc(len + 1);
     if (!buf) {
         va_end(ap);
-        Value *v = val_new_raw(T_ERROR);
+        Value *v = val_new(T_ERROR);
         v->v = (void *)mila_strdup("vstring_fmt could not allocate memory!");
         return v;
     }
 
     vsnprintf(buf, len + 1, fmt, ap);
     va_end(ap);
-    Value *v = val_new_raw(T_STRING);
+    Value *v = val_new(T_STRING);
     v->v = (void *)buf;
     return v;
 }
 
 Value *vint(long x) {
     Value *v = val_new(T_INT);
-    v->v->i = x;
+    v->v = (void*)x;
+    memcpy(&(v->v), &x, sizeof(long));
+
     return v;
 }
 
 Value *vuint(unsigned long x) {
     Value *v = val_new(T_UINT);
-    v->v->ui = x;
+    memcpy(&(v->v), &x, sizeof(unsigned long));
     return v;
 }
 
 Value *vfloat(double f) {
     Value *v = val_new(T_FLOAT);
-    v->v->f = f;
+    memcpy(&(v->v), &f, sizeof(double));
     return v;
 }
 
 Value *vbool(int b) {
-    Value *v = val_new_raw(T_BOOL);
+    Value *v = val_new(T_BOOL);
     v->v = (void *)(b ? 1L : 0L);
     return v;
 }
 
 Value *vstring_dup(const char *restrict s) {
-    Value *v = val_new_raw(T_STRING);
+    Value *v = val_new(T_STRING);
     v->v = (void *)mila_strdup(s ? s : "");
     return v;
 }
 
 Value *vstring_take(char *s) {
-    Value *v = val_new_raw(T_STRING);
+    Value *v = val_new(T_STRING);
     v->v = (void *)s;
     return v;
 }
@@ -1459,7 +1444,7 @@ Value *venv_repr(Value* self) {
 }
 
 Value *venv(Env* e) {
-    Value *v = val_new_raw(T_ENV);
+    Value *v = val_new(T_ENV);
     v->v = (void* )e;
 
     if (!venv_mtable) {
@@ -1554,12 +1539,12 @@ Value *vstring_replace(const char *restrict src, const char *restrict needle,
     return vstring_take(buf);
 }
 Value *vowned_opaque(void *p) {
-    Value *v = val_new_raw(T_OWNED_OPAQUE);
+    Value *v = val_new(T_OWNED_OPAQUE);
     v->v = (void *)p;
     return v;
 }
 Value *vopaque(void *p) {
-    Value *v = val_new_raw(T_OPAQUE);
+    Value *v = val_new(T_OPAQUE);
     v->v = (void *)p;
     return v;
 }
@@ -1582,7 +1567,7 @@ Value *vowned_opaque_extra(void *p, VPrinter dis, const char *type_name) {
     return v;
 }
 Value *vnative(NativeFn fn, const char *name) {
-    Value *v = val_new_raw(T_NATIVE);
+    Value *v = val_new(T_NATIVE);
     NativeFunctionV *native_function =
         (NativeFunctionV *)mila_malloc(sizeof(NativeFunctionV));
     native_function->fn = fn;
@@ -1593,7 +1578,7 @@ Value *vnative(NativeFn fn, const char *name) {
 // vfunction creation
 Value *vfunction(FunctionParameters *params, char *return_type,
                  char **contextuals, Env *closure, char *body_src) {
-    Value *v = val_new_raw(T_FUNCTION);
+    Value *v = val_new(T_FUNCTION);
     FunctionV *function = (FunctionV *)mila_malloc(sizeof(FunctionV));
     if (params) {
         function->params = params->params;
@@ -1705,7 +1690,7 @@ char *as_c_string(Value *v) {
         break;
     case T_FLOAT: {
         char buf[MAX_NUMBER_DIGITS] = {0};
-        float_to_string(v->v->f, buf, sizeof(buf));
+        float_to_string(GET_FLOAT(v), buf, sizeof(buf));
         malloc_sprintf(&buffer, "%s", buf);
         break;
     }
@@ -1750,7 +1735,7 @@ char *as_c_string(Value *v) {
             malloc_sprintf(&buffer, "<owned opaque:%p>", v->v);
         break;
     case T_UINT:
-        malloc_sprintf(&buffer, "%luu", v->v->ui);
+        malloc_sprintf(&buffer, "%luu", GET_UINTEGER(v));
         break;
     case T_RETURN: {
         char *str = as_c_string_repr((Value *)v->v);
@@ -1853,7 +1838,7 @@ int raw_print_value(Value *v) {
         return printf("%ld", GET_INTEGER(v));
     case T_FLOAT: {
         char buf[MAX_NUMBER_DIGITS] = {0};
-        float_to_string(v->v->f, buf, sizeof(buf));
+        float_to_string(GET_FLOAT(v), buf, sizeof(buf));
         return printf("%s", buf);
     }
     case T_STRING:
@@ -1893,7 +1878,7 @@ int raw_print_value(Value *v) {
         else
             return printf("<owned opaque:%p>", v->v);
     case T_UINT:
-        return printf("%luu", v->v->ui);
+        return printf("%luu", GET_UINTEGER(v));
     case T_RETURN: {
         return printf("<return:");
         raw_print_value((Value *)v->v);
@@ -1978,7 +1963,7 @@ char *as_c_string_raw(Value *v) {
         break;
     case T_FLOAT: {
         char buf[MAX_NUMBER_DIGITS] = {0};
-        float_to_string(v->v->f, buf, sizeof(buf));
+        float_to_string(GET_FLOAT(v), buf, sizeof(buf));
         malloc_sprintf(&buffer, "%s", buf);
         break;
     }
@@ -2012,7 +1997,7 @@ char *as_c_string_raw(Value *v) {
             malloc_sprintf(&buffer, "<owned opaque:%p>", v->v);
         break;
     case T_UINT:
-        malloc_sprintf(&buffer, "%lu", v->v->ui);
+        malloc_sprintf(&buffer, "%lu", GET_UINTEGER(v));
         malloc_sprintf(&buffer, "u");
         break;
     case T_RETURN: {
@@ -2230,8 +2215,8 @@ void val_release(Value *v) {
             mila_free(GET_STRING(v));
         else if (v->type == T_ERROR && GET_ERROR_MESSAGE(v))
             mila_free(GET_ERROR_MESSAGE(v));
-        else if (v->type == T_TAGGED_ERROR && v->v->tagged_error.message)
-            mila_free(v->v->tagged_error.message);
+        else if (v->type == T_TAGGED_ERROR && GET_TAGGED_ERROR(v)->message)
+            mila_free(GET_TAGGED_ERROR(v)->message);
         else if (v->type == T_FUNCTION) {
             if (GET_FUNCTION(v)->params) {
                 char **p = GET_FUNCTION(v)->params;
@@ -2294,10 +2279,12 @@ void val_release(Value *v) {
         case T_BOOL:
         case T_STRING:
         case T_ENV:
+        case T_FLOAT:
+        case T_INT:
+        case T_UINT:
             break;
         default:
-            if (v->v)
-                mila_free(v->v);
+            mila_free(v->v);
         }
         mila_free(v);
     }
@@ -2328,8 +2315,8 @@ void val_kill(Value *v) {
         mila_free(GET_STRING(v));
     if (v->type == T_ERROR && GET_ERROR_MESSAGE(v))
         mila_free(GET_ERROR_MESSAGE(v));
-    if (v->type == T_TAGGED_ERROR && v->v->tagged_error.message)
-        mila_free(v->v->tagged_error.message);
+    if (v->type == T_TAGGED_ERROR && GET_TAGGED_ERROR(v)->message)
+        mila_free(GET_TAGGED_ERROR(v)->message);
     if (v->type == T_FUNCTION) {
         if (GET_FUNCTION(v)->params) {
             char **p = GET_FUNCTION(v)->params;
@@ -2388,6 +2375,9 @@ cleanup:;
     case T_ERROR:
     case T_RETURN:
     case T_STRING:
+    case T_FLOAT:
+    case T_INT:
+    case T_UINT:
         break;
     default:
         if (v->v)
@@ -2420,8 +2410,8 @@ void val_kill_incomplete(Value *v) {
         mila_free(GET_STRING(v));
     if (v->type == T_ERROR && GET_ERROR_MESSAGE(v))
         mila_free(GET_ERROR_MESSAGE(v));
-    if (v->type == T_TAGGED_ERROR && v->v->tagged_error.message)
-        mila_free(v->v->tagged_error.message);
+    if (v->type == T_TAGGED_ERROR && GET_TAGGED_ERROR(v)->message)
+        mila_free(GET_TAGGED_ERROR(v)->message);
     if (v->type == T_FUNCTION) {
         if (GET_FUNCTION(v)->params) {
             char **p = GET_FUNCTION(v)->params;
@@ -3136,8 +3126,7 @@ void skip_ws(Src *s) {
             // line comment
             src_get(s);
             src_get(s);
-            while (!src_eof(s) && src_get(s) != '\n') {
-            }
+            while (!src_eof(s) && src_get(s) != '\n') {}
             continue;
         }
         if (c == '/' && s->pos + 1 < s->len && s->src[s->pos + 1] == '*') {
@@ -3940,7 +3929,7 @@ char *parse_ident(Src *s) {
         return NULL;
     src_get(s);
     while (isalnum((unsigned char)src_peek(s)) || src_peek(s) == '_' ||
-           src_peek(s) == '.' || src_peek(s) == '?')
+           src_peek(s) == '.')
         src_get(s);
     int en = s->pos;
     int n = en - st;
@@ -4585,14 +4574,13 @@ Value *parse_subscript(Src *s, Env *e) {
         val_release(res);
         return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Closing square bracket was expected!");
     }
-
     return res;
 }
 
 // parse block: {...}
 Value *eval_block(Src *s, Env *env) {
     if (!match_char(s, '{')) {
-        return verror("Expected a block!");
+        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Expected a block!");
     }
     // new local frame
     Env *frame = env_new(env);
@@ -4624,7 +4612,7 @@ Value *eval_block(Src *s, Env *env) {
 
 Value *eval_block_raw(Src *s, Env *frame) {
     if (!match_char(s, '{')) {
-        return verror("Block was expected!");
+        return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Block was expected!");
     }
     // new local frame
     Value *last = vnull(); // last expression value
@@ -4681,7 +4669,7 @@ Value *call_function_with(Env *env, Value *fnval, Value *first, ...) {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
         mila_free(args);
-        return verror("Function is NULL!");
+        return vtagged_error(E_RUNTIME, "Function is NULL!");
     }
 
     Value *res = call_function(fnval, env, count, args);
@@ -4719,7 +4707,7 @@ Value *call_native_with(Env *env, NativeFn fnval, Value *first, ...) {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
         mila_free(args);
-        return verror("Function is NULL!");
+        return vtagged_error(E_RUNTIME, "Function is NULL!");
     }
 
     Value *res = fnval(env, count, args);
@@ -4758,7 +4746,7 @@ Value *call_function_str(Env *env, const char *fnname, Value *first, ...) {
         for (size_t i = 0; i < count; i++)
             val_release(args[i]);
         mila_free(args);
-        return verror("Function %s does not exist!", fnname);
+        return vtagged_error(E_RUNTIME, "Function %s does not exist!", fnname);
     }
 
     Value *res = call_function(fnval, env, count, args);
@@ -4834,7 +4822,7 @@ Value *make_dict(Value *first, ...) {
 
 Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
     if (!fnval)
-        return verror("Function is NULL!");
+        return vtagged_error(E_RUNTIME, "Function is NULL!");
     if (fnval->type == T_NATIVE) {
         for (int t = 0; t < argc; ++t)
             if (GET_TYPE(argv[t]) == T_ERROR)
@@ -4908,7 +4896,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
             if (!is_optional && a == NULL) {
                 env_free(frame);
                 Value *res =
-                    verror("Function %s requires the contextual value `%s`",
+                    vtagged_error(E_RUNTIME, "Function %s requires the contextual value `%s`",
                            GET_FUNCTION(fnval)->name ? GET_FUNCTION(fnval)->name
                                                      : "[lambda]",
                            name);
@@ -4928,7 +4916,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
         src_free(child);
         env_free(frame);
         if (IS_ERROR_TAGGED(res))
-            res->v->tagged_error.pos.line = pos.line;
+            GET_TAGGED_ERROR(res)->pos.line = pos.line;
         if (GET_TYPE(res) == T_RETURN) {
             Value* v = (Value*)GET_OPAQUE(res);
             val_release(res);
@@ -4938,7 +4926,7 @@ Value *call_function(Value *fnval, Env *env, int argc, Value **argv) {
     } else {
         // not callable
         char *repr = as_c_string_repr_raw(fnval);
-        Value *res = verror("Attempt to call non-callable value (%s)", repr);
+        Value *res = vtagged_error(E_TYPE_ERROR, "Attempt to call non-callable value (%s)", repr);
         mila_free(repr);
         return res;
     }
@@ -5224,11 +5212,11 @@ Value *eval_primary(Src *s, Env *env) {
                                        "line %zu\n%s",
                                        GET_FUNCTION(expr)->name,
                                        GET_FUNCTION(expr)->line,
-                                       res->v->tagged_error.pos.line,
+                                       GET_TAGGED_ERROR(res)->pos.line,
                                        text =
                                            indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
-                        type = res->v->tagged_error.type;
+                        type = GET_TAGGED_ERROR(res)->type;
                     } else {
                         malloc_sprintf(
                             &error,
@@ -5237,7 +5225,7 @@ Value *eval_primary(Src *s, Env *env) {
                             expr_pos.line, expr_pos.column,
                             text = indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
-                        type = res->v->tagged_error.type;
+                        type = GET_TAGGED_ERROR(res)->type;
                     }
                 } else {
                     char *text = NULL;
@@ -5259,7 +5247,7 @@ Value *eval_primary(Src *s, Env *env) {
                 }
                 int return_code = 0;
                 if (type != E_NO_ERROR) {
-                    return_code = res->v->tagged_error.return_code;
+                    return_code = GET_TAGGED_ERROR(res)->return_code;
                 }
                 val_release(res);
                 Value *res;
@@ -5567,12 +5555,12 @@ Value *eval_primary(Src *s, Env *env) {
                                        "line %zu column %zu\n%s",
                                        id,
                                        GET_FUNCTION(callee)->line,
-                                       res->v->tagged_error.pos.line,
-                                       res->v->tagged_error.pos.column,
+                                       GET_TAGGED_ERROR(res)->pos.line,
+                                       GET_TAGGED_ERROR(res)->pos.column,
                                        text =
                                            indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
-                        type = res->v->tagged_error.type;
+                        type = GET_TAGGED_ERROR(res)->type;
                     } else {
                         malloc_sprintf(
                             &error,
@@ -5581,7 +5569,7 @@ Value *eval_primary(Src *s, Env *env) {
                             expr_pos.line, expr_pos.column,
                             text = indent(GET_ERROR_MESSAGE(res), 2));
                         mila_free(text);
-                        type = res->v->tagged_error.type;
+                        type = GET_TAGGED_ERROR(res)->type;
                     }
                 } else {
                     char *text = NULL;
@@ -5603,7 +5591,7 @@ Value *eval_primary(Src *s, Env *env) {
                 }
                 int return_code = 0;
                 if (type != E_NO_ERROR) {
-                    return_code = res->v->tagged_error.return_code;
+                    return_code = GET_TAGGED_ERROR(res)->return_code;
                 }
                 val_release(res);
                 Value *res;
@@ -5622,7 +5610,7 @@ Value *eval_primary(Src *s, Env *env) {
             Value *obj = env_get(env, id);
             if (!obj) {
                 Value *ret =
-                    verror("%s cannot be subscripted as it is not defined", id);
+                    vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "%s cannot be subscripted as it is not defined", id);
                 mila_free(id);
                 return ret;
             }
@@ -5634,7 +5622,7 @@ Value *eval_primary(Src *s, Env *env) {
 
                 if (!obj) {
                     val_release(index);
-                    Value *ret = verror("cannot be subscripted as it is not defined");
+                    Value *ret = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "cannot be subscripted as it is not defined");
                     return ret;
                 }
 
@@ -5652,7 +5640,7 @@ Value *eval_primary(Src *s, Env *env) {
                     obj = tmp;
                 } else {
                     val_release(index);
-                    Value* res = verror("Type %s does not support BMethodGetItem!",
+                    Value* res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Type %s does not support BMethodGetItem!",
                                   GET_TYPENAME(obj));
                     return res;
                 }
@@ -5663,7 +5651,7 @@ Value *eval_primary(Src *s, Env *env) {
             // guard against `id = value` syntax
             size_t pos = s->pos;
             src_get(s);
-            if (src_peek(s) != '=') {
+            if (isspace(src_peek(s))) {
                 Value* res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "You tried setting a variable `%s` but we dont support the syntax `%s = ...`.\nYou may have tried to do a comparison in which the correct syntax is `%s == ...`,\nbut if you were indeed setting `%s` then do so by `{set %s = ...}`", id, id, id, id, id);
                 mila_free(id);
                 return res;
@@ -5710,36 +5698,72 @@ int is_numeric(Value *v) {
 double to_double(Value *v) {
     if (!v)
         return 0.0;
-    if (v->type == T_INT)
-        return (double)v->v->i;
-    if (v->type == T_FLOAT)
-        return v->v->f;
-    if (v->type == T_UINT)
-        return (double)v->v->ui;
+    if (v->type == T_INT) {
+        long x;
+        memcpy(&x, &(v->v), sizeof(long));
+        return (double)x;
+    }
+    if (v->type == T_FLOAT) {
+        double x;
+        memcpy(&x, &(v->v), sizeof(double));
+        return x;
+    }
+    if (v->type == T_UINT) {
+        unsigned long x;
+        memcpy(&x, &(v->v), sizeof(unsigned long));
+        return (double)x;
+    }
+    if (v->type == T_BOOL) {
+        unsigned long x;
+        memcpy(&x, &(v->v), sizeof(unsigned long));
+        return x;
+    }
     return 0.0;
 }
 
 unsigned long to_uint(Value *v) {
     if (!v)
         return 0.0;
-    if (v->type == T_INT)
-        return (unsigned long)v->v->i;
-    if (v->type == T_FLOAT)
-        return (unsigned long)v->v->f;
+    if (v->type == T_INT) {
+        long x;
+        memcpy(&x, &(v->v), sizeof(long));
+        return (unsigned long)x;
+    }
+    if (v->type == T_FLOAT) {
+        double x;
+        memcpy(&x, &(v->v), sizeof(double));
+        return (unsigned long)x;
+    }
     if (v->type == T_UINT)
-        return v->v->ui;
+        return GET_UINTEGER(v);
+    if (v->type == T_BOOL) {
+        unsigned long x;
+        memcpy(&x, &(v->v), sizeof(unsigned long));
+        return x;
+    }
     return 0.0;
 }
 
 FN_UNUSED long to_int(Value *v) {
     if (!v)
         return 0;
-    if (v->type == T_INT)
-        return (long)v->v->i;
-    if (v->type == T_FLOAT)
-        return (long)v->v->f;
-    if (v->type == T_UINT)
-        return v->v->ui;
+    if (v->type == T_INT) {
+        long x;
+        memcpy(&x, &(v->v), sizeof(long));
+        return x;
+    }
+    if (v->type == T_FLOAT) {
+        double x;
+        memcpy(&x, &(v->v), sizeof(double));
+        return (long)x;
+    }
+    if (v->type == T_UINT) {
+        unsigned long x;
+        memcpy(&x, &(v->v), sizeof(unsigned long));
+        return (long)x;
+    }
+    if (v->type == T_BOOL)
+        return (long)(v->v);
     return 0;
 }
 
@@ -5749,17 +5773,12 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
         Value *res = ((trinary_method)a->method_table[op])(a, vint(op), b);
         if (res != NULL)
             return res;
-    } else if ((a->type == T_NONE || a->type == T_NULL) &&
-               (b->type == T_NONE || b->type == T_NULL)) {
-        if (BMethodEq == op)
-            return vbool(a->type == b->type);
-        if (BMethodNe == op)
-            return vbool(a->type != b->type);
-    } else if (op == BMethodDefault) {
-        if (a->type == T_NONE || a->type == T_NULL || !is_truthy(a)) {
-            return val_retain(b);
-        } else {
+    }
+    if (BMethodDefault == op) {
+        if (is_truthy(a)) {
             return val_retain(a);
+        } else {
+            return val_retain(b);
         }
     } else if (BMethodOr == op) {
         int res = is_truthy(a) || is_truthy(b);
@@ -5825,7 +5844,7 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
                 return vbool(ra != rb);
             return vnull();
         } else {
-            long ia = a->v->i, ib = b->v->i;
+            long ia = to_int(a), ib = to_int(b);
             if (op == BMethodAdd)
                 return vint(ia + ib);
             if (op == BMethodSub)
@@ -5865,7 +5884,7 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
         Value **list_a = ll_to_iter(ll_a);
         Value **list_b = ll_to_iter(ll_b);
 
-        // Find last index (essentially the length)
+        // Find last index (essentianlly the length)
         size_t last_a = 0, last_b = 0;
         for (; list_a[last_a]; ++last_a)
             ;
@@ -5915,7 +5934,7 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
                         !is_numeric(list_a[index]) ? list_a[index]
                                                    : list_b[index]);
                     Value *msg =
-                        verror("Item %s is not numeric but was used in list "
+                        vtagged_error(E_TYPE_ERROR, "Item %s is not numeric but was used in list "
                                "numerical comparison!",
                                item_repr);
                     mila_free(item_repr);
@@ -5972,13 +5991,24 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
             return vbool(0);
         if (a->type == T_STRING && b->type == T_STRING)
             return vbool(strcmp(GET_STRING(a), GET_STRING(b)) == 0);
+        else if (a->type == T_NONE || a->type == T_NULL || b->type == T_NONE || b->type == T_NULL)
+            return vbool(a->type == b->type);
+        else if (a->type == T_OPAQUE && b->type == T_OPAQUE)
+            return vbool(GET_OPAQUE(a) == GET_OPAQUE(b));
+        else if (a->type == T_OPAQUE && b->type == T_INT)
+            return vbool(GET_OPAQUE(a) == (void*)GET_INTEGER(b));
+        else if (a->type == T_OPAQUE && b->type == T_UINT)
+            return vbool(GET_OPAQUE(a) == (void*)GET_UINTEGER(b));
+        else if (b->type == T_OPAQUE && a->type == T_INT)
+            return vbool(GET_OPAQUE(a) == (void*)GET_INTEGER(a));
+        else if (b->type == T_OPAQUE && a->type == T_UINT)
+            return vbool(GET_OPAQUE(b) == (void*)GET_UINTEGER(a));
         // fallback pointer equality (document this!!!)
         return vbool(a == b);
     } else if (BMethodNe == op) {
         Value *eq = binary_op(a, BMethodEq, b);
-        int res = (eq->type == T_BOOL && eq->v == NULL);
-        val_release(eq);
-        return vbool(res);
+        eq->v = (void*)(eq->v ? 0L : 1L);
+        return eq;
     }
     // string concatenation for '+'
     else if (op == BMethodAdd && a->type == T_STRING && b->type == T_STRING) {
@@ -5994,7 +6024,7 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
         if (stringyfied) {
             char *buf = mila_malloc(la + strlen(stringyfied) + 1);
             if (!buf)
-                return vnull();
+                return vtagged_error(E_RUNTIME, "Failed to allocate for string concat! Size of %zu (\\0 included)", la + strlen(stringyfied) + 1);
             strcpy(buf, GET_STRING(a));
             strcat(buf, stringyfied);
             mila_free(stringyfied);
@@ -6007,7 +6037,7 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
         if (stringyfied) {
             char *buf = mila_malloc(la + strlen(stringyfied) + 1);
             if (!buf)
-                return vnull();
+                return vtagged_error(E_RUNTIME, "Failed to allocate for string concat! Size of %zu (\\0 included)", la + strlen(stringyfied) + 1);
             strcpy(buf, stringyfied);
             strcat(buf, GET_STRING(b));
             mila_free(stringyfied);
@@ -6023,8 +6053,7 @@ Value *binary_op(Value *a, MethodType op, Value *b) {
             return vbool(1);
         else
             return vbool(0);
-    }
-    if (a->type_name && strcmp(a->type_name, "dict") == 0) {
+    } if (a->type_name && strcmp(a->type_name, "dict") == 0) {
         return binary_op_objects(NULL, 1, a, op, b);
     }
     if (b->type_name && strcmp(b->type_name, "dict") == 0) {
@@ -6038,7 +6067,7 @@ Value *binary_op_objects(Env *env, char right, Value *a, MethodType op,
     if (a->type_name && strcmp(a->type_name, "dict") != 0) {
         char *repr = as_c_string_repr(a);
         Value *err =
-            verror("%s\n of type %s does not support runtime overloading!",
+            vtagged_error(E_TYPE_ERROR, "%s\n of type %s does not support runtime overloading!",
                    repr, GET_TYPENAME(a));
         mila_free(repr);
         return err;
@@ -6115,8 +6144,6 @@ int precedence_of(MethodType op) {
         return 8;
     if (BMethodGlob == op)
         return 9;
-    if (BMethodCallMethod == op)
-        return 10;
     return 0;
 }
 
@@ -6126,7 +6153,6 @@ MethodType parse_op(Src *s) {
     if (a == '\0')
         return -1;
     char b = s->src[s->pos + 1];
-    // two-char ops
     if (a == '|' && b == '|') {
         s->pos += 2;
         return BMethodOr;
@@ -6300,12 +6326,12 @@ Value* handle_method_call(Src* s, Env* env, Value* obj) {
                                "line %zu column %zu\n%s",
                                method,
                                GET_FUNCTION(function)->line,
-                               res->v->tagged_error.pos.line,
-                               res->v->tagged_error.pos.column,
+                               GET_TAGGED_ERROR(res)->pos.line,
+                               GET_TAGGED_ERROR(res)->pos.column,
                                text =
                                    indent(GET_ERROR_MESSAGE(res), 2));
                 mila_free(text);
-                type = res->v->tagged_error.type;
+                type = GET_TAGGED_ERROR(res)->type;
             } else {
                 malloc_sprintf(
                     &error,
@@ -6314,7 +6340,7 @@ Value* handle_method_call(Src* s, Env* env, Value* obj) {
                     expr_pos.line, expr_pos.column,
                     text = indent(GET_ERROR_MESSAGE(res), 2));
                 mila_free(text);
-                type = res->v->tagged_error.type;
+                type = GET_TAGGED_ERROR(res)->type;
             }
         } else {
             char *text = NULL;
@@ -6336,7 +6362,7 @@ Value* handle_method_call(Src* s, Env* env, Value* obj) {
         }
         int return_code = 0;
         if (type != E_NO_ERROR) {
-            return_code = res->v->tagged_error.return_code;
+            return_code = GET_TAGGED_ERROR(res)->return_code;
         }
         val_release(res);
         Value *res;
@@ -6469,12 +6495,12 @@ Value* handle_namespaced_call(Src *s, Env *env, Value* obj) {
                                "line %zu column %zu\n%s",
                                namespaced_function,
                                GET_FUNCTION(function)->line,
-                               res->v->tagged_error.pos.line,
-                               res->v->tagged_error.pos.column,
+                               GET_TAGGED_ERROR(res)->pos.line,
+                               GET_TAGGED_ERROR(res)->pos.column,
                                text =
                                    indent(GET_ERROR_MESSAGE(res), 2));
                 mila_free(text);
-                type = res->v->tagged_error.type;
+                type = GET_TAGGED_ERROR(res)->type;
             } else {
                 malloc_sprintf(
                     &error,
@@ -6483,7 +6509,7 @@ Value* handle_namespaced_call(Src *s, Env *env, Value* obj) {
                     expr_pos.line, expr_pos.column,
                     text = indent(GET_ERROR_MESSAGE(res), 2));
                 mila_free(text);
-                type = res->v->tagged_error.type;
+                type = GET_TAGGED_ERROR(res)->type;
             }
         } else {
             char *text = NULL;
@@ -6505,7 +6531,7 @@ Value* handle_namespaced_call(Src *s, Env *env, Value* obj) {
         }
         int return_code = 0;
         if (type != E_NO_ERROR) {
-            return_code = res->v->tagged_error.return_code;
+            return_code = GET_TAGGED_ERROR(res)->return_code;
         }
         val_release(res);
         Value *res;
@@ -6541,9 +6567,10 @@ Value *eval_expr_prec(Src *s, Env *env, int min_prec) {
     for (;;) {
         int saved_pos = s->pos;
         MethodType op = parse_op(s);
-        if (op == MethodNone)
+        if (op == MethodNone) {
+            s->pos = saved_pos;
             return lhs;
-        if (op == BMethodCallMethod) {
+        } else if (op == BMethodCallMethod) {
             return handle_method_call(s, env, lhs);
         } else if (op == BMethodCallNamespaceFunction) {
             return handle_namespaced_call(s, env, lhs);
@@ -6891,11 +6918,7 @@ Value *eval_statement(Src *s, Env *env) {
             match_char(s, ';');
             return res;
         } else {
-            Value* res;
-            if (strcmp(id, "set") == 0 || strcmp(id, "var") == 0 || strcmp(id, "object") == 0 || strcmp(id, "alias") == 0 || strcmp(id, "forget") == 0 || strcmp(id, "contextual") == 0 || strcmp(id, "break") == 0 || strcmp(id, "continue") == 0 || strcmp(id, "foreach") == 0 || strcmp(id, "sync") == 0 || strcmp(id, "if") == 0 || strcmp(id, "elif") == 0 || strcmp(id, "else") == 0 || strcmp(id, "while") == 0 || strcmp(id, "catch") == 0 || strcmp(id, "const") == 0)
-                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Expected a proper set statement. For `%s`, its missing the assignment part.\nAn additional info for your assignment, you used `%s` which is a statement.\nYou must read it by doing `(%s)` to make sure it gets evaluated in the context of an expression rather than a statement.", id, id, id);
-            else
-                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+            Value* res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
                                      "Expected a proper set statement! For `%s`, its missing the assignment part.", id);
             mila_free(id);
             return res;
@@ -6911,7 +6934,7 @@ Value *eval_statement(Src *s, Env *env) {
             skip_ws(s);
             Value *type = parse_string(s);
             type_string = mila_strdup(GET_STRING(type));
-            val_release(type); // ignore for now
+            val_release(type);
         }
         if (!id)
             return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
@@ -6939,11 +6962,8 @@ Value *eval_statement(Src *s, Env *env) {
             match_char(s, ';');
         } else {
             Value* res;
-            if (strcmp(id, "set") == 0 || strcmp(id, "var") == 0 || strcmp(id, "object") == 0 || strcmp(id, "alias") == 0 || strcmp(id, "forget") == 0 || strcmp(id, "contextual") == 0 || strcmp(id, "break") == 0 || strcmp(id, "continue") == 0 || strcmp(id, "foreach") == 0 || strcmp(id, "sync") == 0 || strcmp(id, "if") == 0 || strcmp(id, "elif") == 0 || strcmp(id, "else") == 0 || strcmp(id, "while") == 0 || strcmp(id, "catch") == 0 || strcmp(id, "const") == 0)
-                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Expected a proper var statement. For `%s`, its missing the assignment part.\nAn additional info for your assignment, you used `%s` which is a statement.\nYou must read it by doing `(%s)` to make sure it gets evaluated in the context of an expression rather than a statement.", id, id, id);
-            else
-                res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
-                                     "Expected a proper var statement! For `%s`, its missing the assignment part.", id);
+            res = vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR,
+                                 "Expected a proper var statement! For `%s`, its missing the assignment part.", id);
             mila_free(type_string);
             mila_free(id);
             return res;
@@ -7031,7 +7051,7 @@ Value *eval_statement(Src *s, Env *env) {
         s->pos += strlen("contextual");
         char *id = parse_ident(s);
         if (!id)
-            return verror("Invalid contextual statement.");
+            return vtagged_error_pos(get_pos(s), E_SYNTAX_ERROR, "Invalid contextual statement.");
         Value *a = env_get(env, id);
         if (!a) {
             Value *res = vtagged_error_pos(
@@ -7088,8 +7108,8 @@ Value *eval_statement(Src *s, Env *env) {
         memcpy(a, val, sizeof(Value));
         a->refcount = refcount;
         size_t size = sizeof(void *);
-        if (is_numeric(val) || GET_TYPE(val) == T_TAGGED_ERROR) {
-            size = sizeof(ValueValue);
+        if (GET_TYPE(val) == T_TAGGED_ERROR) {
+            size = sizeof(TaggedError);
         }
         memcpy(a->v, val->v, size);
         val->v = NULL;
@@ -7126,7 +7146,7 @@ Value *eval_statement(Src *s, Env *env) {
         match_char(s, ';');
         // wrap as return value: create T_RETURN whose opaque pointer contains
         // the actual Value*
-        Value *r = val_new_raw(T_RETURN);
+        Value *r = val_new(T_RETURN);
         r->v = (void *)v;
         return r;
     }
@@ -7272,7 +7292,7 @@ Value *eval_statement(Src *s, Env *env) {
                     return bod;
                 } break;
                 case T_TAGGED_ERROR:
-                    bod->v->tagged_error.pos.line--;
+                    GET_TAGGED_ERROR(bod)->pos.line--;
                 [[fallthrough]];
                 case T_ERROR: {
                     s->pos = body_end_pos;
@@ -7423,7 +7443,7 @@ Value *eval_statement(Src *s, Env *env) {
                     return bod;
                 }
                 case T_TAGGED_ERROR:
-                    bod->v->tagged_error.pos.line--;
+                    GET_TAGGED_ERROR(bod)->pos.line--;
                 [[fallthrough]];
                 case T_ERROR: {
                     s->pos = body_end_pos;
@@ -7519,7 +7539,7 @@ Value *eval_statement(Src *s, Env *env) {
                     return bod;
                 }
                 case T_TAGGED_ERROR:
-                    bod->v->tagged_error.pos.line--;
+                    GET_TAGGED_ERROR(bod)->pos.line--;
                 [[fallthrough]];
                 case T_ERROR: {
                     s->pos = body_end_pos;
@@ -7569,7 +7589,7 @@ Value *eval_statement(Src *s, Env *env) {
         if (IS_ERROR(res) && !IS_FATAL(res)) {
             if (id) {
                 if (IS_ERROR_TAGGED(res)) {
-                    Value *msg = vstring_dup(res->v->tagged_error.message);
+                    Value *msg = vstring_dup(GET_TAGGED_ERROR(res)->message);
                     Value *type = vstring_dup(GET_ERROR_TYPENAME(res));
                     Value *e_id, *e_msg;
                     Value *dict = make_dict(
@@ -7920,7 +7940,7 @@ int match_types(Value **args, ...) {
     va_list types;
     va_start(types, args);
     ValueType current;
-    for (int i = 0; (current = va_arg(types, ValueType)) != T_ARG_END; i++)
+    for (int i = 0; (current = va_arg(types, int)) != T_ARG_END; i++)
         if (current != args[i]->type)
             goto f;
 
@@ -7950,7 +7970,7 @@ Value *eval_source(Src *s, Env *env) {
                 char *err = GET_ERROR_MESSAGE(last);
                 ErrorType err_t = GET_ERROR_TYPE(last);
                 char *text = NULL;
-                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? last->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
+                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? GET_TAGGED_ERROR(last)->return_code : -1, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
                 val_release(last);
                 mila_free(text);
                 return ret;
@@ -7972,7 +7992,7 @@ Value *eval_str(char *src, Env *env) {
         char *err = GET_ERROR_MESSAGE(res);
         ErrorType err_t = GET_ERROR_TYPE(res);
         char *text = NULL;
-        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? res->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
+        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? GET_TAGGED_ERROR(res)->return_code : -1, "Error in line %zu column %zu\n%s", last_pos.line, last_pos.column, text=indent(err, 2));
         val_release(res);
         mila_free(text);
         return ret;
@@ -7999,7 +8019,7 @@ Value *eval_source_filed(const char* filename, Src *s, Env *env) {
                 char *err = GET_ERROR_MESSAGE(last);
                 ErrorType err_t = GET_ERROR_TYPE(last);
                 char *text = NULL;
-                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? last->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
+                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? GET_TAGGED_ERROR(last)->return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
                 val_release(last);
                 mila_free(text);
                 return ret;
@@ -8021,7 +8041,7 @@ Value *eval_str_filed(const char* filename, char *src, Env *env) {
         char *err = GET_ERROR_MESSAGE(res);
         ErrorType err_t = GET_ERROR_TYPE(res);
         char *text = NULL;
-        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? res->v->tagged_error.return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
+        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? GET_TAGGED_ERROR(res)->return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
         val_release(res);
         mila_free(text);
         return ret;
@@ -8032,21 +8052,21 @@ Value *eval_str_filed(const char* filename, char *src, Env *env) {
 
 void print_error(Value *v) {
     if (v->type == T_TAGGED_ERROR) {
-        if (v->v->tagged_error.type == E_EXIT) {
-            if (v->v->tagged_error.return_code != -1 && v->v->tagged_error.return_code != 0)
+        if (GET_TAGGED_ERROR(v)->type == E_EXIT) {
+            if (GET_TAGGED_ERROR(v)->return_code != -1 && GET_TAGGED_ERROR(v)->return_code != 0)
                 fprintf(stderr, "\n== Recieved Exit Signal [%d] ==\n%s\n",
-                    v->v->tagged_error.return_code,
+                    GET_TAGGED_ERROR(v)->return_code,
                     GET_TAGGED_ERROR_MESSAGE(v));
             return;
         }
-        if (v->v->tagged_error.type == E_THREAD_HALT)
+        if (GET_TAGGED_ERROR(v)->type == E_THREAD_HALT)
             return;
         if (IS_FATAL(v))
             fprintf(stderr, "\n== FATAL ERROR [%s] ==\n%s\n",
-                    GET_ERROR_TYPENAME(v), v->v->tagged_error.message);
+                    GET_ERROR_TYPENAME(v), GET_TAGGED_ERROR(v)->message);
         else
             fprintf(stderr, "\n== Error [%s] ==\n%s\n",
-                    GET_ERROR_TYPENAME(v), v->v->tagged_error.message);
+                    GET_ERROR_TYPENAME(v), GET_TAGGED_ERROR(v)->message);
     } else if (v->type == T_ERROR) {
         fprintf(stderr, "\n== Error ==\n%s\n", GET_ERROR_MESSAGE(v));
     }
@@ -8520,36 +8540,39 @@ const char *poem =
 #ifndef ML_NO_MAIN
 int main(int argc, char **argv) {
     char *src_text = NULL;
-    Value *array = NULL;
     if (argc == 2) {
         if (strcmp(argv[1], "--info") == 0) {
             printf("MiLa %ld.%ld.%ld - Info\n\n"
-                   "C type sizes in bytes (type, size, alignment):\n"
+                   "C types (type, byte size, byte alignment):\n"
                    "         char %2lu %2lu\n"
                    "        short %2lu %2lu\n"
                    "          int %2lu %2lu\n"
                    "         long %2lu %2lu\n"
                    "       double %2lu %2lu\n"
                    "        void* %2lu %2lu\n"
+                   "        Value %2lu %2lu\n"
                    "    ValueType %2lu %2lu\n"
-                   "   ValueValue %2lu %2lu\n"
+                   "  TaggedError %2lu %2lu\n"
                    "\nVariable size (metadata):\n"
                    "  %lu Bytes for primitive types\n"
-                   "  %lu For shortcut types\n"
                    "  %lu Bytes for types with Value Instance Operator "
                    "Overloading\n"
                    "Estimated memory:\n"
                    "  t * %lu + n * 40 Bytes\n"
-                   "  n = # of vars\n"
+                   "  n = # of values\n"
                    "  t = # of types\n"
                    "Max num digits (asuming long support):\n"
                    "  %i\n",
-                   MILA_EDITION, MILA_VERSION, MILA_PATCH, sizeof(char),
-                   alignof(char), sizeof(short), alignof(short), sizeof(int),
-                   alignof(int), sizeof(long), alignof(long), sizeof(double),
-                   alignof(double), sizeof(void *), alignof(void *),
-                   sizeof(ValueType), alignof(ValueType), sizeof(ValueValue),
-                   alignof(ValueValue), sizeof(Value) + sizeof(ValueValue),
+                   MILA_EDITION, MILA_VERSION, MILA_PATCH,
+                   sizeof(char), alignof(char),
+                   sizeof(short), alignof(short),
+                   sizeof(int), alignof(int),
+                   sizeof(long), alignof(long),
+                   sizeof(double), alignof(double),
+                   sizeof(void *), alignof(void *),
+                   sizeof(Value), alignof(Value),
+                   sizeof(ValueType), alignof(ValueType),
+                   sizeof(TaggedError), alignof(TaggedError),
                    sizeof(Value),
                    sizeof(Value) + sizeof(MethodTable) * MethodTotalCount,
                    sizeof(MethodTable) * MethodTotalCount, MAX_NUMBER_DIGITS);
@@ -8614,7 +8637,9 @@ int main(int argc, char **argv) {
             src_free(S);
             mila_free(src_text);
             return err;
-        } else if (strcmp(argv[1], "-r") == 0) {
+        }
+    } else if (argc >= 3) {
+        if (strcmp(argv[1], "-r") == 0) {
             Env *g = mila_global_init();
 
             mila_search_path = path_list_new();
@@ -8628,13 +8653,13 @@ int main(int argc, char **argv) {
             path_list_add(mila_search_path, "~/.local/mila");
 
             env_set_raw(g, "argc", vint(argc - 2));
-            array = call_function_str(g, "array", vint(argc - 1), NULL);
+            Value* list = call_native_with(g, native_list_new, NULL);
             for (int i = 2; i < argc; i++) {
                 Value *str = vstring_dup(argv[i]);
-                val_release(call_native_with(g, native_set_array, val_retain(array),
-                                              vint(i - 2), str, NULL));
+                val_release(call_native_with(g, native_list_append, val_retain(list),
+                                              str, NULL));
             }
-            env_set_raw(g, "argv", array);
+            env_set_raw(g, "argv", list);
             env_set_raw(g, "__argv", vopaque(argv));
             mila_free(cwd);
             int return_code = 0;
@@ -8647,16 +8672,16 @@ int main(int argc, char **argv) {
             }
 
             if (GET_TYPE(res) == T_TAGGED_ERROR) {
-                switch (res->v->tagged_error.type) {
+                switch (GET_TAGGED_ERROR(res)->type) {
                 case E_EXIT: {
-                    if (res->v->tagged_error.return_code == -1) {
+                    if (GET_TAGGED_ERROR(res)->return_code == -1) {
                         return_code = E_EXIT;
                     } else {
-                        return_code = res->v->tagged_error.return_code;
+                        return_code = GET_TAGGED_ERROR(res)->return_code;
                     }
                 } break;
                 default:
-                    return_code = res->v->tagged_error.type;
+                    return_code = GET_TAGGED_ERROR(res)->type;
                     break;
                 }
             }
@@ -8689,6 +8714,7 @@ int main(int argc, char **argv) {
         if (!f) {
             fprintf(stderr, "Cannot open %s: Missing or not a file.\n",
                     argv[1]);
+            mila_free(cwd);
             env_kill(g);
             return 1;
         }
@@ -8712,16 +8738,16 @@ int main(int argc, char **argv) {
         }
 
         if (GET_TYPE(res) == T_TAGGED_ERROR) {
-            switch (res->v->tagged_error.type) {
+            switch (GET_TAGGED_ERROR(res)->type) {
             case E_EXIT: {
-                if (res->v->tagged_error.return_code == -1) {
+                if (GET_TAGGED_ERROR(res)->return_code == -1) {
                     return_code = E_EXIT;
                 } else {
-                    return_code = res->v->tagged_error.return_code;
+                    return_code = GET_TAGGED_ERROR(res)->return_code;
                 }
             } break;
             default:
-                return_code = res->v->tagged_error.type;
+                return_code = GET_TAGGED_ERROR(res)->type;
                 break;
             }
         }
@@ -8734,13 +8760,13 @@ int main(int argc, char **argv) {
     } else {
         mila_free(cwd);
         if (argc > 1 && strcmp(argv[1], "--") == 0) {
-            array = call_function_str(g, "array", vint(argc - 2), NULL);
+            Value* list = call_native_with(g, native_list_new, NULL);
             for (int i = 2; i < argc; i++) {
                 Value *str = vstring_dup(argv[i]);
-                val_release(call_native_with(g, native_set_array, val_retain(array),
+                val_release(call_native_with(g, native_list_append, val_retain(list),
                                               vint(i - 2), str, NULL));
             }
-            env_set_raw(g, "argv", array);
+            env_set_raw(g, "argv", list);
         }
 
         printf("|\\_/| Harry the Hare welcomes you to the\n(@w@) MiLa REPL\n");
@@ -8838,10 +8864,10 @@ int main(int argc, char **argv) {
                     print_error(res);
                     if (IS_ERROR_TAGGED(res) && GET_ERROR_TYPE(res) == E_EXIT) {
                         int code = 0;
-                        if (res->v->tagged_error.return_code == -1) {
+                        if (GET_TAGGED_ERROR(res)->return_code == -1) {
                             code = E_EXIT;
                         } else {
-                            code = res->v->tagged_error.return_code;
+                            code = GET_TAGGED_ERROR(res)->return_code;
                         }
                         src_free(S);
                         val_release(res);

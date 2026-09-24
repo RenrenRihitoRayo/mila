@@ -19,13 +19,22 @@ var start = str.find("env_register_builtins", text);
 var final_text = str.slice(text, start);
 var lines = str.split(final_text, "\n");
 
+var prnames = [];
+var pbnames = [];
+
 foreach line : lines
 {
     if (line => "*env_register_native*")
     {
         set line = str.slice(line, str.find("\"", line)+1);
         var end = str.find("\"", line);
-        list.append(names, str.slice(line, 0, end));
+        var name = str.slice(line, 0, end);
+        list.append(names, name);
+        if (str.startswith(name, "_debug.")) {
+            list.append(prnames, str.slice(line, 0, end));
+        } else {
+            list.append(pbnames, str.slice(line, 0, end));
+        }
     }
 }
 fprint(stderr, ": Done.\n");
@@ -75,7 +84,7 @@ elif (for == "sublime")
 }
 elif (for == "json")
 {
-    println(json.dumps([@ "names" = names, "version" = __mila_version, "count" = list.len(names)]));
+    println(json.dumps([@ "names" = names, "version" = __mila_version, "total_count" = list.len(names), "private_count" = list.len(prnames), "public_count" = list.len(pbnames)]));
 }
 else
 {

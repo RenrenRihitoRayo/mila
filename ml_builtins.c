@@ -750,9 +750,59 @@ Value *native_fread(Env *env, int argc, Value **argv) {
         return vnull();
 
     size_t read_bytes = fread(buf, 1, n, f);
+    if (!read_bytes) {
+        mila_free(buf);
+        return vnull();
+    }
     buf[read_bytes] = '\0';
 
     return vstring_take(buf);
+}
+
+Value *native_freadline(Env *env, int argc, Value **argv) {
+    (void)env;
+    if (argc != 1 || strcmp(GET_TYPENAME(argv[0]), "file") != 0) {
+        return verror("freadline(file) expects (handle)");
+    }
+
+    size_t capacity = 64;
+    size_t length = 0;
+
+    char *line = malloc(capacity);
+    if (!line)
+        return NULL;
+
+    int c;
+
+    while ((c = fgetc((FILE*)GET_OPAQUE(argv[0]))) != EOF && c != '\n') {
+        if (length + 1 >= capacity) {
+            capacity *= 2;
+
+            char *tmp = realloc(line, capacity);
+            if (!tmp) {
+                free(line);
+                return vnull();
+            }
+
+            line = tmp;
+        }
+
+        line[length++] = (char)c;
+    }
+
+    if (c == EOF && length == 0) {
+        free(line);
+        return vnull();
+    }
+
+    line[length] = '\0';
+
+    if (length < 2048) {
+        char *tmp = realloc(line, length + 1);
+        if (tmp)
+            line = tmp;
+    }
+    return vstring_take(line);
 }
 
 Value *native_fread_bytes(Env *env, int argc, Value **argv) {
@@ -797,14 +847,17 @@ Value *native_fread_all(Env *env, int argc, Value **argv) {
     }
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
+    if (n < 0) {
+        return verror("ftell: %s", strerror(errno));
+    }
     fseek(f, 0, SEEK_SET);
 
     char *buf = mila_malloc(n + 1);
     if (!buf)
-        return vnull();
+        return verror("Coudlnt allocate, file too big?");
 
     size_t read_bytes = fread(buf, 1, n, f);
-    buf[read_bytes] = '\0';
+    buf[read_bytes-1] = '\0';
 
     return vstring_take(buf);
 }
@@ -1876,6 +1929,7 @@ void env_register_builtins(Env *g) {
     env_register_native(g, "fread_all", native_fread_all);
     env_register_native(g, "fread_bytes", native_fread_bytes);
     env_register_native(g, "fread_all_bytes", native_fread_all_bytes);
+    env_register_native(g, "freadline", native_freadline);
     env_register_native(g, "fseek", native_fseek);
     env_register_native(g, "ftell", native_ftell);
     env_register_native(g, "fflush", native_fflush);

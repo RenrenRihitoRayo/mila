@@ -469,10 +469,8 @@ Value *vowned_opaque_extra(void *p, Value *(*dis)(Value *), const char *type);
 Value *make_dict(Value *first, ...);
 // Short hand to create a list
 Value *make_list(Value *first, ...);
-#ifndef EXT_WEB
-__int128 atoi128(char *num);
-char *i128toa(__int128 num);
-#endif
+// Indent strings
+char *indent(const char *text, int level);
 
 typedef struct {
     char *name;

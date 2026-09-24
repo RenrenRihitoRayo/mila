@@ -247,40 +247,6 @@ this functions seed value can be customized if needed.
 
     Set a dicts item.
 
-## <a id="arr"></a>Arrays
-
-Internally stored as
-
-```C
-typedef struct {
-    Value** items; // actual array (when lists are too slow)
-    // other fields...
-} Array;
-```
-
-* `array(slots: "int") -> "array"`
-
-    Array constructor.
-    Allocates memory for the given number of slots.
-
-* `array.from(item1, item2, item3, ..., itemN) -> "array"`
-
-    Array constructor.
-    Allocates memory for the number of arguments passed.
-
-* `array.len(list: "array") -> "int"`
-
-    Get the length of a list.
-
-* `some_array[index]`
-
-    Syntax to index an array item.
-    Returns `null` when it isn't found.
-
-* `set some_array[index] = value;`
-
-    Set an arrays item.
-
 ## <a id="sort"></a>Sorting
 
 * `min(lst: "list") -> any`
@@ -519,14 +485,6 @@ var num: "int"= 0;
 * `str.isupper(str: "string") -> "bool"`
 
     Return true if the string with every alphabetic character is in its lowercase form.
-
-* `str.tolower(str: "string") -> "bool"`
-
-    Return the string with every alphabetic character in its uppercase form.
-
-* `str.toupper(str: "string") -> "bool"`
-
-    Return the string with every alphabetic character in its lowercase form.
 
 * `istring(str: "string") -> "istring"`
 

@@ -170,7 +170,7 @@ const char *_mtags(Src *s, char *file_name, char **buffer, int level,
         size_t len = s->pos - start;
         char *norm_assign = _normalize_assign(assign, len);
         malloc_sprintf(buffer,
-                       "%s:%zu:%zu %i %i set \"any\" %s set %.*s: \"any\" %s\n",
+                       "%s:%zu:%zu %i %i set \"any\" %s set %.*s %s\n",
                        file_name, pos.line, pos.column, level, sibling, id,
                        id_len - 1, id_start + s->src, norm_assign);
         mila_free(norm_assign);

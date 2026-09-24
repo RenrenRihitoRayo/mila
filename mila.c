@@ -24,7 +24,6 @@
 #error "MiLa only supports GCC and Clang."
 #endif
 
-// #include <stdatomic.h>
 #include <signal.h>
 
 #include <ctype.h>
@@ -33,15 +32,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-// #include <getopt.h>
-// #include <assert.h>
-// #include <ucontext.h>
 
 #include <dlfcn.h>
 #include <limits.h>
 #include <sys/resource.h>
-// #include <sys/time.h>
-// #include <unistd.h>
 
 #ifndef RESTRICTED_BUILD
 #include "ml_paths.c"
@@ -2266,8 +2260,6 @@ void val_release(Value *v) {
         switch (GET_TYPE(v)) {
         case T_CONTINUE:
         case T_BREAK:
-            mila_free(v->v);
-            break;
         case T_ERROR:
         case T_RETURN:
         case T_FUNCTION:
@@ -3243,14 +3235,28 @@ const char *skip_primary(Src *s) {
                     skip_ws(s);
                     continue;
                 }
-                if (match_char(s, ']'))
-                    return ERR_SUCCESS;
-                return ERR_EXPECTED_BRACKET;
+                if (match_char(s, ']')) {
+                    break;
+                }
+                return ERR_BRACKET_UNCLOSED;
             }
+            if (src_peek(s) == '[') {
+                const char* err;
+                while (src_peek(s) == '[') {
+                    src_get(s);
+                    err = skip_parse_expr_prec(s, 1);
+                    if (err)
+                        return err;
+                    if (!match_char(s, ']'))
+                        return ERR_BRACKET_UNCLOSED;
+                }
+                return ERR_SUCCESS;
+            }
+            return ERR_SUCCESS;
         } else {
             src_get(s);
+            return ERR_SUCCESS;
         }
-        return ERR_SUCCESS;
     }
 
     // Parenthesized expressions
@@ -3307,9 +3313,12 @@ const char *skip_primary(Src *s) {
             mila_free(params->params[i]);
             if (params->defaults[i])
                 mila_free(params->defaults[i]);
+            if (params->types[i])
+                mila_free(params->types[i]);
         }
         mila_free(params->params);
         mila_free(params->defaults);
+        mila_free(params->types);
         mila_free(params);
 
         char **ctx = parse_context_list(s);
@@ -3813,9 +3822,12 @@ const char *skip_parse_source(Src *s) {
                 mila_free(fnp->params[i]);
                 if (fnp->defaults[i])
                     mila_free(fnp->defaults[i]);
+                if (fnp->types[i])
+                    mila_free(fnp->types[i]);
             }
             mila_free(fnp->params);
             mila_free(fnp->defaults);
+            mila_free(fnp->types);
             mila_free(fnp);
 
             // Optional return type annotation
@@ -5201,7 +5213,7 @@ Value *eval_primary(Src *s, Env *env) {
                 return tmp;
             }
             if (IS_ERROR(res) && !IS_FATAL(res)) {
-                char *error = NULL;
+                char *error = mila_strdup("");
                 ErrorType type = E_NO_ERROR;
                 if (IS_ERROR_TAGGED(res)) {
                     char *text = NULL;
@@ -5466,7 +5478,7 @@ Value *eval_primary(Src *s, Env *env) {
             mila_free(id);
             return venv(env);
         }
-        // look ahead: function call? subscript?
+        // look ahead: functior call? subscript?
         skip_ws(s);
         if (src_peek(s) == '(') {
             // parse args
@@ -5544,7 +5556,7 @@ Value *eval_primary(Src *s, Env *env) {
                 val_release(args[i]);
             mila_free(args);
             if (IS_ERROR(res) && !IS_FATAL(res)) {
-                char *error = NULL;
+                char *error = mila_strdup("");
                 ErrorType type = E_NO_ERROR;
                 if (IS_ERROR_TAGGED(res)) {
                     char *text = NULL;
@@ -8019,7 +8031,7 @@ Value *eval_source_filed(const char* filename, Src *s, Env *env) {
                 char *err = GET_ERROR_MESSAGE(last);
                 ErrorType err_t = GET_ERROR_TYPE(last);
                 char *text = NULL;
-                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? GET_TAGGED_ERROR(last)->return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
+                Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(last) ? GET_TAGGED_ERROR(last)->return_code : -1, "Error in %s:%zu:%zu\n%s", filename, last_pos.line, last_pos.column, text=indent(err, 2));
                 val_release(last);
                 mila_free(text);
                 return ret;
@@ -8041,7 +8053,7 @@ Value *eval_str_filed(const char* filename, char *src, Env *env) {
         char *err = GET_ERROR_MESSAGE(res);
         ErrorType err_t = GET_ERROR_TYPE(res);
         char *text = NULL;
-        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? GET_TAGGED_ERROR(res)->return_code : -1, "Error in line %zu column %zu\n  in file: '%s'\n%s", last_pos.line, last_pos.column, filename, text=indent(err, 2));
+        Value *ret = vtagged_coded_error(err_t, IS_ERROR_TAGGED(res) ? GET_TAGGED_ERROR(res)->return_code : -1, "Error in %s:%zu:%zu\n%s", filename, last_pos.line, last_pos.column, text=indent(err, 2));
         val_release(res);
         mila_free(text);
         return ret;
@@ -8638,7 +8650,8 @@ int main(int argc, char **argv) {
             mila_free(src_text);
             return err;
         }
-    } else if (argc >= 3) {
+    }
+    if (argc >= 3) {
         if (strcmp(argv[1], "-r") == 0) {
             Env *g = mila_global_init();
 
@@ -8728,10 +8741,12 @@ int main(int argc, char **argv) {
         }
         env_set_raw(g, "argv", list);
         env_set_raw(g, "__argv", vopaque(argv));
+        char filename[2048];
+        path_join(filename, sizeof(filename), 2, cwd, argv[1]);
         mila_free(cwd);
         int return_code = 0;
 
-        Value *res = invoke_main_file(argv[1], g, argc, argv);
+        Value *res = invoke_main_file(filename, g, argc, argv);
         if (IS_ERROR(res)) {
             print_error(res);
             return_code = 1;

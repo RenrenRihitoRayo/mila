@@ -14,7 +14,6 @@ unsigned long HASH_SEED = 5381;
 
 void hash_set_seed(unsigned long seed) { HASH_SEED = seed; }
 
-// Simple djb2 hash function
 static unsigned long hash_string(const char *str) {
     unsigned long hash = HASH_SEED;
     int c;
@@ -34,12 +33,13 @@ FN_UNUSED static unsigned long hash_value(Value *val) {
     return hash;
 }
 
-static DictEntry *dict_entry_create(const char *key, Value *value) {
+static DictEntry *dict_entry_create(const char *key, Value *value, unsigned long hash) {
     DictEntry *entry = (DictEntry *)mila_malloc(sizeof(DictEntry));
     if (!entry)
         return NULL;
     entry->key = mila_strdup(key);
     entry->value = val_retain(value);
+    entry->hash = hash;
     entry->next = NULL;
     return entry;
 }
@@ -64,6 +64,8 @@ Dict *dict_create() {
         mila_free(dict);
         return NULL;
     }
+    dict->cache_key = NULL;
+    dict->cache_entry = NULL;
     return dict;
 }
 
@@ -78,9 +80,9 @@ static void dict_resize(Dict *dict) {
         DictEntry *entry = dict->buckets[i];
         while (entry) {
             DictEntry *next = entry->next;
-            unsigned long hash = hash_string(entry->key) % new_capacity;
-            entry->next = new_buckets[hash];
-            new_buckets[hash] = entry;
+            unsigned long index = entry->hash % new_capacity;
+            entry->next = new_buckets[index];
+            new_buckets[index] = entry;
             entry = next;
         }
     }
@@ -88,6 +90,26 @@ static void dict_resize(Dict *dict) {
     mila_free(dict->buckets);
     dict->buckets = new_buckets;
     dict->capacity = new_capacity;
+    dict->cache_key = NULL;
+    dict->cache_entry = NULL;
+}
+
+static DictEntry *dict_find_entry(Dict *dict, const char *key_str, unsigned long hash) {
+    if (dict->cache_key && strcmp(dict->cache_key, key_str) == 0)
+        return dict->cache_entry;
+
+    unsigned long index = hash % dict->capacity;
+    DictEntry *entry = dict->buckets[index];
+
+    while (entry) {
+        if (entry->hash == hash && strcmp(entry->key, key_str) == 0) {
+            dict->cache_key = entry->key;
+            dict->cache_entry = entry;
+            return entry;
+        }
+        entry = entry->next;
+    }
+    return NULL;
 }
 
 int dict_set(Dict *dict, Value *key, Value *value) {
@@ -99,21 +121,18 @@ int dict_set(Dict *dict, Value *key, Value *value) {
     }
 
     char *key_str = as_c_string_repr(key);
+    unsigned long hash = hash_string(key_str);
+    DictEntry *entry = dict_find_entry(dict, key_str, hash);
 
-    unsigned long index = hash_string(key_str) % dict->capacity;
-    DictEntry *entry = dict->buckets[index];
-
-    while (entry) {
-        if (strcmp(entry->key, key_str) == 0) {
-            val_release(entry->value);
-            entry->value = val_retain(value);
-            mila_free(key_str);
-            return 1; // updated existing
-        }
-        entry = entry->next;
+    if (entry) {
+        val_release(entry->value);
+        entry->value = val_retain(value);
+        mila_free(key_str);
+        return 1;
     }
 
-    DictEntry *new_entry = dict_entry_create(key_str, value);
+    unsigned long index = hash % dict->capacity;
+    DictEntry *new_entry = dict_entry_create(key_str, value, hash);
     new_entry->key_type = key->type;
     if (!new_entry) {
         mila_free(key_str);
@@ -122,8 +141,10 @@ int dict_set(Dict *dict, Value *key, Value *value) {
     new_entry->next = dict->buckets[index];
     dict->buckets[index] = new_entry;
     dict->size++;
+    dict->cache_key = new_entry->key;
+    dict->cache_entry = new_entry;
     mila_free(key_str);
-    return 1; // new insertion
+    return 1;
 }
 
 int dict_set_raw(Dict *dict, char *key, Value *value) {
@@ -134,19 +155,17 @@ int dict_set_raw(Dict *dict, char *key, Value *value) {
         dict_resize(dict);
     }
 
-    unsigned long index = hash_string(key) % dict->capacity;
-    DictEntry *entry = dict->buckets[index];
+    unsigned long hash = hash_string(key);
+    DictEntry *entry = dict_find_entry(dict, key, hash);
 
-    while (entry) {
-        if (strcmp(entry->key, key) == 0) {
-            val_release(entry->value);
-            entry->value = val_retain(value);
-            return 1; // updated existing
-        }
-        entry = entry->next;
+    if (entry) {
+        val_release(entry->value);
+        entry->value = val_retain(value);
+        return 1;
     }
 
-    DictEntry *new_entry = dict_entry_create(key, value);
+    unsigned long index = hash % dict->capacity;
+    DictEntry *new_entry = dict_entry_create(key, value, hash);
     if (!new_entry) {
         mila_free(key);
         return 0;
@@ -155,7 +174,9 @@ int dict_set_raw(Dict *dict, char *key, Value *value) {
     new_entry->next = dict->buckets[index];
     dict->buckets[index] = new_entry;
     dict->size++;
-    return 1; // new insertion
+    dict->cache_key = new_entry->key;
+    dict->cache_entry = new_entry;
+    return 1;
 }
 
 Value *dict_get_str(Dict *dict, const char *key) {
@@ -163,17 +184,10 @@ Value *dict_get_str(Dict *dict, const char *key) {
         return NULL;
     char *key_str = NULL;
     malloc_sprintf(&key_str, "\"%s\"", key);
-    unsigned long index = hash_string(key_str) % dict->capacity;
-    DictEntry *entry = dict->buckets[index];
-    while (entry) {
-        if (strcmp(entry->key, key_str) == 0) {
-            free(key_str);
-            return entry->value;
-        }
-        entry = entry->next;
-    }
+    unsigned long hash = hash_string(key_str);
+    DictEntry *entry = dict_find_entry(dict, key_str, hash);
     free(key_str);
-    return NULL;
+    return entry ? entry->value : NULL;
 }
 
 int dict_set_str(Dict *dict, char *str_key, Value *value) {
@@ -186,20 +200,18 @@ int dict_set_str(Dict *dict, char *str_key, Value *value) {
 
     char *key = NULL;
     malloc_sprintf(&key, "\"%s\"", str_key);
+    unsigned long hash = hash_string(key);
+    DictEntry *entry = dict_find_entry(dict, key, hash);
 
-    unsigned long index = hash_string(key) % dict->capacity;
-    DictEntry *entry = dict->buckets[index];
-
-    while (entry) {
-        if (strcmp(entry->key, key) == 0) {
-            val_release(entry->value);
-            entry->value = val_retain(value);
-            return 1; // updated existing
-        }
-        entry = entry->next;
+    if (entry) {
+        val_release(entry->value);
+        entry->value = val_retain(value);
+        mila_free(key);
+        return 1;
     }
 
-    DictEntry *new_entry = dict_entry_create(key, value);
+    unsigned long index = hash % dict->capacity;
+    DictEntry *new_entry = dict_entry_create(key, value, hash);
     if (!new_entry) {
         mila_free(key);
         return 0;
@@ -208,25 +220,20 @@ int dict_set_str(Dict *dict, char *str_key, Value *value) {
     new_entry->next = dict->buckets[index];
     dict->buckets[index] = new_entry;
     dict->size++;
+    dict->cache_key = new_entry->key;
+    dict->cache_entry = new_entry;
     mila_free(key);
-    return 1; // new insertion
+    return 1;
 }
 
 Value *dict_get(Dict *dict, Value *key) {
     if (!dict || !key)
         return NULL;
     char *key_str = as_c_string_repr(key);
-    unsigned long index = hash_string(key_str) % dict->capacity;
-    DictEntry *entry = dict->buckets[index];
-    while (entry) {
-        if (strcmp(entry->key, key_str) == 0) {
-            mila_free(key_str);
-            return entry->value;
-        }
-        entry = entry->next;
-    }
+    unsigned long hash = hash_string(key_str);
+    DictEntry *entry = dict_find_entry(dict, key_str, hash);
     mila_free(key_str);
-    return NULL;
+    return entry ? entry->value : NULL;
 }
 
 int dict_remove(Dict *dict, Value *key) {
@@ -234,16 +241,23 @@ int dict_remove(Dict *dict, Value *key) {
         return 0;
 
     char *key_str = as_c_string_repr(key);
-    unsigned long index = hash_string(key_str) % dict->capacity;
+    unsigned long hash = hash_string(key_str);
+    unsigned long index = hash % dict->capacity;
     DictEntry *entry = dict->buckets[index];
     DictEntry *prev = NULL;
 
     while (entry) {
-        if (strcmp(entry->key, key_str) == 0) {
+        if (entry->hash == hash && strcmp(entry->key, key_str) == 0) {
             if (prev)
                 prev->next = entry->next;
             else
                 dict->buckets[index] = entry->next;
+            
+            if (dict->cache_entry == entry) {
+                dict->cache_key = NULL;
+                dict->cache_entry = NULL;
+            }
+            
             dict_entry_free(entry);
             dict->size--;
             mila_free(key_str);
@@ -286,7 +300,6 @@ Value *dict_str(Value *self) {
     if (!entries)
         return NULL;
 
-    // Collect all entries
     for (size_t i = 0; i < dict->capacity; i++) {
         DictEntry *entry = dict->buckets[i];
         while (entry) {
@@ -337,7 +350,6 @@ Value *dict_copy(Value *self) {
     if (!copy)
         return NULL;
 
-    // Deep copy all entries
     for (size_t i = 0; i < original->capacity; i++) {
         DictEntry *entry = original->buckets[i];
         while (entry) {
@@ -369,7 +381,6 @@ Value **dict_keys(Dict *dict) {
     if (!entries)
         return NULL;
 
-    // Collect all entries
     for (size_t i = 0; i < dict->capacity; i++) {
         DictEntry *entry = dict->buckets[i];
         while (entry) {

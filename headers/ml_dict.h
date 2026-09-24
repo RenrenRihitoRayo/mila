@@ -8,12 +8,15 @@ typedef struct DictEntry {
     char *key;
     Value *value;
     struct DictEntry *next;
+    unsigned long hash;
 } DictEntry;
 
 typedef struct {
     DictEntry **buckets;
     size_t capacity;
     size_t size;
+    char* cache_key;
+    DictEntry* cache_entry;
 } Dict;
 
 typedef struct {
@@ -31,7 +34,7 @@ typedef struct {
 void hash_set_seed(unsigned long seed);
 static unsigned long hash_string(const char *str);
 FN_UNUSED static unsigned long hash_value(Value *val);
-static DictEntry *dict_entry_create(const char *key, Value *value);
+static DictEntry *dict_entry_create(const char *key, Value *value, unsigned long hash);
 static void dict_entry_free(DictEntry *entry);
 Dict *dict_create();
 static void dict_resize(Dict *dict);

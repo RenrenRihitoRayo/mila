@@ -5,529 +5,512 @@
 #include "ml_dict.h"
 #include "ml_ll.c"
 #include "ml_primitives.h"
-#include "ml_string.c"
 #include <ctype.h>
+
+typedef struct {
+    char *data;
+    size_t capacity;
+    size_t len;
+} StringBuffer;
+
+static inline StringBuffer* sb_new(size_t initial_capacity) {
+    StringBuffer *sb = mila_malloc(sizeof(StringBuffer));
+    sb->capacity = initial_capacity > 256 ? initial_capacity : 256;
+    sb->data = mila_malloc(sb->capacity);
+    sb->len = 0;
+    return sb;
+}
+
+static inline void sb_append_char(StringBuffer *sb, char c) {
+    if (sb->len + 1 >= sb->capacity) {
+        sb->capacity *= 2;
+        sb->data = mila_realloc(sb->data, sb->capacity);
+    }
+    sb->data[sb->len++] = c;
+}
+
+static inline void sb_append_str(StringBuffer *sb, const char *str) {
+    size_t str_len = strlen(str);
+    if (sb->len + str_len >= sb->capacity) {
+        sb->capacity = (sb->len + str_len) * 1.7;
+        sb->data = mila_realloc(sb->data, sb->capacity);
+    }
+    memcpy(sb->data + sb->len, str, str_len);
+    sb->len += str_len;
+}
+
+static inline void sb_append_fmt(StringBuffer *sb, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int needed = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    
+    if (sb->len + needed >= sb->capacity) {
+        sb->capacity = (sb->len + needed) * 1.7;
+        sb->data = mila_realloc(sb->data, sb->capacity);
+    }
+    
+    va_start(args, fmt);
+    vsnprintf(sb->data + sb->len, needed + 1, fmt, args);
+    va_end(args);
+    sb->len += needed;
+}
+
+static inline char* sb_free_get(StringBuffer *sb) {
+    sb->data[sb->len] = '\0';
+    char *result = sb->data;
+    mila_free(sb);
+    return result;
+}
+
+static inline void sb_free(StringBuffer *sb) {
+    mila_free(sb->data);
+    mila_free(sb);
+}
+
+typedef struct {
+    FILE *f;
+    char *data;
+    size_t capacity;
+    size_t len;
+} FileBuffer;
+
+static inline FileBuffer* fb_new(FILE *f, size_t initial_capacity) {
+    FileBuffer *fb = mila_malloc(sizeof(FileBuffer));
+    fb->f = f;
+    fb->capacity = initial_capacity;
+    fb->data = mila_malloc(fb->capacity);
+    fb->len = 0;
+    return fb;
+}
+
+static inline void fb_flush(FileBuffer *fb) {
+    if (fb->len > 0) {
+        fwrite(fb->data, 1, fb->len, fb->f);
+        fb->len = 0;
+    }
+}
+
+static inline void fb_append_char(FileBuffer *fb, char c) {
+    if (fb->len + 1 >= fb->capacity) {
+        fb_flush(fb);
+    }
+    fb->data[fb->len++] = c;
+}
+
+static inline void fb_append_str(FileBuffer *fb, const char *str) {
+    size_t str_len = strlen(str);
+    if (fb->len + str_len >= fb->capacity) {
+        fb_flush(fb);
+        if (str_len >= fb->capacity) {
+            fwrite(str, 1, str_len, fb->f);
+            return;
+        }
+    }
+    memcpy(fb->data + fb->len, str, str_len);
+    fb->len += str_len;
+}
+
+static inline void fb_append_fmt(FileBuffer *fb, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int needed = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    
+    if (fb->len + needed >= fb->capacity) {
+        fb_flush(fb);
+        if ((size_t)needed >= fb->capacity) {
+            va_start(args, fmt);
+            vfprintf(fb->f, fmt, args);
+            va_end(args);
+            return;
+        }
+    }
+    
+    va_start(args, fmt);
+    vsnprintf(fb->data + fb->len, needed + 1, fmt, args);
+    va_end(args);
+    fb->len += needed;
+}
+
+static inline void fb_free_flush(FileBuffer *fb) {
+    fb_flush(fb);
+    mila_free(fb->data);
+    mila_free(fb);
+}
 
 Value *native_list_append(Env *, int, Value **);
 Value *parse_dict_unified(Src *json, int parse_fn);
 
-// turn \xXX to \uXXXX for JSON valid escapes
-// because why should JSON respect hex escapes?
-void ascii_to_unicode(char **buffer, const char *input) {
-    const uint8_t *text = (const uint8_t *)input;
-
-    for (size_t i = 0; i < strlen(input); ++i) {
-        uint8_t byte = text[i];
-
-        if (byte < 0x80) {
-            switch (byte) {
-            case '\b':
-                malloc_sprintf(buffer, "\\b");
-                break;
-            case '\f':
-                malloc_sprintf(buffer, "\\f");
-                break;
-            case '\n':
-                malloc_sprintf(buffer, "\\n");
-                break;
-            case '\r':
-                malloc_sprintf(buffer, "\\r");
-                break;
-            case '\t':
-                malloc_sprintf(buffer, "\\t");
-                break;
-            case '"':
-                malloc_sprintf(buffer, "\\\"");
-                break;
-            case '\\':
-                malloc_sprintf(buffer, "\\\\");
-                break;
-            default:
-                if (isprint(byte))
-                    malloc_sprintf(buffer, "%c", byte);
-                else
-                    malloc_sprintf(buffer, "\\u%04X", byte);
-            }
-        } else if ((byte & 0xE0) == 0xC0 && i + 1 < strlen(input)) {
-            uint32_t codepoint = ((byte & 0x1F) << 6) | (text[1 + i] & 0x3F);
-            malloc_sprintf(buffer, "\\u%04X", codepoint);
-            i++;
-        } else if ((byte & 0xF0) == 0xE0 && i + 2 < strlen(input)) {
-            uint32_t codepoint = ((byte & 0x0F) << 12) |
-                                 ((text[1 + i] & 0x3F) << 6) |
-                                 (text[2 + i] & 0x3F);
-            malloc_sprintf(buffer, "\\u%04X", codepoint);
-            i += 2;
-        } else if ((byte & 0xF8) == 0xF0 && i + 3 < strlen(input)) {
-            uint32_t codepoint =
-                ((byte & 0x07) << 18) | ((text[1 + i] & 0x3F) << 12) |
-                ((text[2 + i] & 0x3F) << 6) | (text[3 + i] & 0x3F);
-            malloc_sprintf(buffer, "\\u%04X", codepoint);
-            i += 3;
-        } else {
-            malloc_sprintf(buffer, "\\u%04X", byte);
-        }
-    }
-}
-
-// Parse unified mjson flag enables fn parsing
 Value *parse_expr_unified(Src *s, int parse_fn) {
     skip_ws(s);
     char c = src_peek(s);
-    if (c == '\0')
-        return vnull();
-
-    if (isdigit((unsigned char)c) ||
-        ((c == '+' || c == '-') &&
-         isdigit((unsigned char)s->src[s->pos + 1])) ||
-        (c == '0' && (s->src[s->pos + 1] == 'x' || s->src[s->pos + 1] == 'X') &&
-         isxdigit((unsigned char)s->src[s->pos + 2])))
+    if (c == '\0') return vnull();
+    if (isdigit((unsigned char)c) || ((c == '+' || c == '-') && isdigit((unsigned char)s->src[s->pos + 1])) || (c == '0' && (s->src[s->pos + 1] == 'x' || s->src[s->pos + 1] == 'X') && isxdigit((unsigned char)s->src[s->pos + 2])))
         return parse_number(s);
-
-    if (c == '"')
-        return parse_string(s);
-
+    if (c == '"') return parse_string(s);
     if (c == '[') {
         src_get(s);
-        size_t start = s->pos;
-        Value **args = NULL;
         Value *list = call_native_with(NULL, native_list_new, NULL);
-        int argc = 0;
         skip_ws(s);
-
         if (src_peek(s) != ']') {
             for (;;) {
                 Value *a = parse_expr_unified(s, parse_fn);
-                if (IS_ERROR(a)) {
-                    mila_free(args);
-                    val_release(list);
-                    return a;
-                }
-                args = mila_realloc(args, sizeof(Value *) * (argc + 1));
-                args[argc++] = a;
-                val_release(call_native_with(NULL, native_list_append,
-                                             val_retain(list), a, NULL));
+                if (IS_ERROR(a)) { val_release(list); return a; }
+                val_release(call_native_with(NULL, native_list_append, val_retain(list), a, NULL));
                 skip_ws(s);
-
-                if (match_char(s, ','))
-                    continue;
-                if (match_char(s, ']'))
-                    break;
-
+                if (match_char(s, ',')) continue;
+                if (match_char(s, ']')) break;
                 val_release(list);
-                mila_free(args);
-                int k = 1;
-                while (k) {
-                    if (src_peek(s) == '[')
-                        k++;
-                    if (src_peek(s) == ']')
-                        k--;
-                    s->pos++;
-                }
-                size_t end = s->pos;
-                return vtagged_error(
-                    E_SYNTAX_ERROR,
-                    "Expected a %s or closing bracket!\nAt list `%.*s`",
-                    "comma", (int)(end - start + 1), s->src + start - 1);
+                return verror("Expected comma or bracket");
             }
-        } else {
-            src_get(s);
-        }
-        free(args);
+        } else src_get(s);
         return list;
     }
-
-    if (c == '{')
-        return parse_dict_unified(s, parse_fn);
-
+    if (c == '{') return parse_dict_unified(s, parse_fn);
     if (is_ident_start(c)) {
         char *id = parse_ident(s);
-        if (!id)
-            return vnull();
-
-        if (strcmp(id, "null") == 0) {
-            mila_free(id);
-            return vnull();
-        }
-        if (strcmp(id, "true") == 0) {
-            mila_free(id);
-            return vbool(1);
-        }
-        if (strcmp(id, "false") == 0) {
-            mila_free(id);
-            return vbool(0);
-        }
-
-        if (parse_fn && strcmp(id, "fn") == 0) {
-            free(id);
-            FunctionParameters *params = parse_param_list(s);
-            char **contextuals = parse_context_list(s);
-            Env *closure = env_new(NULL);
-            char *ret = NULL;
-
-            if (match_char(s, ':')) {
-                char **names = parse_context_list(s);
-                for (int i = 0; names[i]; ++i)
-                    mila_free(names[i]);
-                mila_free(names);
-            }
-
-            if (is_keyword_at(s, "->")) {
-                s->pos += 2;
-                skip_ws(s);
-                if (src_peek(s) == '"') {
-                    Value *ret_type = parse_string(s);
-                    ret = mila_strdup(GET_STRING(ret_type));
-                    val_kill(ret_type);
-                } else {
-                    env_free(closure);
-                    for (int i = 0; params->params[i]; ++i) {
-                        mila_free(params->params[i]);
-                        mila_free(params->defaults[i]);
-                        mila_free(params->types[i]);
-                    }
-                    mila_free(params->params);
-                    mila_free(params->defaults);
-                    mila_free(params->types);
-                    mila_free(params);
-                    return vtagged_error(
-                        E_SYNTAX_ERROR,
-                        "Expected a string literal for the return type.");
-                }
-            }
-
-            skip_ws(s);
-            size_t start = s->pos, i = s->pos;
-
-            if (src_peek(s) == '{') {
-                int depth = 0;
-                for (; i < s->len; ++i) {
-                    char ch = s->src[i];
-                    if (ch == '{')
-                        depth++;
-                    else if (ch == '}') {
-                        depth--;
-                        if (depth == 0) {
-                            i++;
-                            break;
-                        }
-                    } else if (ch == '"') {
-                        i++;
-                        while (i < s->len && s->src[i] != '"') {
-                            if (s->src[i] == '\\' && i + 1 < s->len)
-                                i += 2;
-                            else
-                                i++;
-                        }
-                    }
-                }
-            } else {
-                skip_parse_statement(s);
-                i = s->pos;
-            }
-
-            if (i > s->len)
-                i = s->len;
-            int blen = i - start;
-            char *body = mila_malloc(blen + 1);
-            memcpy(body, s->src + start, blen);
-            body[blen] = 0;
-            s->pos = i;
-
-            Value *fn = vfunction(params, ret, contextuals, closure, body);
-            free(params);
-            GET_FUNCTION(fn)->name = mila_strdup("[lambda]");
-            return fn;
-        }
-
+        if (!id) return vnull();
+        if (strcmp(id, "null") == 0) { mila_free(id); return vnull(); }
+        if (strcmp(id, "true") == 0) { mila_free(id); return vbool(1); }
+        if (strcmp(id, "false") == 0) { mila_free(id); return vbool(0); }
         mila_free(id);
     }
-
     return vnull();
 }
 
-// Dict parser unified
 Value *parse_dict_unified(Src *json, int parse_fn) {
-    if (!match_char(json, '{'))
-        return verror("invalid dict");
+    if (!match_char(json, '{')) return verror("invalid dict");
     Value *dict = call_native_with(NULL, native_new_dict, NULL);
     skip_ws(json);
-
     while (src_peek(json) != '}') {
         Value *id = NULL;
-
-        if (is_ident_start(src_peek(json))) {
-            id = vstring_take(parse_ident(json));
-        } else if (src_peek(json) == '"') {
-            id = parse_string(json);
-        } else {
-            break;
-        }
-
-        if (!match_char(json, ':'))
-            return verror("Expected colon!");
-
+        if (is_ident_start(src_peek(json))) id = vstring_take(parse_ident(json));
+        else if (src_peek(json) == '"') id = parse_string(json);
+        else break;
+        if (!match_char(json, ':')) return verror("Expected colon!");
         Value *value = parse_expr_unified(json, parse_fn);
-        if (parse_fn && GET_TYPE(value) == T_FUNCTION) {
-            free(GET_FUNCTION(value)->name);
-            GET_FUNCTION(value)->name = mila_strdup(GET_STRING(id));
-        }
-
-        val_release(call_native_with(NULL, native_set_dict, val_retain(dict),
-                                     id, value, NULL));
+        val_release(call_native_with(NULL, native_set_dict, val_retain(dict), id, value, NULL));
         val_release(value);
         skip_ws(json);
-
-        if (match_char(json, ',')) {
-            skip_ws(json);
-            if (src_peek(json) == '}')
-                break;
-        }
+        if (match_char(json, ',')) { skip_ws(json); if (src_peek(json) == '}') break; }
     }
-
     src_get(json);
     return dict;
 }
 
-Value *parse_json(Src *s) { return parse_expr_unified(s, 0); }
+void ascii_to_unicode(StringBuffer *sb, const char *input) {
+    const uint8_t *text = (const uint8_t *)input;
+    size_t len = strlen(input);
 
+    for (size_t i = 0; i < len; ++i) {
+        uint8_t byte = text[i];
+        if (byte < 0x80) {
+            switch (byte) {
+            case '\b': sb_append_str(sb, "\\b"); break;
+            case '\f': sb_append_str(sb, "\\f"); break;
+            case '\n': sb_append_str(sb, "\\n"); break;
+            case '\r': sb_append_str(sb, "\\r"); break;
+            case '\t': sb_append_str(sb, "\\t"); break;
+            case '"':  sb_append_str(sb, "\\\""); break;
+            case '\\': sb_append_str(sb, "\\\\"); break;
+            default:
+                if (byte >= 0x20 && byte < 0x7F)
+                    sb_append_char(sb, byte);
+                else
+                    sb_append_fmt(sb, "\\u%04X", byte);
+            }
+        } else {
+            sb_append_fmt(sb, "\\u%04X", byte);
+        }
+    }
+}
+
+Value *parse_json(Src *s) { return parse_expr_unified(s, 0); }
 Value *parse_mjson(Src *s) { return parse_expr_unified(s, 1); }
 
-// Serialize unified include_fn flag
-// TODO: swap result from string to a string builder to avoid contineous alloc
-char *_mila_to_json_unified(Value *v, int level, int include_fn) {
-    char *result = NULL;
+static void _mila_to_json_impl(StringBuffer *sb, Value *v, int level, int include_fn);
 
+static inline void serialize_escaped_string(StringBuffer *sb, const char *str) {
+    sb_append_char(sb, '"');
+    ascii_to_unicode(sb, str);
+    sb_append_char(sb, '"');
+}
+
+static inline void serialize_list(StringBuffer *sb, LinkedList *list, int level, int include_fn) {
+    if (list->size == 0) {
+        sb_append_str(sb, "[]");
+        return;
+    }
+    
+    sb_append_str(sb, "[\n");
+    for (size_t i = 0; i < list->size; ++i) {
+        for (int j = 0; j < level; ++j) sb_append_str(sb, "  ");
+        _mila_to_json_impl(sb, ll_get(list, i), level + 1, include_fn);
+        if (i < list->size - 1) sb_append_char(sb, ',');
+        sb_append_char(sb, '\n');
+    }
+    for (int j = 0; j < level - 1; ++j) sb_append_str(sb, "  ");
+    sb_append_char(sb, ']');
+}
+
+static inline void serialize_dict(StringBuffer *sb, Dict *dict, int level, int include_fn) {
+    if (dict->size == 0) {
+        sb_append_str(sb, "{}");
+        return;
+    }
+    
+    sb_append_str(sb, "{\n");
+    int first = 1;
+    
+    for (size_t i = 0; i < dict->capacity; ++i) {
+        for (DictEntry *entry = dict->buckets[i]; entry; entry = entry->next) {
+            if (!first) sb_append_str(sb, ",\n");
+            first = 0;
+            for (int j = 0; j < level; ++j) sb_append_str(sb, "  ");
+            sb_append_str(sb, entry->key);
+            sb_append_str(sb, ": ");
+            _mila_to_json_impl(sb, entry->value, level + 1, include_fn);
+        }
+    }
+    
+    sb_append_char(sb, '\n');
+    for (int j = 0; j < level - 1; ++j) sb_append_str(sb, "  ");
+    sb_append_char(sb, '}');
+}
+
+static void _mila_to_json_impl(StringBuffer *sb, Value *v, int level, int include_fn) {
     if (!v) {
-        malloc_sprintf(&result, "null");
-        return result;
+        sb_append_str(sb, "null");
+        return;
     }
 
     switch (GET_TYPE(v)) {
     case T_NULL:
-        malloc_sprintf(&result, "null");
+        sb_append_str(sb, "null");
         break;
     case T_BOOL:
-        malloc_sprintf(&result, GET_BOOL(v) ? "true" : "false");
+        sb_append_str(sb, GET_BOOL(v) ? "true" : "false");
         break;
     case T_INT:
     case T_UINT:
-        malloc_sprintf(&result, "%ld", GET_INTEGER(v));
+        sb_append_fmt(sb, "%ld", GET_INTEGER(v));
         break;
     case T_FLOAT: {
         double d = GET_FLOAT(v);
-        malloc_sprintf(&result, d == (long long)d ? "%.1f" : "%.17g", d);
+        sb_append_fmt(sb, d == (long long)d ? "%.1f" : "%.17g", d);
         break;
     }
     case T_STRING: {
-        malloc_sprintf(&result, "\"");
-        ascii_to_unicode(&result, GET_STRING(v));
-        malloc_sprintf(&result, "\"");
+        serialize_escaped_string(sb, GET_STRING(v));
         break;
     }
     case T_OPAQUE:
     case T_OWNED_OPAQUE: {
-        if (v->type_name && strcmp(v->type_name, "list") == 0) {
-            LinkedList *list = (LinkedList *)GET_OPAQUE(v);
-            if (list->size == 0) {
-                malloc_sprintf(&result, "[]");
-            } else if (list->size < 17) {
-                malloc_sprintf(&result, "[");
-                for (size_t i = 0; i < list->size; ++i) {
-                    char *item_json = _mila_to_json_unified(ll_get(list, i),
-                                                            level + 1, include_fn);
-                    malloc_sprintf(&result, "%s%s", item_json,
-                                   i < list->size - 1 ? ", " : "");
-                    mila_free(item_json);
-                }
-                malloc_sprintf(&result, "]", (level - 1) * 2, "");
-            } else {
-                malloc_sprintf(&result, "[\n%*s", level * 2, "");
-                for (size_t i = 0; i < list->size; i += 16) {
-                    size_t j = i;
-                    for (; j - i < 16 && j < list->size; j++) {
-                        char *item_json = _mila_to_json_unified(ll_get(list, j),
-                                                                level + 1, include_fn);
-                        malloc_sprintf(&result, "%s%s", item_json,
-                                       j < list->size - 1 ? ", " : "");
-                        mila_free(item_json);
-                    }
-                    malloc_sprintf(&result, "\n%*s", j < list->size-1 ? level * 2 : (level - 1) * 2, "");
-                }
-                malloc_sprintf(&result, "]");
-            }
-        } else if (v->type_name &&
-                   strcmp(v->type_name, "dict") == 0) {
-            Dict *dict = (Dict *)GET_OPAQUE(v);
-            if (dict->size == 0) {
-                malloc_sprintf(&result, "{}");
-                break;
-            } else {
-                malloc_sprintf(&result, "{\n");
-                int first = 1;
-                for (size_t i = 0; i < dict->capacity; ++i) {
-                    for (DictEntry *entry = dict->buckets[i]; entry;
-                         entry = entry->next) {
-                        if (!first)
-                            malloc_sprintf(&result, ",\n");
-                        first = 0;
-                        char *val_json = _mila_to_json_unified(
-                            entry->value, level + 1, include_fn);
-                        malloc_sprintf(&result, "%*s%s: %s", level * 2, "",
-                                       entry->key, val_json);
-                        mila_free(val_json);
-                    }
-                }
-                malloc_sprintf(&result, "\n%*s}", (level - 1) * 2, "");
-            }
+        if (!v->type_name) {
+            sb_append_str(sb, "null");
+            break;
+        }
+        
+        if (strcmp(v->type_name, "list") == 0) {
+            serialize_list(sb, (LinkedList *)GET_OPAQUE(v), level + 1, include_fn);
+        } else if (strcmp(v->type_name, "dict") == 0) {
+            serialize_dict(sb, (Dict *)GET_OPAQUE(v), level + 1, include_fn);
         } else {
-            malloc_sprintf(&result, "null");
+            sb_append_str(sb, "null");
         }
         break;
     }
     case T_FUNCTION: {
         if (include_fn) {
             FunctionV *fn = GET_FUNCTION(v);
-            char *args = mila_strdup("");
+            sb_append_str(sb, "fn(");
+            
             for (int i = 0; fn->params[i]; ++i) {
-                malloc_sprintf(&args, "%s%s%s", args, fn->params[i],
-                               fn->defaults[i] ? fn->defaults[i] : "");
+                sb_append_str(sb, fn->params[i]);
+                if (fn->defaults[i])
+                    sb_append_str(sb, fn->defaults[i]);
                 if (fn->params[i + 1])
-                    malloc_sprintf(&args, "%s,", args);
+                    sb_append_char(sb, ',');
             }
-            malloc_sprintf(&result, "fn(%s) { %s }", args, fn->body_src);
-            free(args);
+            
+            sb_append_str(sb, ") {\n");
+            char *indented = indent(fn->body_src, level + 1);
+            sb_append_str(sb, indented);
+            mila_free(indented);
+            sb_append_char(sb, '\n');
+            sb_append_char(sb, '}');
         } else {
-            malloc_sprintf(&result, "null");
+            sb_append_str(sb, "null");
         }
         break;
     }
     default:
-        malloc_sprintf(&result, "null");
+        sb_append_str(sb, "null");
     }
-
-    return result;
 }
 
-// File write unified
-long _io_mila_to_json_unified(FILE *file, Value *v, int level, int include_fn) {
-    long result = 0;
+char *mila_to_json(Value *v) {
+    StringBuffer *sb = sb_new(500);
+    _mila_to_json_impl(sb, v, 1, 0);
+    return sb_free_get(sb);
+}
 
-    if (!v)
-        return fprintf(file, "null");
+char *mila_to_mjson(Value *v) {
+    StringBuffer *sb = sb_new(500);
+    _mila_to_json_impl(sb, v, 1, 1);
+    return sb_free_get(sb);
+}
+
+static void _mila_to_json_file_impl(FileBuffer *fb, Value *v, int level, int include_fn);
+
+static inline void serialize_list_file(FileBuffer *fb, LinkedList *list, int level, int include_fn) {
+    if (list->size == 0) {
+        fb_append_str(fb, "[]");
+        return;
+    }
+    
+    fb_append_str(fb, "[\n");
+    for (size_t i = 0; i < list->size; ++i) {
+        for (int j = 0; j < level; ++j) fb_append_str(fb, "  ");
+        _mila_to_json_file_impl(fb, ll_get(list, i), level + 1, include_fn);
+        if (i < list->size - 1) fb_append_char(fb, ',');
+        fb_append_char(fb, '\n');
+    }
+    for (int j = 0; j < level - 1; ++j) fb_append_str(fb, "  ");
+    fb_append_char(fb, ']');
+}
+
+static inline void serialize_dict_file(FileBuffer *fb, Dict *dict, int level, int include_fn) {
+    if (dict->size == 0) {
+        fb_append_str(fb, "{}");
+        return;
+    }
+    
+    fb_append_str(fb, "{\n");
+    int first = 1;
+    
+    for (size_t i = 0; i < dict->capacity; ++i) {
+        for (DictEntry *entry = dict->buckets[i]; entry; entry = entry->next) {
+            if (!first) fb_append_str(fb, ",\n");
+            first = 0;
+            for (int j = 0; j < level; ++j) fb_append_str(fb, "  ");
+            fb_append_str(fb, entry->key);
+            fb_append_str(fb, ": ");
+            _mila_to_json_file_impl(fb, entry->value, level + 1, include_fn);
+        }
+    }
+    
+    fb_append_char(fb, '\n');
+    for (int j = 0; j < level - 1; ++j) fb_append_str(fb, "  ");
+    fb_append_char(fb, '}');
+}
+
+static void _mila_to_json_file_impl(FileBuffer *fb, Value *v, int level, int include_fn) {
+    if (!v) {
+        fb_append_str(fb, "null");
+        return;
+    }
 
     switch (GET_TYPE(v)) {
     case T_NULL:
-        result += fprintf(file, "null");
+        fb_append_str(fb, "null");
         break;
     case T_BOOL:
-        result += fprintf(file, GET_BOOL(v) ? "true" : "false");
+        fb_append_str(fb, GET_BOOL(v) ? "true" : "false");
         break;
     case T_INT:
     case T_UINT:
-        result += fprintf(file, "%ld", GET_INTEGER(v));
+        fb_append_fmt(fb, "%ld", GET_INTEGER(v));
         break;
     case T_FLOAT: {
         double d = GET_FLOAT(v);
-        result += fprintf(file, d == (long long)d ? "%.1f" : "%.17g", d);
+        fb_append_fmt(fb, d == (long long)d ? "%.1f" : "%.17g", d);
         break;
     }
     case T_STRING: {
-        char *escaped = NULL;
-        ascii_to_unicode(&escaped, GET_STRING(v));
-        result += fprintf(file, "\"%s\"", escaped);
-        mila_free(escaped);
+        fb_append_char(fb, '"');
+        const uint8_t *text = (const uint8_t *)GET_STRING(v);
+        size_t len = strlen(GET_STRING(v));
+        for (size_t i = 0; i < len; ++i) {
+            uint8_t byte = text[i];
+            if (byte < 0x80) {
+                switch (byte) {
+                case '\b': fb_append_str(fb, "\\b"); break;
+                case '\f': fb_append_str(fb, "\\f"); break;
+                case '\n': fb_append_str(fb, "\\n"); break;
+                case '\r': fb_append_str(fb, "\\r"); break;
+                case '\t': fb_append_str(fb, "\\t"); break;
+                case '"':  fb_append_str(fb, "\\\""); break;
+                case '\\': fb_append_str(fb, "\\\\"); break;
+                default:
+                    if (byte >= 0x20 && byte < 0x7F)
+                        fb_append_char(fb, byte);
+                    else
+                        fb_append_fmt(fb, "\\u%04X", byte);
+                }
+            } else {
+                fb_append_fmt(fb, "\\u%04X", byte);
+            }
+        }
+        fb_append_char(fb, '"');
         break;
     }
     case T_OPAQUE:
     case T_OWNED_OPAQUE: {
-        if (v->type_name && strcmp(v->type_name, "list") == 0) {    
-            LinkedList *list = (LinkedList *)GET_OPAQUE(v);
-            if (list->size == 0) {
-                result += fprintf(file, "[]");
-            } else if (list->size < 17) {
-                result += fprintf(file, "[");
-                for (size_t i = 0; i < list->size; ++i) {
-                    char *item_json = _mila_to_json_unified(ll_get(list, i),
-                                                            level + 1, include_fn);
-                    result += fprintf(file, "%s%s", item_json,
-                                   i < list->size - 1 ? ", " : "");
-                    mila_free(item_json);
-                }
-                result += fprintf(file, "]");
-            } else {
-                result += fprintf(file, "[\n%*s", level * 2, "");
-                for (size_t i = 0; i < list->size; i += 16) {
-                    size_t j = i;
-                    for (; j - i < 16 && j < list->size; j++) {
-                        char *item_json = _mila_to_json_unified(ll_get(list, j),
-                                                                level + 1, include_fn);
-                        result += fprintf(file, "%s%s", item_json,
-                                       j < list->size - 1 ? ", " : "");
-                        mila_free(item_json);
-                    }
-                    result += fprintf(file, "\n%*s", j < list->size-1 ? level * 2 : (level - 1) * 2, "");
-                }
-                result += fprintf(file, "]");
-            }
-        } else if (v->type_name &&
-                   strcmp(v->type_name, "dict") == 0) {
-            Dict *dict = (Dict *)GET_OPAQUE(v);
-            if (dict->size == 0) {
-                result += fprintf(file, "{}");
-            } else {
-                result += fprintf(file, "{\n");
-                int first = 1;
-                for (size_t i = 0; i < dict->capacity; ++i) {
-                    for (DictEntry *entry = dict->buckets[i]; entry;
-                         entry = entry->next) {
-                        if (!first)
-                            result += fprintf(file, ",\n");
-                        first = 0;
-                        result +=
-                            fprintf(file, "%*s%s: ", level * 2, "", entry->key);
-                        result += _io_mila_to_json_unified(file, entry->value,
-                                                           level + 1, include_fn);
-                    }
-                }
-                result += fprintf(file, "\n%*s}", (level - 1) * 2, "");
-            }
+        if (!v->type_name) {
+            fb_append_str(fb, "null");
+            break;
+        }
+        
+        if (strcmp(v->type_name, "list") == 0) {
+            serialize_list_file(fb, (LinkedList *)GET_OPAQUE(v), level, include_fn);
+        } else if (strcmp(v->type_name, "dict") == 0) {
+            serialize_dict_file(fb, (Dict *)GET_OPAQUE(v), level, include_fn);
         } else {
-            result += fprintf(file, "null");
+            fb_append_str(fb, "null");
         }
         break;
     }
     case T_FUNCTION: {
         if (include_fn) {
             FunctionV *fn = GET_FUNCTION(v);
-            result += fprintf(file, "fn(");
+            fb_append_str(fb, "fn(");
+            
             for (int i = 0; fn->params[i]; ++i) {
-                result += fprintf(file, "%s%s", fn->params[i],
-                                  fn->defaults[i] ? fn->defaults[i] : "");
+                fb_append_str(fb, fn->params[i]);
+                if (fn->defaults[i])
+                    fb_append_str(fb, fn->defaults[i]);
                 if (fn->params[i + 1])
-                    result += fprintf(file, ",");
+                    fb_append_char(fb, ',');
             }
-            result += fprintf(file, ") { %s }", fn->body_src);
+            
+            fb_append_str(fb, ") {\n");
+            char *indented = indent(fn->body_src, level);
+            fb_append_str(fb, indented);
+            mila_free(indented);
+            fb_append_char(fb, '\n');
+            fb_append_char(fb, '}');
         } else {
-            result += fprintf(file, "null");
+            fb_append_str(fb, "null");
         }
         break;
     }
     default:
-        result += fprintf(file, "null");
+        fb_append_str(fb, "null");
     }
-
-    return result;
 }
-
-char *mila_to_json(Value *v) { return _mila_to_json_unified(v, 1, 0); }
-
-char *mila_to_mjson(Value *v) { return _mila_to_json_unified(v, 1, 1); }
 
 long mila_to_json_io(FILE *file, Value *v) {
-    return _io_mila_to_json_unified(file, v, 1, 0);
+    FileBuffer *fb = fb_new(file, 4096);
+    _mila_to_json_file_impl(fb, v, 1, 0);
+    fb_free_flush(fb);
+    return 0;
 }
 
 long mila_to_mjson_io(FILE *file, Value *v) {
-    return _io_mila_to_json_unified(file, v, 1, 1);
+    FileBuffer *fb = fb_new(file, 4096);
+    _mila_to_json_file_impl(fb, v, 1, 1);
+    fb_free_flush(fb);
+    return 0;
 }

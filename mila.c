@@ -8140,7 +8140,7 @@ Value *run_file_keep_res(char *name, Env *env) {
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
     if (!f) {
-        return verror("Cannot open %s\n", name);
+        return verror("Cannot open %s\n  Cause: %s", name, strerror(errno));
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -8164,7 +8164,9 @@ int invoke_file(char *name, Env *env) {
 #ifndef RESTRICTED_BUILD
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
-    char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+    char *loc_dir = NULL;
+    if (_loc_dir[0] != '/') loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+    else loc_dir = _loc_dir;
     mila_free(_loc_dir);
     mila_free(cwd);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
@@ -8230,8 +8232,12 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[]) {
 #ifndef RESTRICTED_BUILD
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
-    char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
-    mila_free(_loc_dir);
+    char *loc_dir = NULL;
+    if (_loc_dir[0] != '/') {
+        loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+        mila_free(_loc_dir);
+    }
+    else loc_dir = _loc_dir;
     mila_free(cwd);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
     env_set_local_raw(env, "__path__", vstring_dup(name));
@@ -8265,7 +8271,7 @@ Value *invoke_main_file(char *name, Env *env, int argc, char *argv[]) {
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
     if (!f) {
-        return verror("Cannot open %s\n", name);
+        return verror("Cannot open %s\n  Cause: %s", name, strerror(errno));
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -8374,7 +8380,9 @@ Value *invoke_file_keep_res(char *name, Env *env) {
 #ifndef RESTRICTED_BUILD
     char *_loc_dir = path_dirname_alloc(name);
     char *cwd = path_get_cwd();
-    char *loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+    char *loc_dir = NULL;
+    if (_loc_dir[0] != '/') loc_dir = path_join_alloc(cwd, _loc_dir, NULL);
+    else loc_dir = _loc_dir;
     mila_free(_loc_dir);
     mila_free(cwd);
     env_set_local_raw(env, "__name__", vstring_take(path_basename_alloc(name)));
@@ -8409,7 +8417,7 @@ Value *invoke_file_keep_res(char *name, Env *env) {
     char *src_text = NULL;
     FILE *f = fopen(name, "rb");
     if (!f) {
-        return verror("Cannot open %s\n", name);
+        return verror("Cannot open %s\n  Cause: %s", name, strerror(errno));
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
@@ -8754,7 +8762,8 @@ int main(int argc, char **argv) {
         env_set_raw(g, "argv", list);
         env_set_raw(g, "__argv", vopaque(argv));
         char filename[2048];
-        path_join(filename, sizeof(filename), 2, cwd, argv[1]);
+        if (argv[1][0] != '/') path_join(filename, sizeof(filename), 2, cwd, argv[1]);
+        else strcpy(filename, argv[1]);
         mila_free(cwd);
         int return_code = 0;
 

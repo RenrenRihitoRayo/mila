@@ -200,7 +200,6 @@ fn fib(n) {
 println(fib(10)); // 55
 ```
 
-
 ## Example of using MiLa (in C)
 
 ```C

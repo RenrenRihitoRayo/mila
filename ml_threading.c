@@ -211,6 +211,9 @@ Value *native_thread_start(Env *env, int argc, Value **argv) {
     if (ctx->is_cancelled)
         return verror("Thread %i was already cancelled!", thread_id);
 
+    if (ctx->status >= 1)
+        return verror("Thread %i has already been started!", thread_id);
+
     thread_start_thread(ctx->public_thread_id);
     return vnull();
 }

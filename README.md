@@ -294,6 +294,21 @@ const NativeEntry lib_function_entries[] = {
 };
 ```
 
+## How to build
+
+Make sure you got gcc, binutils, and make.
+Just run `make release` or `make smallest` in MiLas's directory,
+debug build is the default when just running `make`
+
+Basically
+```
+git clone https://github.com/renrenrihitorayo/mila --depth=1
+cd mila
+make release
+```
+
+To install just run `make install` which will copy MiLa into `/usr/bin/`
+
 ## MiLa dependencies
 
 * blr (my own readline implementation)

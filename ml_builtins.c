@@ -857,7 +857,11 @@ Value *native_fread_all(Env *env, int argc, Value **argv) {
         return verror("Coudlnt allocate, file too big?");
 
     size_t read_bytes = fread(buf, 1, n, f);
-    buf[read_bytes-1] = '\0';
+    if (read_bytes < 0) {
+        mila_free(buf);
+        return verror("fread_all in fread: %s", strerror(errno));
+    }
+    buf[n] = '\0';
 
     return vstring_take(buf);
 }

@@ -63,7 +63,7 @@ static inline char* sb_free_get(StringBuffer *sb) {
     return result;
 }
 
-static inline void sb_free(StringBuffer *sb) {
+FN_UNUSED static inline void sb_free(StringBuffer *sb) {
     mila_free(sb->data);
     mila_free(sb);
 }
@@ -150,19 +150,25 @@ Value *parse_expr_unified(Src *s, int parse_fn) {
         return parse_number(s);
     if (c == '"') return parse_string(s);
     if (c == '[') {
-        src_get(s);
+        s->pos++;
         Value *list = call_native_with(NULL, native_list_new, NULL);
-        skip_ws(s);
         if (src_peek(s) != ']') {
             for (;;) {
                 Value *a = parse_expr_unified(s, parse_fn);
                 if (IS_ERROR(a)) { val_release(list); return a; }
                 val_release(call_native_with(NULL, native_list_append, val_retain(list), a, NULL));
-                skip_ws(s);
-                if (match_char(s, ',')) continue;
-                if (match_char(s, ']')) break;
+                if (match_char(s, ',')) {
+                    skip_ws(s);
+                    if (src_peek(s) == ']') {
+                        s->pos++;
+                        break;
+                    }
+                    continue;
+                } else if (match_char(s, ']')) break;
+                Pos pos = get_pos(s);
                 val_release(list);
-                return verror("Expected comma or bracket");
+                fflush(stdout);
+                return verror("Expected comma or bracket at line %zu column %zu", pos.line, pos.column);
             }
         } else src_get(s);
         return list;
@@ -180,22 +186,40 @@ Value *parse_expr_unified(Src *s, int parse_fn) {
 }
 
 Value *parse_dict_unified(Src *json, int parse_fn) {
-    if (!match_char(json, '{')) return verror("invalid dict");
-    Value *dict = call_native_with(NULL, native_new_dict, NULL);
+    json->pos++;
     skip_ws(json);
+    Value *dict = call_native_with(NULL, native_new_dict, NULL);
     while (src_peek(json) != '}') {
         Value *id = NULL;
+        skip_ws(json);
         if (is_ident_start(src_peek(json))) id = vstring_take(parse_ident(json));
         else if (src_peek(json) == '"') id = parse_string(json);
-        else break;
-        if (!match_char(json, ':')) return verror("Expected colon!");
+        else {
+            val_release(dict);
+            Pos pos = get_pos(json);
+            return verror("Expected an identifier or a string at line %zu column %zu", pos.line, pos.column);
+        }
+        if (!match_char(json, ':')) {
+            Pos pos = get_pos(json);
+            val_release(dict);
+            return verror("Expected colon at line %zu column %zu", pos.line, pos.column);
+        }
         Value *value = parse_expr_unified(json, parse_fn);
         val_release(call_native_with(NULL, native_set_dict, val_retain(dict), id, value, NULL));
         val_release(value);
-        skip_ws(json);
-        if (match_char(json, ',')) { skip_ws(json); if (src_peek(json) == '}') break; }
+        if (match_char(json, ',')) {
+            skip_ws(json);
+            if (src_peek(json) == '}') {
+                json->pos++;
+                break;
+            }
+            continue;
+        } else if (match_char(json, '}')) {
+            break;
+        }
+        Pos pos = get_pos(json);
+        return verror("Expected comma or curly bracket at line %zu column %zu", pos.line, pos.column);
     }
-    src_get(json);
     return dict;
 }
 

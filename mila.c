@@ -4168,7 +4168,7 @@ char *indent(const char *text, int level) {
 
 // parse string literal (double quotes)
 Value *parse_string(Src *s) {
-    src_get(s); // consume opening "
+    s->pos++;
     char do_dedent = 0;
     size_t cap = 256;
     size_t len = 0;

@@ -11,14 +11,14 @@ typedef long MThreadID;
 
 /* Thread context for language-level threads */
 typedef struct {
-    Value *func;                /* Source code to execute */
-    Value *on_kill;             /* ran when thread dies */
+    Value *func;                /* code to execute */
+    Value *on_kill;             /* ran when thread dies normally */
     Value *result;              /* Result value */
     pthread_t thread_id;        /* POSIX thread ID */
     MThreadID public_thread_id; /* MiLa visible thread ID */
-    int status;                 /* 0 = pending, 1 = running, 2 = done */
-    int is_daemon;              /* Doesnt keep MiLa awake */
-    int is_cancelled;           /* True if thread is cancelled. */
+    char status;                 /* 0 = pending, 1 = running, 2 = done */
+    char is_daemon;              /* Doesnt keep MiLa awake */
+    char is_cancelled;           /* True if thread is cancelled. */
 } ThreadContext;
 
 // Note: this stays as is
@@ -44,7 +44,9 @@ __attribute__((unused)) static void *mila_thread_worker(void *arg);
 Value *native_make_mutex(Env *env, int argc, Value **argv);
 Value *native_mutex_lock(Env *env, int argc, Value **argv);
 Value *native_mutex_unlock(Env *env, int argc, Value **argv);
-Value *native_thread_create(Env *env, int argc, Value **argv);
+Value *native_thread_make(Env *env, int argc, Value **argv);
+Value *native_thread_defer(Env *env, int argc, Value **argv);
+Value *native_thread_start(Env *env, int argc, Value **argv);
 Value *native_thread_join(Env *env, int argc, Value **argv);
 Value *native_thread_yield(Env *env, int argc, Value **argv);
 Value *native_thread_next(Env *env, int argc, Value **argv);
@@ -56,3 +58,4 @@ Value *native_thread_check_cancel(Env *env, int argc, Value **argv);
 Value *native_thread_set_daemon(Env *env, int argc, Value **argv);
 void mila_threads_cleanup(void);
 void register_thread_builtins(Env *env);
+void thread_start_thread(int id);

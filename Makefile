@@ -111,13 +111,17 @@ install-debug:
 	cp mila mila.release
 
 clean:
-	rm mila *.so test.* *.a mtags
+	rm mila *.so test.* *.a mtags mtcheck
 
 mtags: $(files)
 	gcc -o mtags mtags.c -Iheaders -O3 -std=c11\
          $(eflags) -flto -ffunction-sections -fdata-sections -Wl,-s\
          -Wl,--gc-sections -fno-stack-protector
 
+mtcheck: $(files)
+	gcc -o mtcheck mtcheck.c -Iheaders -O3 -std=c11\
+         $(eflags) -flto -ffunction-sections -fdata-sections -Wl,-s\
+         -Wl,--gc-sections -fno-stack-protector
 
 clang-format:
 	clang-format -i -style="{BasedOnStyle: LLVM, BreakBeforeBraces: Attach, IndentWidth: 4, UseTab: Never}" *.[ch] **/*.[ch]

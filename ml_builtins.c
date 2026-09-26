@@ -848,7 +848,7 @@ Value *native_fread_all(Env *env, int argc, Value **argv) {
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
     if (n < 0) {
-        return verror("ftell: %s", strerror(errno));
+        return verror("ftell in fread_all: %s", strerror(errno));
     }
     fseek(f, 0, SEEK_SET);
 
@@ -873,6 +873,9 @@ Value *native_fread_all_bytes(Env *env, int argc, Value **argv) {
     }
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
+    if (n < 0) {
+        return verror("ftell in fread_all_bytes: %s", strerror(errno));
+    }
     fseek(f, 0, SEEK_SET);
 
     char *buf = mila_malloc(n + 1);
@@ -921,6 +924,9 @@ Value *native_fseek(Env *env, int argc, Value **argv) {
     }
 
     int res = fseek(f, offset, c_whence);
+    if (res < 0) {
+        return verror("fseek: %s", strerror(errno));
+    }
     return vint(res);
 }
 
@@ -934,6 +940,9 @@ Value *native_ftell(Env *env, int argc, Value **argv) {
         return verror("ftell(file): file handle is closed or invalid.");
     }
     long pos = ftell(f);
+    if (pos < 0) {
+        return verror("ftell: %s", strerror(errno));
+    }
     return vint(pos);
 }
 
@@ -2104,7 +2113,9 @@ void env_register_builtins(Env *g) {
 #endif                                           // ML_NO_DL
                                                  // === Threading
 #ifndef ML_NO_THREADING
-    env_register_native(g, "thread.make", native_thread_create);
+    env_register_native(g, "thread.make", native_thread_make);
+    env_register_native(g, "thread.defer", native_thread_defer);
+    env_register_native(g, "thread.start", native_thread_start);
     env_register_native(g, "thread.join", native_thread_join);
     env_register_native(g, "thread.cancel", native_thread_cancel);
     env_register_native(g, "thread.check_cancel", native_thread_check_cancel);

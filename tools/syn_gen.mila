@@ -1,3 +1,4 @@
+#!/usr/bin/mila
 
 !fn (argc, _, for="vim", bsize="10")
 // Generate syntax for vim or sublime files
@@ -12,18 +13,20 @@ if (isatty(stdin_fd)) {
 } else {
     set file = stdin;
 }
-fprint(stderr, "Parsing");
 
-var text = fread_all(file);
-var start = str.find("env_register_builtins", text);
-var final_text = str.slice(text, start);
-var lines = str.split(final_text, "\n");
+fprint(stderr, "Parsing...");
+const start_time = get_time_monotonic();
 
 var prnames = [];
 var pbnames = [];
 
-foreach line : lines
+var line;
+while (true)
 {
+    var line = freadline(file);
+    if (line == null) {
+        break;
+    }
     if (line => "*env_register_native*")
     {
         set line = str.slice(line, str.find("\"", line)+1);
@@ -37,7 +40,9 @@ foreach line : lines
         }
     }
 }
-fprint(stderr, ": Done.\n");
+fprint(stderr, "\b\b\b: Done.\n");
+const end_time = get_time_monotonic();
+fprint(stderr, "Took " + (end_time - start_time) + " seconds\n");
 
 fprint(stderr, "For: " + for + "\n");
 

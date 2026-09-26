@@ -1779,6 +1779,9 @@ char *as_c_string_repr(Value *v) {
             case '\n':
                 malloc_sprintf(&buffer, "\\n");
                 break;
+            case '\b':
+                malloc_sprintf(&buffer, "\\b");
+                break;
             case '\v':
                 malloc_sprintf(&buffer, "\\v");
                 break;
@@ -1905,6 +1908,9 @@ int raw_print_value_repr(Value *v) {
             case '\n':
                 first += printf("\\n");
                 break;
+            case '\b':
+                first += printf("\\b");
+                break;
             case '\v':
                 first += printf("\\v");
                 break;
@@ -2025,6 +2031,9 @@ char *as_c_string_repr_raw(Value *v) {
                 break;
             case '\n':
                 malloc_sprintf(&buffer, "\\n");
+                break;
+            case '\b':
+                malloc_sprintf(&buffer, "\\b");
                 break;
             case '\v':
                 malloc_sprintf(&buffer, "\\v");
@@ -4176,6 +4185,9 @@ Value *parse_string(Src *s) {
             switch (n) {
             case 'n':
                 c = '\n';
+                break;
+            case 'b':
+                c = '\b';
                 break;
             case 't':
                 c = '\t';

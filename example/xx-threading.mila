@@ -1,0 +1,22 @@
+
+var th = thread.make(fn():[println, time_sleep]{
+    println("Wait for 3s...");
+    time_sleep(3);
+    return 90;
+});
+println("Created thread!");
+
+println("Thread returned:", thread.join(th));
+
+var th = thread.defer(fn():[println, time_sleep]{
+    println("Wait for 3s...");
+    time_sleep(3);
+    return 90;
+});
+println("Created thread!");
+println("Status:", thread.status(th));
+println("Starting in 3s...");
+time_sleep(3);
+thread.start(th);
+println("Started thread!");
+println("Thread returned:", thread.join(th));

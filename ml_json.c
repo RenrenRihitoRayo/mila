@@ -250,7 +250,7 @@ static inline void serialize_list(StringBuffer *sb, LinkedList *list, int level,
         if (i < list->size - 1) sb_append_char(sb, ',');
         sb_append_char(sb, '\n');
     }
-    for (int j = 0; j < level - 1; ++j) sb_append_str(sb, "  ");
+    for (int j = 0; j < level - 2; ++j) sb_append_str(sb, "  ");
     sb_append_char(sb, ']');
 }
 
@@ -275,7 +275,7 @@ static inline void serialize_dict(StringBuffer *sb, Dict *dict, int level, int i
     }
     
     sb_append_char(sb, '\n');
-    for (int j = 0; j < level - 1; ++j) sb_append_str(sb, "  ");
+    for (int j = 0; j < level - 2; ++j) sb_append_str(sb, "  ");
     sb_append_char(sb, '}');
 }
 
@@ -377,7 +377,7 @@ static inline void serialize_list_file(FileBuffer *fb, LinkedList *list, int lev
         if (i < list->size - 1) fb_append_char(fb, ',');
         fb_append_char(fb, '\n');
     }
-    for (int j = 0; j < level - 1; ++j) fb_append_str(fb, "  ");
+    for (int j = 0; j < level - 2; ++j) fb_append_str(fb, "  ");
     fb_append_char(fb, ']');
 }
 
@@ -402,7 +402,7 @@ static inline void serialize_dict_file(FileBuffer *fb, Dict *dict, int level, in
     }
     
     fb_append_char(fb, '\n');
-    for (int j = 0; j < level - 1; ++j) fb_append_str(fb, "  ");
+    for (int j = 0; j < level - 2; ++j) fb_append_str(fb, "  ");
     fb_append_char(fb, '}');
 }
 

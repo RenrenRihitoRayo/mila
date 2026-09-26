@@ -59,11 +59,9 @@ static ThreadContext *thread_registry_get(int id) {
 static void *mila_thread_worker(void *arg) {
     if (!arg)
         return NULL;
-    VAR_UNUSED Value *result =
-        NULL; // not all code paths uses this (compiler gets grumpy)
-    ThreadContext *ctx = (ThreadContext *)arg;
+   ThreadContext *ctx = (ThreadContext *)arg;
     ctx->status = 1;
-    result =
+    ctx->result =
         call_function_with(NULL, ctx->func, vint(ctx->public_thread_id), NULL);
     ctx->status = 2;
 
@@ -123,7 +121,7 @@ int make_cthread(Generator c_gen) {
     return thread_id;
 }
 
-Value *native_thread_create(Env *env, int argc, Value **argv) {
+Value *native_thread_make(Env *env, int argc, Value **argv) {
     if (argc < 1) {
         return verror("thread.make(code, on_kill?): Requires source code");
     }
@@ -148,6 +146,7 @@ Value *native_thread_create(Env *env, int argc, Value **argv) {
     }
 
     int thread_id = thread_registry_add(ctx);
+    thread_start_thread(thread_id);
     ctx->public_thread_id = thread_id;
     if (thread_id < 0) {
         val_release(ctx->func);
@@ -155,15 +154,73 @@ Value *native_thread_create(Env *env, int argc, Value **argv) {
         return verror("Failed to register thread");
     }
 
-    int pth_result =
-        pthread_create(&ctx->thread_id, NULL, mila_thread_worker, ctx);
-    if (pth_result != 0) {
+    return vint(thread_id);
+}
+
+Value *native_thread_defer(Env *env, int argc, Value **argv) {
+    if (argc < 1) {
+        return verror("thread.defer(code, on_kill?): Requires source code");
+    }
+
+    if (argv[0]->type != T_FUNCTION ||
+        (argc == 2 && argv[1]->type != T_FUNCTION)) {
+        return verror(
+            "thread.defer(code, on_kill?): Requires function argument");
+    }
+
+    ThreadContext *ctx = mila_malloc(sizeof(ThreadContext));
+    ctx->func = val_retain(argv[0]);
+    ctx->result = NULL;
+    ctx->status = 0;
+    ctx->is_daemon = 0;
+    ctx->on_kill = NULL;
+    ctx->is_cancelled = 0;
+    ctx->public_thread_id = -1;
+
+    if (argc == 2) {
+        ctx->on_kill = val_retain(argv[1]);
+    }
+
+    int thread_id = thread_registry_add(ctx);
+    ctx->public_thread_id = thread_id;
+    if (thread_id < 0) {
         val_release(ctx->func);
         mila_free(ctx);
-        return verror("pthread_create failed: %d", pth_result);
+        return verror("Failed to register thread");
     }
 
     return vint(thread_id);
+}
+
+Value *native_thread_start(Env *env, int argc, Value **argv) {
+    if (argc < 1) {
+        return verror("thread.start(id): requires thread ID");
+    }
+
+    if (argv[0]->type != T_INT) {
+        return verror("thread.start(id): requires integer thread ID");
+    }
+
+    int thread_id = (int)GET_INTEGER(argv[0]);
+    ThreadContext *ctx = thread_registry_get(thread_id);
+
+    if (!ctx) {
+        return verror("Invalid thread ID: %d", thread_id);
+    }
+
+    if (ctx->is_cancelled)
+        return verror("Thread %i was already cancelled!", thread_id);
+
+    thread_start_thread(ctx->public_thread_id);
+    return vnull();
+}
+
+void thread_start_thread(int id) {
+    ThreadContext *ctx = thread_registry_get(id);
+    if (!ctx)
+        return;
+    ctx->status = 1;
+    pthread_create(&ctx->thread_id, NULL, mila_thread_worker, ctx);
 }
 
 Value *native_thread_join(Env *env, int argc, Value **argv) {
@@ -184,6 +241,9 @@ Value *native_thread_join(Env *env, int argc, Value **argv) {
 
     if (ctx->is_cancelled)
         return verror("Thread %i was already cancelled!", thread_id);
+
+    if (ctx->status == 0)
+        return verror("Thread %i is not even running!", thread_id);
 
     pthread_join(ctx->thread_id, NULL);
 

@@ -9,7 +9,6 @@ and doesnt require you to run an external file.
 * [File Operations](#file-ops)
 * [Lists](#list)
 * [Dictionaries](#dict)
-* [Arrays](#arr)
 * [Functional Stuff](#func)
 * [Sorting](#sort)
 * [Environments](#env)
@@ -23,7 +22,7 @@ and doesnt require you to run an external file.
 * [Running and Loading](#run)
 * [Error Handling](#error)
 * [JSON and MJSON](#json)
-* [Threading](#th)
+* [Threading](#threading)
 * [Others](#other)
 
 NOTE: Not all functions are monkey patch safe!!!
@@ -67,6 +66,13 @@ and thus may not be guaranteed as safe for monkey patching.
 * `fread(file: "file", num: "int") -> "string"`
 
     Read a certain amount of characters.
+
+* `freadline(file: "file") -> "string"`
+
+    Read a line, excludes the newline.
+    When an EOF is encounterd but still has remaining characters
+    or in a situation the end of the file doesnt have an empty line at the end,
+    the remaining characters are still returned.
 
 * `fread_all(file: "file") -> "string"`
 
@@ -145,7 +151,7 @@ and thus may not be guaranteed as safe for monkey patching.
 
     Check if a path is a file.
 
-* `file.is_dir(path: "string") -> "string"`
+* `file.is_dir(path: "string") -> "bool"`
 
     Check if a path is a directory.
 
@@ -191,8 +197,7 @@ and thus may not be guaranteed as safe for monkey patching.
 * `list.append(list: "list", item)`
 
     Append an item to the given list.
-    Does not work for arrays!
-
+    
 * `list.pop(list: "list") -> "any"`
 
     Pop an item, returns `null` if no items are in the list.
@@ -326,11 +331,11 @@ var num: "int"= 0;
 
 ## <a id="str"></a>Strings
 
-* `str.slice(str: "index", index: "int", len: "int") -> "string"`
+* `str.slice(str: "string", index: "int", len: "int") -> "string"`
 
     Slice a string. Note MiLa strings are immutable.
 
-* `str.index(str: "index", index: "int") -> "string"`
+* `str.index(str: "string", index: "int") -> "string"`
 
     Index a character in a string.
 
@@ -498,7 +503,7 @@ var num: "int"= 0;
 
     Self explanatory name.
 
-### <a id="str-pattern"></a>Pattern Matching
+## <a id="str-pattern"></a>Pattern Matching
 
 Semantically this is equivalent to file globbing but do
 note we only implement a subset of common globbing syntax and
@@ -549,25 +554,37 @@ Self explanatory names.
 
 * `cast.int(s: "string") -> "int"`
 
+    Cast a string into an interger.
+
 * `cast.float(s: "string") -> "float"`
+
+    Cast a string into a float.
 
 * `cast.str(a: "any") -> "string"`
 
-    Most useless here....
+    Cast any value into a string.
 
 * `cast.i2u(i: "int") -> "uint"`
 
+    Cast an integer to an unsigned integer.
+
 * `cast.u2i(u: "uint") -> "int"`
+
+    Cast an unsigned integer into a signed integer.
 
 * `cast.i2f(i: "int") -> "float"`
 
+    Cast an integer into a float.
+
 * `cast.f2i(f: "float") -> "int"`
+
+    Cast a float into an integer.
 
 * `typeof(a: "any") -> "string"`
 
-    Arguably the most useful function in MiLa
+    Return the type of the given value.
 
-* `as_opaque(any) -> "opaue"`
+* `as_opaque(any) -> "opaque"`
 
     Cast any type into an opaque.<br>
     May only work for certain primitives like:
@@ -577,7 +594,7 @@ Self explanatory names.
     * uint
     * string
 
-* `from_opaque(type: "string",  "opaque") -> "any"`
+* `from_opaque(type: "string", opaque: "opaque") -> "any"`
 
     Cast an opaque into a type.<br>
     Supports these strings for `type`:
@@ -607,15 +624,19 @@ Self explanatory names.
 
 * `own(opq: "opaque") -> "owned_opaque"`
 
-    Cast any opaque to an opaque.
+    Cast an opaque to an owned_opaque.
+    Use cautiously, otherwise you may cause memory issues.
 
 * `unown(opq: "owned_opaque") -> "opaque"`
 
-    Cast any opaque to an unowned opaque.
+    Cast an owned_opaque to an opaque.
+    Use cautiously, otherwise memory leaks may happen.
 
 * `is_numeric(any: "any") -> "bool"`
 
     Returns true if a type is numeric.
+    This returns true for `int`, `uint`, and `float` and does not
+    care even if an object has an overload or if a value has BMethodBinop.
 
 ## <a id="time"></a>Time
 
@@ -624,6 +645,10 @@ Theres no date object shenanigans if theres no date object.
 * `get_time() -> "float"`
 
     Returns unix timestamp.
+
+* `get_time_monotonic() - "float"`
+
+    Returns a monotonic timestamp.
 
 * `time_sleep(sec: "int")`
 
@@ -641,11 +666,13 @@ Theres no date object shenanigans if theres no date object.
 
     Get a `tm` struct for local time.
     Accepts unix timestamp.
+    Constructs from the given unix timestamp.
 
 * `get_tm_gmt(time: "float") -> "tm`
 
     Get a `tm` struct for gmt timezone.
     Accepts unix timestamp.
+    Constructs from the given unix timestamp.
 
 ## <a id="system"></a>System
 
@@ -659,12 +686,16 @@ Theres no date object shenanigans if theres no date object.
     May return the following strings:
     
     * "win" (not tested yet)
+
+        Not a primary target
     
     * "android" (tested)
     
     * "linux" (works on archlinux)
     
-    * "web" (tested)
+    * "web" (deprecated)
+
+        Not a primary target
     
     * "mach" (not tested yet)
     
@@ -683,6 +714,8 @@ Theres no date object shenanigans if theres no date object.
          Plausible if ported properly.
     
     * "unknown" (highly unstable)
+
+        We presume a unix/posix system, this is uncharted territory
 
 * `sys.get_arch() -> "string"`
 
@@ -703,6 +736,13 @@ Theres no date object shenanigans if theres no date object.
     * "mips" (not tested yet)
     
     * "unknown" (good luck)
+
+        We assume the following for optimizations regarding memory:
+        * CHAR_BIT == 8
+        * sizeof(long) == 8 (64 bits)
+        * sizeof(void*) == 8 (64 bits)
+        * sizeof(double) == 8 (64 bits)
+        But as long as these are equal, theres no doubt its plausible to port.
 
 * `sys.get_pid() -> "int"`
 
@@ -727,6 +767,18 @@ Theres no date object shenanigans if theres no date object.
     Files may use the `return` keyword to return
     a value.
 
+* `require(file: "string") -> "any"`
+
+    Like run it runs the given file and returns its
+    return value ***BUT*** caches the result.
+    If a module has initialization logic and is required per run,
+    avoid using this function is it only runs the file once.
+    <br><br>
+    Note the cache is accessible for every interpreter in an interpreter instance.
+    IE `mila file.mila` and any scripts ran or required by `file.mila` share the cache.
+    The cache is in `__modules` as a dictionary, however do note it is not recommended
+    to modify this as threads could be modifying it, moreover it is thread safe internally.
+
 * `invoke(file: "string") -> "any"`
 
     Similar to `run` ***BUT*** runs the file as it
@@ -750,16 +802,21 @@ Theres no date object shenanigans if theres no date object.
 * `exit(code: "int"=0) -> "tagged_error!"`
 
     Exit with the error code `code`.
+    Returns a catchable error `Exit` (E_EXIT)
 
 * `abort() -> "!"`
 
     Call C abort.
+    NOTICE!!! THIS DOES NOT RUN THE INTERPRETER CLEANUP MACHINERY!!!
+    Thus if called within scripts that expect the interpreter to run its
+    cleanup macinery, will cause problems such as locks not being unlocked,
+    unfreed memory, unclosed files, ivalid states, etc.
 
 * `report(message: "string") -> "error!"`
 
     Raise an error with the provided message.
 
-* `report_tagged(tag: "int", message: "message") -> "tagged_error!"`
+* `report_tagged(tag: "int", message: "string") -> "tagged_error!"`
 
     Raise a tagged error with the provided tag and message.
 
@@ -772,7 +829,10 @@ Theres no date object shenanigans if theres no date object.
 
 * E_EXIT
 
-    Exit.
+    Exits.
+    Using `exit()` adds a functionality of providing an exit code.
+    It is recomended to use error codes above 20 as 20 and below error codes
+    will be reserved for future errors.
 
 * E_GENERIC
 
@@ -802,31 +862,32 @@ Theres no date object shenanigans if theres no date object.
 
     A force propagated non fatal error.
     Simply stops the thread that this is raised in,
-    if used in the main interpreter this just exits.
+    if used in the main interpreter this just exits
+    and doesnt print anything.
 
 ## <a id="json"></a>JSON and MJSON
 
-* `json.loads(json: "string") -> "list|dict"`
+* `json.loads(json: "string") -> "any"`
 
     Loads a json string as MiLa types.
 
-* `json.dumps(mila: "list|dict") -> "string"`
+* `json.dumps(mila: "any") -> "string"`
 
     Dumps a MiLa type as json.
 
-* `json.dumps_io(file: "file", mila: "list|dict") -> "string"`
+* `json.dumps_io(file: "file", mila: "any") -> "string"`
 
     Dumps a MiLa type as json directly into a file.
 
-* `mjson.loads(mjson: "string") -> "list|dict"`
+* `mjson.loads(mjson: "string") -> "any"`
 
     Loads an mjson string as MiLa types.
 
-* `mjson.dumps(mila: "list|dict") -> "string"`
+* `mjson.dumps(mila: "any") -> "string"`
 
     Dumps a MiLa type as mjson.
 
-* `mjson.dumps_io(file: "file", mila: "list|dict") -> "string"`
+* `mjson.dumps_io(file: "file", mila: "any") -> "string"`
 
     Dumps a MiLa type as mjson directly into a file.
 
@@ -834,9 +895,17 @@ Theres no date object shenanigans if theres no date object.
 
 * MiLa - JS Object Notation
 
-    Is just json with MiLa functions.
+    Is just json with MiLa lambdas.
     MJSON does not allow expression as values and thus
     does not execute code even when loading an mjson file.
+
+    ```MiLa
+    {
+        "add": fn(a: "int", b: "int") -> "int" {
+            return a + b;
+        }
+    }
+    ```
 
 * JSON (MiLa implementation)
 
@@ -846,24 +915,44 @@ Theres no date object shenanigans if theres no date object.
     - Identifiers as keys
     
     Note every standard JSON is valid MJSON.
+    Using `json.dumps` normalizes against our features ensuring ISO JSON compliance.
 
-## <a id="th"></a>Threading
+## <a id="threading"></a>Threading
+
+Note these arent threads in some scheduler implementation, it actual threads via
+pthreads, thus some conveniences are just not available or forced unto us by platform
+requirements.
 
 * `thread.make(func: "function", on_kill: "function") -> "int"`
 
     Create a thread and run it immediately, returns a thread ID.
-    `on_kill` runs when the thread ends regardless of cause<br>
-    (on interpreter halt this still runs except for signal interupts)
+    `on_kill` runs when the thread ends
+    on interpreter halt this still runs except for signal interupts
     <br><br>
-    `func` sigature: `fn(thread_id)`
-    `on_kill` signature: `fn(thread_id, cause)`
+    `func` sigature: `fn(thread_id: "int") -> "any"`<br>
+    `on_kill` signature: `fn(thread_id: "int", cause: "string") -> "null"`
 
-* `thread.join(thread_id: "int")`
+* `thread.defer(func: "function", on_kill: "function") -> "int"`
+
+    Similar to `thread.make` but needs to be ran manually by `thread.run`.
+
+* `thread.start(thread_id: "int")`
+
+    Runs a deferred thread.
+
+* `thread.join(thread_id: "int") -> "any"`
+
+    Wait for a thread.
+    Returns the threads return value. (yay no IPC)
 
 * `thread.cancel(thread_id: "int")`
 
+    Send a cancel signal to a thread.
+    If the thread doesnt call `thread.check_cancel` the signal wont get processed.
+
 * `thread.check_cancel(thread_id: "int")`
 
+    Checks if a cancel signal has been sent.
     Must be called inside threads that might be cancelled.
     This exists because MiLa threads are cooperative.
     Even if we use pthreads underneath, we need to comply with platforms
@@ -871,12 +960,14 @@ Theres no date object shenanigans if theres no date object.
 
 * `thread.set_daemon(thread_id: "int")`
 
-* `thread.get_pthread_id(thread_id: "int")`
+    Turn a thread into a deamon thread.
+
+* `thread.get_pthread_id(thread_id: "int") -> "int"`
 
     Useful for debugging.
     Returns pthread id rather than MiLa handled thread IDs.
 
-* `thread.status(thread_id: "int")`
+* `thread.status(thread_id: "int") -> "int"`
 
     Returns these values:
     
@@ -884,17 +975,21 @@ Theres no date object shenanigans if theres no date object.
     * 1: running
     * 2: done
 
-* `thread.mutex()`
+* `thread.mutex() -> "mutex"`
 
     Create a mutex.
 
 * `thread.mutex_lock(mutex: "mutex")`
 
+    Lock a mutex.
+
 * `thread.mutex_unlock(mutex: "mutex")`
+
+    Unlock a mutex.
 
 * `thread.dump(thread_id: "int")`
 
-    Dump thread info.
+    Prints thread info.
 
 ## <a id="other"></a>Miscellaneous
 
@@ -917,9 +1012,12 @@ Theres no date object shenanigans if theres no date object.
     Sets the seed for random numbers.
     This is important for getting actual random numbers.
 
-* `range(start: "int", stop: "int", step: "int"=1) -> "list[int]"`
+* `range(start: "int", stop: "int", step: "int"=1) -> "range"`
 
-    Just like in python, exlusive.
+    Returns a range iterator which when used in a foreach would create an iterator
+    which starts from the value provided in `start` and steps `step` amount of times
+    per iteration until the next value overshoots `end`.
+    `range(0, 10, 2)` would be 0, 2, 4, 6, and 8, stopping before 10.
 
 * `hash(any: "any") -> "int"`
 

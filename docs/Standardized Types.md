@@ -65,8 +65,8 @@ Standard for MiLa type hint syntax
 
     For callable types, shorthand for `{function, native}`
 
-Note identifiers ending in `!` are special types.
-They are side effects rather than actual expected values.
+Note identifiers ending in `!` or `?` are special types.
+They are side effects or errors rather than actual expected values.
 
 * `noreturn!`
 
@@ -83,6 +83,14 @@ They are side effects rather than actual expected values.
 * `impure!`
 
     A function that is impure in general
+
+* `option?`
+
+    A function that may or may not return a value of such type.
+
+* `plausible_error!?`
+
+    A function that may or may not return an error.
 
 ## Function syntax
 
@@ -102,7 +110,7 @@ They are side effects rather than actual expected values.
 For an entire script (using parameterized scripts)
 
 ```MiLa
-!fn (argc, ...argv) -> "{io!, exit!}"
+!fn (argc, ...argv) -> "{io!, exit!, Generic!?}"
 
 println("Hello, world!");
 ```
@@ -112,6 +120,11 @@ For a "main" function
 ```MiLa
 fn main() -> "{int, io!, exit!}" {
     println("Hello, world!");
+    var data: "dict[string=list[int]]" = [@
+        "student_id": [0, 1, 2, 3],
+        "student_scores": [12, 13, 12, 13]
+    ];
+    println(data);
     return 0;
 }
 

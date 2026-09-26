@@ -1,0 +1,22 @@
+#!/usr/bin/mila
+
+var file = open(file.transform("~/.bashrc"), "r+");
+var text = fread_all(file);
+
+if (text => "*# MILA SETUP*") {
+    println("Please remove the MiLa section\nin your .bashrc file and try again");
+    fclose(file);
+    exit(1);
+} else {
+    fseek(file, 0, SEEK_END);
+    fprint(file, "\n# MILA SETUP\n. ~/.mila_setup");
+    var setup = open(file.transform("~/.mila_setup"), "w");
+    fprint(setup, "# MiLa setup from mila_set.mila
+
+# Completions
+complete -f mila
+complete -f mtags
+");
+    fclose(file);
+    fclose(setup);
+}

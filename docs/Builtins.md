@@ -646,7 +646,7 @@ Theres no date object shenanigans if theres no date object.
 
     Returns unix timestamp.
 
-* `get_time_monotonic() - "float"`
+* `get_time_monotonic() -> "float"`
 
     Returns a monotonic timestamp.
 
